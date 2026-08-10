@@ -382,7 +382,18 @@ def main():
             time.sleep(0.3)  # jaga-jaga rate limit
 
     # --- Ringkasan akhir ---
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        print("\n[ERROR] Tidak ada hasil tersimpan sama sekali -- kemungkinan semua "
+              "panggilan API gagal (cek pesan [FAIL] di atas, sering karena API key "
+              "tidak valid/kehabisan credit/rate limit). Tidak ada ringkasan untuk ditampilkan.")
+        return
+
     results_df = pd.read_json(output_path, lines=True)
+    if "cosine_similarity" not in results_df.columns or len(results_df) == 0:
+        print("\n[ERROR] File hasil ada tapi tidak berisi record valid -- cek pesan "
+              "[FAIL] di atas untuk penyebabnya.")
+        return
+
     print("\n" + "=" * 70)
     print("RINGKASAN HASIL KONDISI A (Replikasi Baseline)")
     print("=" * 70)
