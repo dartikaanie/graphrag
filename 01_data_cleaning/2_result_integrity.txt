@@ -1,0 +1,101 @@
+
+==============================================================================
+LAPORAN INTEGRITAS DATA SORD
+==============================================================================
+
+--- questions/QuestionsTitle_Contain.csv ---
+  [OK] size actual=124.7MB expected=118.0MB (selisih 5.7%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=73,901 expected=73,901 (selisih 0.00%)
+  [OK] kolom minimal lengkap
+  [OK] duplikat Id pada 73,901 baris pertama: 0
+
+--- questions/QuestionsBody_Contain.csv ---
+  [OK] size actual=3,501.3MB expected=3,260.0MB (selisih 7.4%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=1,135,148 expected=1,135,148 (selisih 0.00%)
+  [OK] kolom minimal lengkap
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+--- questions/QuestionsTitle_LikeMinusContain.csv ---
+  [OK] size actual=187.6MB expected=178.0MB (selisih 5.4%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=90,685 expected=90,685 (selisih 0.00%)
+  [OK] kolom minimal lengkap
+  [OK] duplikat Id pada 90,685 baris pertama: 0
+
+--- questions/QuestionsBody_LikeMinusContain.csv ---
+  [OK] size actual=4,182.0MB expected=3,890.0MB (selisih 7.5%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=1,511,800 expected=1,511,800 (selisih 0.00%)
+  [OK] kolom minimal lengkap
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+--- answers/Answers_Contain.csv ---
+  [OK] size actual=3,521.8MB expected=3,270.0MB (selisih 7.7%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=2,228,118 expected=2,228,118 (selisih 0.00%)
+  [OK] kolom minimal lengkap
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+--- answers/Answers_LikeMinusContain.csv ---
+  [OK] size actual=2,257.5MB expected=2,100.0MB (selisih 7.5%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=1,427,770 expected=1,427,770 (selisih 0.00%)
+  [OK] kolom minimal lengkap
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+--- comments/Comments_Contain.csv ---
+  [OK] size actual=615.3MB expected=586.0MB (selisih 5.0%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=1,900,242 expected=1,900,242 (selisih 0.00%)
+  [OK] kolom minimal lengkap
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+--- comments/Comments_LikeMinusContain.csv ---
+  [OK] size actual=664.9MB expected=634.0MB (selisih 4.9%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=2,114,468 expected=2,114,468 (selisih 0.00%)
+  [OK] kolom minimal lengkap
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+--- additional-metadata/FilteredBadges.csv ---
+  [OK] size actual=2,313.2MB expected=2,150.0MB (selisih 7.6%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=34,830,450 expected=34,830,450 (selisih 0.00%)
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+--- additional-metadata/FilteredTags.csv ---
+  [OK] size actual=1.0MB expected=1.0MB (selisih 2.5%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=61,672 expected=61,672 (selisih 0.00%)
+
+--- additional-metadata/FilteredUsers.csv ---
+  [OK] size actual=320.3MB expected=305.0MB (selisih 5.0%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=1,993,211 expected=1,993,211 (selisih 0.00%)
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+--- additional-metadata/FilteredVotes.csv ---
+  [OK] size actual=2,980.7MB expected=2,770.0MB (selisih 7.6%)
+  menghitung baris (bisa lama untuk file >1GB)...
+  [OK] rows actual=50,725,814 expected=50,725,814 (selisih 0.00%)
+  [OK] duplikat Id pada 500,000 baris pertama: 0
+
+==============================================================================
+RINGKASAN
+==============================================================================
+  [PASS] questions/QuestionsTitle_Contain.csv 
+  [PASS] questions/QuestionsBody_Contain.csv 
+  [PASS] questions/QuestionsTitle_LikeMinusContain.csv 
+  [PASS] questions/QuestionsBody_LikeMinusContain.csv 
+  [PASS] answers/Answers_Contain.csv 
+  [PASS] answers/Answers_LikeMinusContain.csv 
+  [PASS] comments/Comments_Contain.csv 
+  [PASS] comments/Comments_LikeMinusContain.csv 
+  [PASS] additional-metadata/FilteredBadges.csv 
+  [PASS] additional-metadata/FilteredTags.csv 
+  [PASS] additional-metadata/FilteredUsers.csv
+  [PASS] additional-metadata/FilteredVotes.csv 
+
+Total: 12 file dicek, 0 FAIL, 0 WARN, 12 PASS bersih.
