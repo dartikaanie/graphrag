@@ -54,6 +54,12 @@ opsional untuk override sesaat kalau perlu)
     # Parameter eksperimen
     N_SAMPLE=384
     SEED=42
+    OVERSAMPLE_POOL=1200
+    # ^ pool acak awal sebelum filter token (default otomatis 3x N_SAMPLE
+    #   kalau tidak diset). Optimasi performa: token counting (Step 2) cuma
+    #   dijalankan pada pool ini, BUKAN seluruh populasi kandidat (~1.27 juta
+    #   pertanyaan) -- jauh lebih cepat, tanpa mengubah validitas statistik
+    #   sampling akhir (tetap random sample dari populasi yang sudah difilter).
 
     # Provider LLM: openai / anthropic / local
     LLM_PROVIDER=openai
@@ -107,12 +113,22 @@ TOKEN_LIMIT = 2048  # sesuai batasan paper asli
 # 1. Ambil kandidat pertanyaan dari Parquet (dedup + filter accepted answer)
 # ---------------------------------------------------------------------
 
-def get_candidate_questions(con: duckdb.DuckDBPyConnection, questions_parquet: str) -> pd.DataFrame:
+def get_candidate_questions(con: duckdb.DuckDBPyConnection, questions_parquet: str,
+                             oversample_pool: int, seed: int) -> pd.DataFrame:
     """Dedup by Id (pilih 1 baris representatif) + filter hanya yang punya
-    accepted answer. Query ini ringan karena filter accepted-answer
-    diterapkan SEBELUM dedup (mengecilkan data secara drastis lebih dulu),
-    dan hanya kolom yang diperlukan yang di-load (bukan seluruh skema)."""
-    print("[1/6] Mengambil kandidat pertanyaan (dedup + filter accepted answer)...")
+    accepted answer, LALU langsung ambil oversample pool kecil secara acak
+    (bukan seluruh populasi) menggunakan `USING SAMPLE` DuckDB.
+
+    PENTING (optimasi): kita TIDAK perlu materialize/hitung token untuk
+    seluruh ~1.27 juta kandidat kalau target akhir cuma 384 pertanyaan.
+    DuckDB melakukan sampling di level SQL sebelum data ditransfer ke
+    pandas, jauh lebih cepat daripada sample belakangan pakai df.sample()
+    setelah semua baris (termasuk kolom Body yang berat) sudah termuat ke
+    memori Python. oversample_pool diambil lebih besar dari n_sample akhir
+    untuk mengantisipasi baris yang nanti tereliminasi oleh filter token
+    limit (Step 2)."""
+    print(f"[1/6] Mengambil oversample pool ({oversample_pool} kandidat, "
+          f"bukan seluruh populasi) dari kandidat accepted-answer...")
     query = f"""
         SELECT Id, Title, Body, Tags, AcceptedAnswerId, ViewCount, Score
         FROM (
@@ -121,9 +137,11 @@ def get_candidate_questions(con: duckdb.DuckDBPyConnection, questions_parquet: s
             WHERE AcceptedAnswerId IS NOT NULL AND AcceptedAnswerId != 0
         )
         WHERE rn = 1
+        USING SAMPLE {oversample_pool} ROWS (reservoir, {seed})
     """
     df = con.execute(query).df()
-    print(f"      Kandidat dengan accepted answer: {len(df):,} pertanyaan")
+    print(f"      Oversample pool diambil: {len(df):,} kandidat "
+          f"(hanya subset ini yang akan dihitung token-nya di Step 2)")
     return df
 
 
@@ -162,7 +180,8 @@ def sample_questions(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
           f"justifikasi statistik: 95% CI, 5% margin of error -- sama seperti paper asli)...")
     if len(df) < n:
         print(f"      [WARN] Populasi hasil filter ({len(df)}) < target sample ({n}), "
-              f"pakai semua yang tersedia.")
+              f"pakai semua yang tersedia. Kalau target 384 tidak tercapai, jalankan "
+              f"ulang dengan --oversample-pool lebih besar (mis. {n*5}).")
         return df.reset_index(drop=True)
     return df.sample(n=n, random_state=seed).reset_index(drop=True)
 
@@ -296,7 +315,12 @@ def main():
                          help="Default dari LLM_PROVIDER di .env")
     parser.add_argument("--model", default=os.getenv("LLM_MODEL", "gpt-4o-mini"),
                          help="Default dari LLM_MODEL di .env")
+    parser.add_argument("--oversample-pool", type=int, default=int(os.getenv("OVERSAMPLE_POOL", 0)),
+                         help="Ukuran pool acak awal sebelum filter token (default: "
+                              "otomatis 3x n_sample kalau tidak diset)")
     args = parser.parse_args()
+
+    oversample_pool = args.oversample_pool if args.oversample_pool > 0 else args.n_sample * 3
 
     if not args.questions_parquet or not args.answers_parquet:
         print("[ERROR] QUESTIONS_PARQUET dan ANSWERS_PARQUET harus diset di .env "
@@ -313,7 +337,7 @@ def main():
 
     con = duckdb.connect()
 
-    candidates = get_candidate_questions(con, args.questions_parquet)
+    candidates = get_candidate_questions(con, args.questions_parquet, oversample_pool, args.seed)
     candidates = filter_by_token_limit(candidates)
     sample_df = sample_questions(candidates, args.n_sample, args.seed)
 
