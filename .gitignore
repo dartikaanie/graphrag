@@ -4,3 +4,5 @@ __pycache__/
 *$py.class
 00_datasource/raw/*
 00_datasource/merged/*
+01_data_cleaning/.env
+02_baseline_replication/.env
