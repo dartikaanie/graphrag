@@ -49,10 +49,21 @@ def call_anthropic(prompt: str, model: str):
     return response.content[0].text, response.usage.input_tokens, response.usage.output_tokens
 
 
+def call_ollama(prompt: str, model: str):
+    import ollama
+    response = ollama.chat(model=model, messages=[{"role": "user", "content": prompt}])
+    reply = response["message"]["content"]
+    # Ollama tidak selalu isi prompt_eval_count/eval_count di semua versi,
+    # jadi fallback ke 0 kalau field-nya tidak ada.
+    tin = response.get("prompt_eval_count", 0)
+    tout = response.get("eval_count", 0)
+    return reply, tin, tout
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", default=os.getenv("LLM_PROVIDER", "openai"),
-                         choices=["openai", "anthropic"])
+                         choices=["openai", "anthropic", "ollama"])
     parser.add_argument("--model", default=os.getenv("LLM_MODEL", "gpt-4o-mini"))
     parser.add_argument("--n-test", type=int, default=3, help="Jumlah prompt uji dikirim (max 3)")
     args = parser.parse_args()
@@ -67,15 +78,28 @@ def main():
         key = os.getenv("OPENAI_API_KEY")
         key_env_name = "OPENAI_API_KEY"
         call_fn = call_openai
-    else:
+    elif args.provider == "anthropic":
         key = os.getenv("ANTHROPIC_API_KEY")
         key_env_name = "ANTHROPIC_API_KEY"
         call_fn = call_anthropic
+    else:  # ollama -- tidak butuh API key, cukup pastikan server lokal jalan
+        call_fn = call_ollama
+        try:
+            import ollama as ollama_sdk
+            ollama_sdk.list()
+            print("Ollama server: [OK] terdeteksi di localhost:11434")
+        except Exception as e:
+            print(f"\n[FAIL] Tidak bisa konek ke Ollama -- pastikan sudah jalan "
+                  f"'ollama serve' dan model '{args.model}' sudah di-pull "
+                  f"(ollama pull {args.model}). Detail: {e}")
+            sys.exit(1)
+        key = None
 
-    if not key:
-        print(f"\n[FAIL] {key_env_name} tidak ditemukan di .env")
-        sys.exit(1)
-    print(f"API Key  : {'*' * (len(key) - 4)}{key[-4:]} ({len(key)} karakter)")
+    if args.provider != "ollama":
+        if not key:
+            print(f"\n[FAIL] {key_env_name} tidak ditemukan di .env")
+            sys.exit(1)
+        print(f"API Key  : {'*' * (len(key) - 4)}{key[-4:]} ({len(key)} karakter)")
 
     n = min(args.n_test, len(TEST_PROMPTS))
     print(f"\nMengirim {n} prompt uji...\n")
