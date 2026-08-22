@@ -1,0 +1,50 @@
+dartikaanie@dartikas-Laptop 03_rag % python b_condition_b_rag.py --provider ollama --model qwen2.5:1.5b --n-sample 10 --index-pool 2000
+[logging] Log detail run ini -> logs/20260822T051805Z_ollama_qwen2.5_1.5b.log
+[safety] provider=ollama terdeteksi -- output dialihkan dari 'results/condition_b_gpt4o.jsonl' ke 'results/dev_ollama_condition_b_gpt4o.jsonl' supaya tidak tercampur hasil resmi.
+[config] questions_parquet = ../00_datasource/merged/questions_raw_union.parquet
+[config] answers_parquet   = ../00_datasource/merged/answers_raw_union.parquet
+[config] output            = results/dev_ollama_condition_b_gpt4o.jsonl
+[config] n_sample=10 seed=42 provider=ollama model=qwen2.5:1.5b
+[config] index_pool=2000 top_k=5 token_chunk_limit=400 embed_model=all-MiniLM-L6-v2
+      [dev/testing only] Provider ollama, model 'qwen2.5:1.5b' -- hasil ini TIDAK untuk laporan evaluasi final.
+[1/8] Mengambil oversample pool (1200 kandidat pertanyaan evaluasi yang SUDAH dipastikan punya accepted answer matching)...
+      Oversample pool diambil: 1,092 kandidat
+[2/8] Menghitung token (title+body+tags) & filter <= 2048 token (kriteria sama dgn Kondisi A)...
+      1,092 kandidat -> 1,057 lolos filter token (35 dikecualikan, 3.2%)
+[3/8] Sampling acak 10 pertanyaan evaluasi (seed=42)...
+[4/8] Mengambil teks accepted answer (ground truth) dari Answers parquet...
+      Ditemukan 10 accepted answer
+[5/8] Membangun korpus retrieval (2000 kandidat jawaban, exclude 10 accepted answer + jawaban lain dari 10 pertanyaan evaluasi -- cegah leakage)...
+      Korpus retrieval (sebelum chunking): 1,831 dokumen (title+answer)
+[5/8] Chunking korpus (<= 400 token/chunk, tiktoken cl100k_base)...
+      1,831 dokumen -> 2,637 chunk
+[6/8] Load model embedding (all-MiniLM-L6-v2)...
+/Users/dartikaanie/.pyenv/versions/3.10.9/lib/python3.10/site-packages/huggingface_hub/file_download.py:1132: FutureWarning: `resume_download` is deprecated and will be removed in version 1.0.0. Downloads always resume when possible. If you want to force a new download, use `force_download=True`.
+  warnings.warn(
+[6/8] Memuat index FAISS dari cache -> index_cache/idx2000_tok400_all-MiniLM-L6-v2.faiss
+      Index dimuat: 2,729 vektor (pakai --rebuild-index kalau korpus/parameter berubah)
+      [resume] 0 pertanyaan sudah diproses sebelumnya, akan dilewati
+[7/8] Retrieval top-5 + prompting qwen2.5:1.5b untuk 10 pertanyaan...
+      [1/10] Id=42801779 retrieved=5 similarity=0.613 (tertulis 11781 char)
+      [2/10] Id=33937762 retrieved=5 similarity=0.236 (tertulis 9370 char)
+      [3/10] Id=67754623 retrieved=5 similarity=0.427 (tertulis 8281 char)
+      [4/10] Id=5985477 retrieved=5 similarity=0.640 (tertulis 23647 char)
+      [5/10] Id=6307934 retrieved=5 similarity=0.368 (tertulis 9636 char)
+      [6/10] Id=672987 retrieved=5 similarity=0.486 (tertulis 7835 char)
+      [7/10] Id=38021138 retrieved=5 similarity=0.735 (tertulis 12648 char)
+      [8/10] Id=12573962 retrieved=5 similarity=0.610 (tertulis 12829 char)
+      [9/10] Id=18905403 retrieved=5 similarity=0.842 (tertulis 9396 char)
+      [10/10] Id=60324429 retrieved=5 similarity=0.672 (tertulis 17645 char)
+[8/8] Selesai memproses seluruh sample.
+[debug] Cek file output: exists=True absolute_path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/03_rag/results/dev_ollama_condition_b_gpt4o.jsonl size_bytes=123068
+
+======================================================================
+RINGKASAN HASIL KONDISI B (Conventional RAG)
+======================================================================
+Total pertanyaan diproses : 10
+Cosine similarity rata-rata: 0.5628
+Cosine similarity median   : 0.6116
+% similarity > 0.5         : 60.0%
+
+Hasil lengkap tersimpan -> results/dev_ollama_condition_b_gpt4o.jsonl
+[logging] Ringkasan run dicatat -> logs/run_history.jsonl
