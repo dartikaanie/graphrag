@@ -1,12 +1,6 @@
 """
-test_llm_connection.py
+TEST KONEKSI MODEL LLM
 ========================
-Test cepat koneksi API LLM (OpenAI/Anthropic) TANPA load data SORD sama
-sekali -- untuk validasi API key & credit sebelum jalankan pipeline penuh
-yang lebih berat.
-
-CARA PAKAI
-----------
     python test_llm_connection.py                          # pakai config dari .env
     python test_llm_connection.py --provider anthropic --model claude-sonnet-4-5
     python test_llm_connection.py --n-test 3                # kirim 3 prompt uji berbeda
@@ -15,7 +9,11 @@ CARA PAKAI
 import argparse
 import os
 import sys
+import anthropic
+import ollama
+import ollama as ollama_sdk
 
+from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,7 +26,6 @@ TEST_PROMPTS = [
 
 
 def call_openai(prompt: str, model: str):
-    from openai import OpenAI
     client = OpenAI()
     response = client.chat.completions.create(
         model=model,
@@ -39,7 +36,6 @@ def call_openai(prompt: str, model: str):
 
 
 def call_anthropic(prompt: str, model: str):
-    import anthropic
     client = anthropic.Anthropic()
     response = client.messages.create(
         model=model,
@@ -50,11 +46,9 @@ def call_anthropic(prompt: str, model: str):
 
 
 def call_ollama(prompt: str, model: str):
-    import ollama
+    #qwen2.5:1.5b
     response = ollama.chat(model=model, messages=[{"role": "user", "content": prompt}])
     reply = response["message"]["content"]
-    # Ollama tidak selalu isi prompt_eval_count/eval_count di semua versi,
-    # jadi fallback ke 0 kalau field-nya tidak ada.
     tin = response.get("prompt_eval_count", 0)
     tout = response.get("eval_count", 0)
     return reply, tin, tout
@@ -62,14 +56,14 @@ def call_ollama(prompt: str, model: str):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", default=os.getenv("LLM_PROVIDER", "openai"),
+    parser.add_argument("--provider", default=os.getenv("LLM_PROVIDER", "ollama"),
                          choices=["openai", "anthropic", "ollama"])
-    parser.add_argument("--model", default=os.getenv("LLM_MODEL", "gpt-4o-mini"))
-    parser.add_argument("--n-test", type=int, default=3, help="Jumlah prompt uji dikirim (max 3)")
+    parser.add_argument("--model", default=os.getenv("LLM_MODEL", "all-MiniLM-L6-v2"))
+    parser.add_argument("--n-test", type=int, default=1, help="Jumlah prompt uji dikirim ")
     args = parser.parse_args()
 
     print("=" * 70)
-    print("TEST KONEKSI API LLM")
+    print("TEST KONEKSI MODEL LLM")
     print("=" * 70)
     print(f"Provider : {args.provider}")
     print(f"Model    : {args.model}")
@@ -78,14 +72,19 @@ def main():
         key = os.getenv("OPENAI_API_KEY")
         key_env_name = "OPENAI_API_KEY"
         call_fn = call_openai
+        if not key:
+            print(f"\n[FAIL] {key_env_name} tidak ditemukan di .env")
+            sys.exit(1)
     elif args.provider == "anthropic":
         key = os.getenv("ANTHROPIC_API_KEY")
         key_env_name = "ANTHROPIC_API_KEY"
         call_fn = call_anthropic
-    else:  # ollama -- tidak butuh API key, cukup pastikan server lokal jalan
+        if not key:
+            print(f"\n[FAIL] {key_env_name} tidak ditemukan di .env")
+            sys.exit(1)
+    elif args.provider == "ollama":
         call_fn = call_ollama
         try:
-            import ollama as ollama_sdk
             ollama_sdk.list()
             print("Ollama server: [OK] terdeteksi di localhost:11434")
         except Exception as e:
@@ -94,12 +93,9 @@ def main():
                   f"(ollama pull {args.model}). Detail: {e}")
             sys.exit(1)
         key = None
-
-    if args.provider != "ollama":
-        if not key:
-            print(f"\n[FAIL] {key_env_name} tidak ditemukan di .env")
-            sys.exit(1)
-        print(f"API Key  : {'*' * (len(key) - 4)}{key[-4:]} ({len(key)} karakter)")
+    else:
+        print(f"\n[FAIL] Tidak bisa konek ke provider {args.provider} -- hanya support openai, anthropic, ollama")
+        sys.exit(1)
 
     n = min(args.n_test, len(TEST_PROMPTS))
     print(f"\nMengirim {n} prompt uji...\n")
@@ -114,7 +110,7 @@ def main():
             total_in += tin
             total_out += tout
             n_success += 1
-            print(f"      [OK] Balasan: {reply!r}")
+            print(f"      [OK] Response: {reply!r}")
             print(f"      Token: {tin} in / {tout} out")
         except Exception as e:
             print(f"      [FAIL] {e}")
@@ -126,12 +122,10 @@ def main():
     print(f"Berhasil: {n_success}/{n}")
     if n_success > 0:
         print(f"Total token terpakai: {total_in} in / {total_out} out")
-        print(f"\n[OK] Koneksi API berfungsi. Aman untuk lanjut jalankan pipeline penuh.")
+        print(f"\n[OK] Model LLM berfungsi.")
     else:
-        print(f"\n[FAIL] Semua percobaan gagal -- cek pesan error di atas "
-              f"(umumnya: API key salah, credit habis, atau rate limit).")
+        print(f"\n[FAIL] Semua percobaan gagal")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     sys.exit(main())
