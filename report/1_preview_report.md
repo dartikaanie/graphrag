@@ -2,9 +2,17 @@
 
 Total file: 20 | Baris preview per file: 5
 
+## Ringkasan Visual Datasource
+
+![file_sizes.png](img/file_sizes.png)
+
+![column_counts.png](img/column_counts.png)
+
 ---
 
-## `data/additional-metadata/FilteredBadges.csv`
+---
+
+## `../00_datasource/raw/additional-metadata/FilteredBadges.csv`
 
 **Ukuran:** 2,313.2 MB
 
@@ -34,7 +42,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/additional-metadata/FilteredTags.csv`
+## `../00_datasource/raw/additional-metadata/FilteredTags.csv`
 
 **Ukuran:** 1.0 MB
 
@@ -59,7 +67,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/additional-metadata/FilteredUsers.csv`
+## `../00_datasource/raw/additional-metadata/FilteredUsers.csv`
 
 **Ukuran:** 320.3 MB
 
@@ -96,7 +104,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/additional-metadata/FilteredVotes.csv`
+## `../00_datasource/raw/additional-metadata/FilteredVotes.csv`
 
 **Ukuran:** 2,980.7 MB
 
@@ -126,7 +134,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/answers/Answers_Contain.csv`
+## `../00_datasource/raw/answers/Answers_Contain.csv`
 
 **Ukuran:** 3,521.8 MB
 
@@ -165,7 +173,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/answers/Answers_LikeMinusContain.csv`
+## `../00_datasource/raw/answers/Answers_LikeMinusContain.csv`
 
 **Ukuran:** 2,257.5 MB
 
@@ -204,7 +212,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/comments/Comments_Contain.csv`
+## `../00_datasource/raw/comments/Comments_Contain.csv`
 
 **Ukuran:** 615.3 MB
 
@@ -236,7 +244,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/comments/Comments_LikeMinusContain.csv`
+## `../00_datasource/raw/comments/Comments_LikeMinusContain.csv`
 
 **Ukuran:** 664.9 MB
 
@@ -268,7 +276,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/evaluation/stratified_sample_labelled/stratified_Answers_Contain.csv`
+## `../00_datasource/raw/evaluation/stratified_sample_labelled/stratified_Answers_Contain.csv`
 
 **Ukuran:** 0.3 MB
 
@@ -296,7 +304,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/evaluation/stratified_sample_labelled/stratified_Answers_LikeMinusContain.csv`
+## `../00_datasource/raw/evaluation/stratified_sample_labelled/stratified_Answers_LikeMinusContain.csv`
 
 **Ukuran:** 0.1 MB
 
@@ -324,7 +332,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/evaluation/stratified_sample_labelled/stratified_Comments_Like.csv`
+## `../00_datasource/raw/evaluation/stratified_sample_labelled/stratified_Comments_Like.csv`
 
 **Ukuran:** 0.0 MB
 
@@ -352,7 +360,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/evaluation/stratified_sample_labelled/stratified_Comments_LikeMinusContain.csv`
+## `../00_datasource/raw/evaluation/stratified_sample_labelled/stratified_Comments_LikeMinusContain.csv`
 
 **Ukuran:** 0.0 MB
 
@@ -380,7 +388,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/evaluation/stratified_sample_labelled/stratified_QuestionsBody_Contain.csv`
+## `../00_datasource/raw/evaluation/stratified_sample_labelled/stratified_QuestionsBody_Contain.csv`
 
 **Ukuran:** 0.3 MB
 
@@ -408,7 +416,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/evaluation/stratified_sample_labelled/stratified_QuestionsBody_LikeMinusContain.csv`
+## `../00_datasource/raw/evaluation/stratified_sample_labelled/stratified_QuestionsBody_LikeMinusContain.csv`
 
 **Ukuran:** 0.3 MB
 
@@ -436,7 +444,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/evaluation/stratified_sample_labelled/stratified_QuestionsTitle_Contain.csv`
+## `../00_datasource/raw/evaluation/stratified_sample_labelled/stratified_QuestionsTitle_Contain.csv`
 
 **Ukuran:** 0.0 MB
 
@@ -464,7 +472,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/evaluation/stratified_sample_labelled/stratified_QuestionsTitle_LikeMinusContain.csv`
+## `../00_datasource/raw/evaluation/stratified_sample_labelled/stratified_QuestionsTitle_LikeMinusContain.csv`
 
 **Ukuran:** 0.0 MB
 
@@ -492,7 +500,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/questions/QuestionsBody_Contain.csv`
+## `../00_datasource/raw/questions/QuestionsBody_Contain.csv`
 
 **Ukuran:** 3,501.3 MB
 
@@ -535,7 +543,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/questions/QuestionsBody_LikeMinusContain.csv`
+## `../00_datasource/raw/questions/QuestionsBody_LikeMinusContain.csv`
 
 **Ukuran:** 4,182.0 MB
 
@@ -578,7 +586,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/questions/QuestionsTitle_Contain.csv`
+## `../00_datasource/raw/questions/QuestionsTitle_Contain.csv`
 
 **Ukuran:** 124.7 MB
 
@@ -621,7 +629,7 @@ Total file: 20 | Baris preview per file: 5
 
 ---
 
-## `data/questions/QuestionsTitle_LikeMinusContain.csv`
+## `../00_datasource/raw/questions/QuestionsTitle_LikeMinusContain.csv`
 
 **Ukuran:** 187.6 MB
 
