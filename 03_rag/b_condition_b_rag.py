@@ -22,9 +22,12 @@ Yang BARU dibanding Kondisi A (retrieval-augmented generation):
      struktur graph -- itu yang membedakan dari Kondisi C), di-index pakai
      FAISS (IndexFlatIP atas embedding ternormalisasi = cosine similarity).
   2. Retrieval top-k per pertanyaan evaluasi sebelum prompting.
-  3. Prompt diperkaya dengan konteks yang diambil (retrieval-augmented
-     prompt), lalu LLM dipanggil via factory provider yang SAMA PERSIS
-     dengan Kondisi A (get_llm_client).
+  3. Prompt memakai struktur 4-turn chat dialog yang SAMA PERSIS dengan
+     Kondisi A (system persona umum -> user persona dari tags -> assistant
+     priming -> user pertanyaan+deskripsi), DITAMBAH konteks hasil
+     retrieval disisipkan di turn user terakhir sebelum pertanyaan. LLM
+     dipanggil via factory provider yang SAMA PERSIS dengan Kondisi A
+     (get_llm_client).
   4. Index di-cache ke disk (INDEX_CACHE_DIR) supaya tidak perlu di-build
      ulang setiap run -- pakai --rebuild-index untuk paksa rebuild.
 
@@ -64,7 +67,9 @@ SETUP .env (WAJIB)
     # Path data (relatif terhadap folder 03_rag/, sejajar dg 00_datasource/)
     QUESTIONS_PARQUET=../00_datasource/merged/questions_raw_union.parquet
     ANSWERS_PARQUET=../00_datasource/merged/answers_raw_union.parquet
-    OUTPUT_PATH=results/condition_b_gpt4o.jsonl
+    OUTPUT_DIR=results
+    # ^ Nama file JSONL otomatis: condition_b_{provider}_{safe_model}.jsonl
+    #   (pola identik Kondisi A). Pakai --output untuk override manual.
 
     # Parameter sampel evaluasi -- SAMAKAN dengan Kondisi A supaya sample
     # pertanyaan yang dievaluasi identik (fair comparison). Kalau SEED sama
@@ -134,6 +139,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Import modul LLM bersama (llm/) di root repo -- dipakai SEMUA kondisi
+# (A/B/C) supaya cara panggil provider LLM & struktur prompt dasar tidak
+# terduplikasi/berisiko diam-diam berbeda antar file kondisi.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from llm.client_factory import get_llm_client
+from llm.prompts import build_rag_messages
+
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, sama dgn Kondisi A
 
 # Dibind ke logger.info di dalam main() setelah setup_logging() dipanggil.
@@ -147,7 +159,7 @@ def setup_logging(provider: str, model: str) -> tuple[logging.Logger, Path]:
     console, nama file mengandung provider+model."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    safe_model = model.replace("/", "_").replace(":", "_")
+    safe_model = model.replace("/", "_").replace(":", "_").replace(".", "_")
     log_path = LOG_DIR / f"{ts}_{provider}_{safe_model}.log"
 
     logger = logging.getLogger("condition_b")
@@ -404,111 +416,10 @@ def retrieve_context(embed_model, index, meta_df: pd.DataFrame, query_text: str,
 
 
 # ---------------------------------------------------------------------
-# 7. Prompt retrieval-augmented (persona sama dgn Kondisi A + konteks)
+# 7. Prompt retrieval-augmented & pemanggilan model -- lihat
+#    llm/prompts.py (build_rag_messages) dan llm/client_factory.py
+#    (dipakai bersama semua kondisi eksperimen)
 # ---------------------------------------------------------------------
-
-def build_prompt(title: str, body: str, tags: str, retrieved: list) -> str:
-    """Struktur sama dgn Kondisi A (persona dari tags -> title -> body),
-    DITAMBAH satu lapis baru: konteks komunitas hasil retrieval, disisipkan
-    sebelum pertanyaan supaya LLM bisa menggunakannya sebagai referensi
-    (retrieval-augmented generation konvensional -- tanpa constraint
-    grounding eksplisit, itu bedanya dari Kondisi C)."""
-    tag_list = tags.replace("<", "").replace(">", " ").strip() if tags else "software development"
-
-    if retrieved:
-        context_block = "\n\n".join(
-            f"[Referensi {i+1}] {r['chunk_text']}" for i, r in enumerate(retrieved)
-        )
-        context_section = (
-            f"Here is some potentially relevant context from the Stack Overflow "
-            f"community that may help you answer (use your own judgment; not all "
-            f"references may be directly applicable):\n\n{context_block}\n\n"
-        )
-    else:
-        context_section = ""
-
-    prompt = (
-        f"You are an expert with extensive knowledge in {tag_list}. "
-        f"A developer needs help with the following problem. "
-        f"Please explain how to fix or address it.\n\n"
-        f"{context_section}"
-        f"Title: {title}\n\n"
-        f"Description: {body}"
-    )
-    return prompt
-
-
-# ---------------------------------------------------------------------
-# LLM provider factory -- IDENTIK Kondisi A, disalin apa adanya supaya
-# perilaku pemanggilan LLM (dan kemudahan ganti provider) konsisten
-# di ketiga kondisi.
-# ---------------------------------------------------------------------
-
-def call_llm_openai(client, prompt: str, model: str) -> str:
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.choices[0].message.content
-
-
-def call_llm_anthropic(client, prompt: str, model: str) -> str:
-    response = client.messages.create(
-        model=model,
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text
-
-
-def call_llm_local(pipe, prompt: str, model: str) -> str:
-    output = pipe(prompt, max_new_tokens=512, do_sample=False)
-    return output[0]["generated_text"][len(prompt):].strip()
-
-
-def call_llm_ollama(client, prompt: str, model: str) -> str:
-    response = client.chat(model=model, messages=[{"role": "user", "content": prompt}])
-    return response["message"]["content"]
-
-
-def get_llm_client(provider: str, model: str):
-    """Factory -- identik Kondisi A. Tambah provider baru cukup 1 cabang +
-    1 fungsi call_llm_*, tidak perlu ubah bagian lain skrip."""
-    if provider == "openai":
-        from openai import OpenAI
-        if not os.getenv("OPENAI_API_KEY"):
-            log("[ERROR] OPENAI_API_KEY tidak ditemukan di .env")
-            sys.exit(1)
-        return OpenAI(), call_llm_openai
-
-    if provider == "anthropic":
-        import anthropic
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            log("[ERROR] ANTHROPIC_API_KEY tidak ditemukan di .env "
-                  "(catatan: ini API key dari console.anthropic.com, "
-                  "BEDA dari langganan Claude.ai)")
-            sys.exit(1)
-        return anthropic.Anthropic(), call_llm_anthropic
-
-    if provider == "local":
-        from transformers import pipeline
-        log(f"      Loading model lokal '{model}' (bisa lama untuk pertama kali)...")
-        pipe = pipeline("text-generation", model=model, device_map="auto")
-        return pipe, call_llm_local
-
-    if provider == "ollama":
-        import ollama
-        try:
-            ollama.list()
-        except Exception as e:
-            log(f"[ERROR] Tidak bisa konek ke Ollama di localhost:11434 -- "
-                  f"pastikan 'ollama serve' sudah jalan. Detail: {e}")
-            sys.exit(1)
-        log(f"      [dev/testing only] Provider ollama, model '{model}' -- "
-              f"hasil ini TIDAK untuk laporan evaluasi final.")
-        return ollama, call_llm_ollama
-
-    raise ValueError(f"Provider '{provider}' tidak dikenal. Pilihan: openai, anthropic, local, ollama")
 
 
 # ---------------------------------------------------------------------
@@ -526,14 +437,26 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 # Main
 # ---------------------------------------------------------------------
 
+def build_output_path(output_dir: str, provider: str, model: str) -> Path:
+    """Nama file JSONL otomatis dari provider+model -- identik pola
+    Kondisi A, format: condition_b_{provider}_{safe_model}.jsonl."""
+    safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
+    return Path(output_dir) / f"condition_b_{provider}_{safe_model}.jsonl"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--questions-parquet", default=os.getenv("QUESTIONS_PARQUET"),
                          help="Default dari QUESTIONS_PARQUET di .env")
     parser.add_argument("--answers-parquet", default=os.getenv("ANSWERS_PARQUET"),
                          help="Default dari ANSWERS_PARQUET di .env")
-    parser.add_argument("--output", default=os.getenv("OUTPUT_PATH", "results/condition_b_results.jsonl"),
-                         help="Default dari OUTPUT_PATH di .env")
+    parser.add_argument("--output-dir", default=os.getenv("OUTPUT_DIR", "results"),
+                         help="Folder output (default dari OUTPUT_DIR di .env). Nama file "
+                              "JSONL dibuat OTOMATIS dari provider+model yang dipakai, "
+                              "format: condition_b_{provider}_{safe_model}.jsonl")
+    parser.add_argument("--output", default=None,
+                         help="Override manual path output lengkap (opsional). Kalau diisi, "
+                              "auto-naming dari --output-dir/provider/model DIABAIKAN.")
     parser.add_argument("--n-sample", type=int, default=int(os.getenv("N_SAMPLE", 384)),
                          help="Default dari N_SAMPLE di .env. SAMAKAN dgn Kondisi A "
                               "(+ seed + oversample-pool yg sama) utk sample pertanyaan identik.")
@@ -570,14 +493,14 @@ def main():
 
     oversample_pool = args.oversample_pool if args.oversample_pool > 0 else args.n_sample * 3
 
-    # Safety net -- pola sama dgn Kondisi A: provider dev (ollama) tidak
-    # boleh menimpa/campur dengan hasil kondisi resmi.
-    if args.provider == "ollama" and "dev" not in args.output:
-        original = args.output
-        args.output = str(Path(args.output).with_name(
-            f"dev_ollama_{Path(args.output).name}"))
-        log(f"[safety] provider=ollama terdeteksi -- output dialihkan dari "
-              f"'{original}' ke '{args.output}' supaya tidak tercampur hasil resmi.")
+    # Auto-naming -- pola sama dgn Kondisi A: nama file dibuat dari
+    # provider+model yang benar-benar dipakai, kecuali di-override manual.
+    if args.output:
+        log(f"[config] --output diisi manual -- auto-naming provider/model diabaikan.")
+    else:
+        args.output = str(build_output_path(args.output_dir, args.provider, args.model))
+        log(f"[config] output auto-generated dari provider='{args.provider}' "
+              f"model='{args.model}' -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
         log("[ERROR] QUESTIONS_PARQUET dan ANSWERS_PARQUET harus diset di .env "
@@ -592,7 +515,7 @@ def main():
     log(f"[config] index_pool={args.index_pool} top_k={args.top_k} "
           f"token_chunk_limit={args.token_chunk_limit} embed_model={args.embed_model}")
 
-    llm_client, call_llm_fn = get_llm_client(args.provider, args.model)
+    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
 
     con = duckdb.connect()
 
@@ -656,9 +579,9 @@ def main():
             query_text = f"{row['Title']}\n{row['Body']}"
             retrieved = retrieve_context(embed_model, index, meta_df, query_text, args.top_k)
 
-            prompt = build_prompt(row["Title"], row["Body"], row["Tags"], retrieved)
+            messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
             try:
-                llm_answer = call_llm_fn(llm_client, prompt, args.model)
+                llm_answer = call_llm_fn(llm_client, messages, args.model)
             except Exception as e:
                 log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL] API error: {e}")
                 continue

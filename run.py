@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-run.py — Launcher terpusat untuk pipeline GraphRAG Thesis
+run.py — Launcher 
 ===========================================================
-Letakkan file ini di ROOT repo (sejajar dengan 00_datasource/, 01_data_cleaning/,
-02_baseline_replication/, 03_rag/, config/, stratified_sampling.py).
 
 CARA PAKAI
 ----------
@@ -16,19 +14,6 @@ Untuk aksi yang MEMANGGIL LLM (test koneksi, Kondisi A/B/C) akan ditanya:
   - Y / Enter -> jalankan dengan argumen default (sesuai .env / dokumentasi script)
   - n         -> kamu bisa ketik argumen tambahan/override secara bebas,
                  contoh: --n-sample 10 --provider ollama --model qwen2.5:1.5b
-Kondisi A/B/C juga ditanya konfirmasi biaya API terlebih dahulu.
-
-Untuk aksi seputar DATASOURCE (preview, cek integritas, merge, cek match
-accepted answer, analisis kelayakan KG, stratified sampling) -- TIDAK ada
-pertanyaan apa pun, langsung dijalankan dengan argumen default. Script-script
-ini sendiri sudah punya mekanisme skip-kalau-report-sudah-ada (langsung
-tampilkan laporan lama, tanpa proses ulang) -- pakai --force langsung di
-script terkait kalau memang mau regenerate.
-
-Script ini TIDAK mengubah logic script aslinya sama sekali -- cuma
-menjalankan `python <script> [args]` di working directory yang benar
-(supaya path relatif di tiap script tetap konsisten seperti kalau
-dijalankan manual dari folder masing-masing).
 """
 
 import os
@@ -46,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------
 MENU = [
     {
-        "label": "Test koneksi LLM (OpenAI / Anthropic / Ollama)",
+        "label": "Test koneksi LLM",
         "desc": "Kirim beberapa prompt uji singkat untuk memastikan provider & model bisa diakses.",
         "script": "config/test_llm_connection.py",
         "cwd": ".",
@@ -54,8 +39,8 @@ MENU = [
         "note": "Pakai provider/model dari .env di root. Override cepat: --provider ollama --model qwen2.5:1.5b",
     },
     {
-        "label": "Preview file data SORD (cek header + N baris awal + chart)",
-        "desc": "Preview cepat isi tiap file CSV mentah SORD tanpa load penuh (untuk file 2-4GB).",
+        "label": "Preview file data SORD",
+        "desc": "Preview cepat isi tiap file CSV mentah SORD tanpa load penuh.",
         "script": "1_preview_files.py",
         "cwd": "01_data_cleaning",
         "default_args": ["--data-dir", "../00_datasource/raw"],
@@ -137,7 +122,7 @@ MENU = [
         "script": "a_baseline_replecation.py",
         "cwd": "02_baseline_replication",
         "default_args": [],
-        "note": "MEMANGGIL API LLM BERBAYAR kalau provider bukan ollama. Cek .env (LLM_PROVIDER/LLM_MODEL) dulu.",
+        "note": "",
         "confirm_cost": True,
     },
     {
@@ -146,7 +131,7 @@ MENU = [
         "script": "b_condition_b_rag.py",
         "cwd": "03_rag",
         "default_args": [],
-        "note": "MEMANGGIL API LLM BERBAYAR kalau provider bukan ollama. Tambah --rebuild-index kalau index_cache belum ada/berubah.",
+        "note": "",
         "confirm_cost": True,
     },
     {

@@ -13,14 +13,21 @@ METODOLOGI YANG DIREPLIKASI (persis mengikuti paper asli)
    tiktoken, sama seperti paper asli -- lihat footnote 6 paper).
 3. Ukuran sampel: 384 pertanyaan (justifikasi statistik paper asli: 95%
    confidence level, 5% margin of error).
-4. Struktur prompt 3 lapis: persona "ahli" dari tags -> title sebagai
-   instruksi inti -> body sebagai konteks tambahan. (Struktur ini
-   diparafrasekan dari deskripsi metodologi paper, BUKAN kutipan verbatim
-   dari Figure 2 paper -- redaksi kalimat prompt di bawah adalah karya
-   sendiri mengikuti pola yang dideskripsikan.)
+4. Struktur prompt 4-turn chat dialog, PERSIS mereplikasi
+   `get_base_message()` di ll_model.py (repo asli leusonmario/chat-stack):
+   system (persona umum software engineering) -> user (persona spesifik
+   dibentuk dari tags) -> assistant (priming/konfirmasi persona) -> user
+   (pertanyaan + deskripsi). Wording tiap turn dipertahankan sama dengan
+   repo asli supaya struktur percakapan benar-benar tereplikasi, bukan
+   hanya diparafrasekan seperti versi sebelumnya.
 5. Konfigurasi model: DEFAULT (tidak override temperature/parameter lain)
-   -- meniru pola pemakaian LLM oleh user biasa, sesuai keputusan
-   metodologis paper asli.
+   -- meniru pola pemakaian LLM oleh user biasa. CATATAN (open issue,
+   belum final): klaim "default settings" ini mengacu ke teks paper asli;
+   kode publik chat-stack sendiri sebenarnya SET temperature eksplisit
+   untuk sebagian model (chatgpt.py: temperature=0.6, max_tokens=2048;
+   llama.py: temperature=1.0, top_p=1.0, top_k=50, do_sample=True) --
+   perlu diverifikasi ulang terhadap teks paper & didokumentasikan
+   sebagai known discrepancy di Bab III/IV sebelum finalisasi klaim.
 6. Satu kali panggilan API per pertanyaan (tidak ada retry/resampling).
 7. Metrik: cosine similarity via sentence-transformers all-MiniLM-L6-v2
    (model yang sama dipakai paper asli).
@@ -49,7 +56,18 @@ opsional untuk override sesaat kalau perlu)
     # dengan 00_datasource/ di root project)
     QUESTIONS_PARQUET=../00_datasource/merged/questions_raw_union.parquet
     ANSWERS_PARQUET=../00_datasource/merged/answers_raw_union.parquet
-    OUTPUT_PATH=results/condition_a_gpt4o.jsonl
+    OUTPUT_DIR=results
+    # ^ Nama file JSONL TIDAK perlu diset manual lagi -- otomatis dibuat
+    #   dari provider+model yang benar-benar dipakai run ini, format:
+    #   condition_a_{provider}_{safe_model}.jsonl, dengan safe_model =
+    #   model.replace("/", "-").replace(":", "-").replace(".", "-")
+    #   Contoh: provider=anthropic, model=claude-sonnet-4-5
+    #           -> results/condition_a_anthropic_claude-sonnet-4-5.jsonl
+    #   Ini menggantikan mekanisme prefix "dev_ollama_" sebelumnya --
+    #   nama file sekarang otomatis unik per provider/model sehingga tidak
+    #   mungkin bentrok/menimpa hasil provider lain. Kalau butuh path
+    #   custom (mis. nama khusus untuk arsip), pakai --output untuk
+    #   override manual (mengabaikan auto-naming).
 
     # Parameter eksperimen
     N_SAMPLE=384
@@ -108,6 +126,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Import modul LLM bersama (llm/) di root repo -- dipakai SEMUA kondisi
+# (A/B/C) supaya cara panggil provider LLM & struktur prompt dasar tidak
+# terduplikasi/berisiko diam-diam berbeda antar file kondisi.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from llm.client_factory import get_llm_client
+from llm.prompts import build_base_messages
+
 TOKEN_LIMIT = 2048  # sesuai batasan paper asli
 
 # Dibind ke logger.info di dalam main() setelah setup_logging() dipanggil.
@@ -125,7 +150,7 @@ def setup_logging(provider: str, model: str) -> tuple[logging.Logger, Path]:
     tanpa perlu buka isinya dulu."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    safe_model = model.replace("/", "_").replace(":", "_")
+    safe_model = model.replace("/", "_").replace(":", "_").replace(".", "_")
     log_path = LOG_DIR / f"{ts}_{provider}_{safe_model}.log"
 
     logger = logging.getLogger("baseline")
@@ -273,98 +298,9 @@ def get_accepted_answers(con: duckdb.DuckDBPyConnection, answers_parquet: str,
 
 
 # ---------------------------------------------------------------------
-# 5. Prompt LLM (struktur diparafrasekan dari deskripsi metodologi paper)
+# 5. Prompt LLM & pemanggilan model -- lihat llm/prompts.py dan
+#    llm/client_factory.py (dipakai bersama semua kondisi eksperimen)
 # ---------------------------------------------------------------------
-
-def build_prompt(title: str, body: str, tags: str) -> str:
-    """Struktur 3 lapis mengikuti deskripsi metodologi paper asli:
-    (1) persona ahli dibentuk dari tags, (2) title sebagai instruksi inti
-    untuk menjelaskan solusi, (3) body sebagai konteks tambahan.
-    Redaksi kalimat adalah tulisan sendiri, bukan kutipan dari paper."""
-    tag_list = tags.replace("<", "").replace(">", " ").strip() if tags else "software development"
-    prompt = (
-        f"You are an expert with extensive knowledge in {tag_list}. "
-        f"A developer needs help with the following problem. "
-        f"Please explain how to fix or address it.\n\n"
-        f"Title: {title}\n\n"
-        f"Description: {body}"
-    )
-    return prompt
-
-
-def call_llm_openai(client, prompt: str, model: str) -> str:
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.choices[0].message.content
-
-
-def call_llm_anthropic(client, prompt: str, model: str) -> str:
-    response = client.messages.create(
-        model=model,
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text
-
-
-def call_llm_local(pipe, prompt: str, model: str) -> str:
-    """Untuk model lokal via Hugging Face (mis. LLaMA), pola yang sama
-    dipakai paper baseline asli (load Llama-2-7b-chat-hf secara lokal)."""
-    output = pipe(prompt, max_new_tokens=512, do_sample=False)
-    return output[0]["generated_text"][len(prompt):].strip()
-
-
-def call_llm_ollama(client, prompt: str, model: str) -> str:
-    """Provider dev/testing: model kecil lokal via Ollama (mis. qwen2.5:1.5b,
-    phi3:mini). TIDAK dipakai untuk hasil evaluasi final laporan -- hanya
-    untuk iterasi cepat pipeline (cek logic, format output, error handling)
-    sebelum run resmi pakai model besar (openai/anthropic/local Llama-2-7b).
-    Butuh `ollama serve` jalan di background & model sudah di-pull."""
-    response = client.chat(model=model, messages=[{"role": "user", "content": prompt}])
-    return response["message"]["content"]
-
-
-def get_llm_client(provider: str, model: str):
-    """Factory: siapkan client sesuai provider. Menambah provider baru
-    di masa depan cukup tambah 1 cabang di sini + 1 fungsi call_llm_*,
-    tidak perlu ubah bagian lain skrip."""
-    if provider == "openai":
-        from openai import OpenAI
-        if not os.getenv("OPENAI_API_KEY"):
-            log("[ERROR] OPENAI_API_KEY tidak ditemukan di .env")
-            sys.exit(1)
-        return OpenAI(), call_llm_openai
-
-    if provider == "anthropic":
-        import anthropic
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            log("[ERROR] ANTHROPIC_API_KEY tidak ditemukan di .env "
-                  "(catatan: ini API key dari console.anthropic.com, "
-                  "BEDA dari langganan Claude.ai)")
-            sys.exit(1)
-        return anthropic.Anthropic(), call_llm_anthropic
-
-    if provider == "local":
-        from transformers import pipeline
-        log(f"      Loading model lokal '{model}' (bisa lama untuk pertama kali)...")
-        pipe = pipeline("text-generation", model=model, device_map="auto")
-        return pipe, call_llm_local
-
-    if provider == "ollama":
-        import ollama
-        try:
-            ollama.list()
-        except Exception as e:
-            log(f"[ERROR] Tidak bisa konek ke Ollama di localhost:11434 -- "
-                  f"pastikan 'ollama serve' sudah jalan. Detail: {e}")
-            sys.exit(1)
-        log(f"      [dev/testing only] Provider ollama, model '{model}' -- "
-              f"hasil ini TIDAK untuk laporan evaluasi final.")
-        return ollama, call_llm_ollama
-
-    raise ValueError(f"Provider '{provider}' tidak dikenal. Pilihan: openai, anthropic, local, ollama")
 
 
 # ---------------------------------------------------------------------
@@ -382,6 +318,17 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 # Main
 # ---------------------------------------------------------------------
 
+def build_output_path(output_dir: str, provider: str, model: str) -> Path:
+    """Nama file JSONL otomatis dari provider+model yang benar-benar
+    dipakai run ini -- format: condition_a_{provider}_{safe_model}.jsonl.
+    Menggantikan mekanisme prefix 'dev_ollama_' sebelumnya: karena nama
+    file sekarang selalu menyertakan provider, hasil ollama/openai/
+    anthropic/local otomatis tidak akan pernah bentrok/menimpa satu sama
+    lain, tanpa perlu logic prefix khusus lagi."""
+    safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
+    return Path(output_dir) / f"condition_a_{provider}_{safe_model}.jsonl"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     # Semua argumen defaultnya diambil dari .env -- CLI hanya untuk override
@@ -390,8 +337,13 @@ def main():
                          help="Default dari QUESTIONS_PARQUET di .env")
     parser.add_argument("--answers-parquet", default=os.getenv("ANSWERS_PARQUET"),
                          help="Default dari ANSWERS_PARQUET di .env")
-    parser.add_argument("--output", default=os.getenv("OUTPUT_PATH", "results/condition_a_results.jsonl"),
-                         help="Default dari OUTPUT_PATH di .env")
+    parser.add_argument("--output-dir", default=os.getenv("OUTPUT_DIR", "results"),
+                         help="Folder output (default dari OUTPUT_DIR di .env). Nama file "
+                              "JSONL dibuat OTOMATIS dari provider+model yang dipakai, "
+                              "format: condition_a_{provider}_{safe_model}.jsonl")
+    parser.add_argument("--output", default=None,
+                         help="Override manual path output lengkap (opsional). Kalau diisi, "
+                              "auto-naming dari --output-dir/provider/model DIABAIKAN.")
     parser.add_argument("--n-sample", type=int, default=int(os.getenv("N_SAMPLE", 384)),
                          help="Default dari N_SAMPLE di .env")
     parser.add_argument("--seed", type=int, default=int(os.getenv("SEED", 42)),
@@ -415,14 +367,14 @@ def main():
 
     oversample_pool = args.oversample_pool if args.oversample_pool > 0 else args.n_sample * 3
 
-    # Safety net: kalau pakai provider dev (ollama) tapi lupa ganti --output,
-    # jangan sampai menimpa/campur dengan hasil kondisi resmi (mis. gpt4o).
-    if args.provider == "ollama" and "dev" not in args.output:
-        original = args.output
-        args.output = str(Path(args.output).with_name(
-            f"dev_ollama_{Path(args.output).name}"))
-        log(f"[safety] provider=ollama terdeteksi -- output dialihkan dari "
-              f"'{original}' ke '{args.output}' supaya tidak tercampur hasil resmi.")
+    # Auto-naming: nama file output dibuat dari provider+model yang benar-benar
+    # dipakai run ini, kecuali user eksplisit override lewat --output.
+    if args.output:
+        log(f"[config] --output diisi manual -- auto-naming provider/model diabaikan.")
+    else:
+        args.output = str(build_output_path(args.output_dir, args.provider, args.model))
+        log(f"[config] output auto-generated dari provider='{args.provider}' "
+              f"model='{args.model}' -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
         log("[ERROR] QUESTIONS_PARQUET dan ANSWERS_PARQUET harus diset di .env "
@@ -435,7 +387,7 @@ def main():
     log(f"[config] n_sample={args.n_sample} seed={args.seed} "
           f"provider={args.provider} model={args.model}")
 
-    llm_client, call_llm_fn = get_llm_client(args.provider, args.model)
+    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
 
     con = duckdb.connect()
 
@@ -486,9 +438,9 @@ def main():
             if qid in already_done:
                 continue
 
-            prompt = build_prompt(row["Title"], row["Body"], row["Tags"])
+            messages = build_base_messages(row["Title"], row["Body"], row["Tags"])
             try:
-                llm_answer = call_llm_fn(llm_client, prompt, args.model)
+                llm_answer = call_llm_fn(llm_client, messages, args.model)
             except Exception as e:
                 log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL] API error: {e}")
                 continue
