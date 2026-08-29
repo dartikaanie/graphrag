@@ -437,11 +437,18 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 # Main
 # ---------------------------------------------------------------------
 
-def build_output_path(output_dir: str, provider: str, model: str) -> Path:
-    """Nama file JSONL otomatis dari provider+model -- identik pola
-    Kondisi A, format: condition_b_{provider}_{safe_model}.jsonl."""
+def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int) -> Path:
+    """Nama file JSONL otomatis dari provider+model+n_sample+seed -- identik
+    pola Kondisi A, format:
+    condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl.
+
+    PENTING: n_sample & seed WAJIB di nama file. Kalau tidak, run dengan
+    ukuran sample berbeda (mis. pilot n=5 lalu n=30) akan menulis ke file
+    yang sama, dan fitur resume di bawah akan mengira sample lama 'sudah
+    diproses' lalu menambahkan sample baru ke situ -- file JSONL jadi
+    campuran dua sample yang tidak koheren."""
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
-    return Path(output_dir) / f"condition_b_{provider}_{safe_model}.jsonl"
+    return Path(output_dir) / f"condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl"
 
 
 def main():
@@ -498,7 +505,8 @@ def main():
     if args.output:
         log(f"[config] --output diisi manual -- auto-naming provider/model diabaikan.")
     else:
-        args.output = str(build_output_path(args.output_dir, args.provider, args.model))
+        args.output = str(build_output_path(args.output_dir, args.provider, args.model,
+                                             args.n_sample, args.seed))
         log(f"[config] output auto-generated dari provider='{args.provider}' "
               f"model='{args.model}' -> '{args.output}'")
 

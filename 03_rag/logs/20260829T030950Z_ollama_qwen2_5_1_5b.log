@@ -1,0 +1,52 @@
+10:09:50 | [logging] Log detail run ini -> logs/20260829T030950Z_ollama_qwen2_5_1_5b.log
+10:09:50 | [config] output auto-generated dari provider='ollama' model='qwen2.5:1.5b' -> 'results/condition_b_ollama_qwen2-5-1-5b.jsonl'
+10:09:50 | [config] questions_parquet = ../00_datasource/merged/questions_raw_union.parquet
+10:09:50 | [config] answers_parquet   = ../00_datasource/merged/answers_raw_union.parquet
+10:09:50 | [config] output            = results/condition_b_ollama_qwen2-5-1-5b.jsonl
+10:09:50 | [config] n_sample=30 seed=42 provider=ollama model=qwen2.5:1.5b
+10:09:50 | [config] index_pool=8000 top_k=5 token_chunk_limit=400 embed_model=all-MiniLM-L6-v2
+10:09:51 |       [dev/testing only] Provider ollama, model 'qwen2.5:1.5b' -- hasil ini TIDAK untuk laporan evaluasi final.
+10:09:51 | [1/8] Mengambil oversample pool (90 kandidat pertanyaan evaluasi yang SUDAH dipastikan punya accepted answer matching)...
+10:10:41 |       Oversample pool diambil: 79 kandidat
+10:10:41 | [2/8] Menghitung token (title+body+tags) & filter <= 2048 token (kriteria sama dgn Kondisi A)...
+10:10:41 |       79 kandidat -> 78 lolos filter token (1 dikecualikan, 1.3%)
+10:10:41 | [3/8] Sampling acak 30 pertanyaan evaluasi (seed=42)...
+10:10:41 | [4/8] Mengambil teks accepted answer (ground truth) dari Answers parquet...
+10:10:50 |       Ditemukan 30 accepted answer
+10:10:50 | [5/8] Membangun korpus retrieval (8000 kandidat jawaban, exclude 30 accepted answer + jawaban lain dari 30 pertanyaan evaluasi -- cegah leakage)...
+10:13:09 |       Korpus retrieval (sebelum chunking): 7,302 dokumen (title+answer)
+10:13:09 | [5/8] Chunking korpus (<= 400 token/chunk, tiktoken cl100k_base)...
+10:13:13 |       7,302 dokumen -> 10,863 chunk
+10:13:13 | [6/8] Load model embedding (all-MiniLM-L6-v2)...
+10:13:22 | [6/8] Memuat index FAISS dari cache -> index_cache/idx8000_tok400_all-MiniLM-L6-v2.faiss
+10:13:22 |       Index dimuat: 10,681 vektor (pakai --rebuild-index kalau korpus/parameter berubah)
+10:13:22 |       [resume] 15 pertanyaan sudah diproses sebelumnya, akan dilewati
+10:13:22 | [7/8] Retrieval top-5 + prompting qwen2.5:1.5b untuk 30 pertanyaan...
+10:19:58 |       [16/30] Id=56725195 retrieved=5 similarity=0.680 (tertulis 10149 char)
+10:20:41 |       [17/30] Id=35883891 retrieved=5 similarity=0.443 (tertulis 15453 char)
+10:21:24 |       [18/30] Id=2145273 retrieved=5 similarity=0.506 (tertulis 8999 char)
+10:22:13 |       [19/30] Id=75607956 retrieved=5 similarity=0.509 (tertulis 11401 char)
+10:24:34 |       [20/30] Id=46733089 retrieved=5 similarity=0.584 (tertulis 36747 char)
+10:25:17 |       [21/30] Id=41762487 retrieved=5 similarity=0.645 (tertulis 11179 char)
+10:25:58 |       [22/30] Id=49882129 retrieved=5 similarity=0.587 (tertulis 15761 char)
+10:26:36 |       [23/30] Id=12562185 retrieved=5 similarity=0.262 (tertulis 17320 char)
+10:27:15 |       [24/30] Id=78135396 retrieved=5 similarity=0.660 (tertulis 10178 char)
+10:27:48 |       [25/30] Id=76470955 retrieved=5 similarity=0.558 (tertulis 9615 char)
+10:28:38 |       [26/30] Id=8697801 retrieved=5 similarity=0.544 (tertulis 16139 char)
+10:29:19 |       [27/30] Id=70845088 retrieved=5 similarity=0.840 (tertulis 12583 char)
+10:29:55 |       [28/30] Id=35090421 retrieved=5 similarity=0.415 (tertulis 9915 char)
+10:30:09 |       [29/30] Id=14600371 retrieved=5 similarity=0.726 (tertulis 5948 char)
+10:30:37 |       [30/30] Id=37106147 retrieved=5 similarity=0.572 (tertulis 10151 char)
+10:30:38 | [8/8] Selesai memproses seluruh sample.
+10:30:38 | [debug] Cek file output: exists=True absolute_path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/03_rag/results/condition_b_ollama_qwen2-5-1-5b.jsonl size_bytes=374045
+10:30:38 | 
+======================================================================
+10:30:38 | RINGKASAN HASIL KONDISI B (Conventional RAG)
+10:30:38 | ======================================================================
+10:30:38 | Total pertanyaan diproses : 30
+10:30:38 | Cosine similarity rata-rata: 0.5901
+10:30:38 | Cosine similarity median   : 0.5790
+10:30:38 | % similarity > 0.5         : 83.3%
+10:30:38 | 
+Hasil lengkap tersimpan -> results/condition_b_ollama_qwen2-5-1-5b.jsonl
+10:30:38 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl
