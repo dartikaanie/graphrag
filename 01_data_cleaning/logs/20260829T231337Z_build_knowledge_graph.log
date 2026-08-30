@@ -1,0 +1,6 @@
+06:13:37 | KONSTRUKSI KNOWLEDGE GRAPH -- Kondisi C (GraphRAG)
+06:13:37 | Log file: logs/20260829T231337Z_build_knowledge_graph.log
+06:13:37 | [config] memory_limit=2GB threads=2 temp_directory=_kg_workspace/_duckdb_tmp workspace_db=_kg_workspace/_workspace.duckdb
+06:13:37 | ==============================================================================
+06:13:37 | STEP 1 - Tentukan scope Question (filter --tags / --only-accepted / --limit)
+06:13:37 | ==============================================================================

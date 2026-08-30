@@ -1,0 +1,12 @@
+14:36:55 | KONSTRUKSI KNOWLEDGE GRAPH -- Kondisi C (GraphRAG)
+14:36:55 | Log file: logs/20260829T073655Z_build_knowledge_graph.log
+14:36:55 | [config] memory_limit=2GB threads=2 temp_directory=_kg_workspace/_duckdb_tmp workspace_db=_kg_workspace/_workspace.duckdb
+14:36:55 | ==============================================================================
+14:36:55 | STEP 1 - Tentukan scope Question (filter --tags / --only-accepted / --limit)
+14:36:55 | ==============================================================================
+14:40:51 | Total questions di parquet         : 2,811,534
+14:40:51 | Questions setelah filter scope      : 2,811,534
+14:40:53 | ==============================================================================
+14:40:53 | STEP 2 - Load Answers dalam scope + hitung bobot HAS_ANSWER/HAS_ACCEPTED_ANSWER
+14:40:53 | ==============================================================================
+14:41:01 | Answers dalam scope                 : 795,619

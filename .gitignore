@@ -2,7 +2,12 @@
 __pycache__/
 *.py[codz]
 *$py.class
+00_datasource/raw/Users.xml
+00_datasource/raw/PostLinks.xml
+00_datasource/raw/*.xml
 00_datasource/raw/*
 00_datasource/merged/*
 01_data_cleaning/.env
 .env
+02_baseline_replication/logs/*
+03_rag/logs/*00_datasource/PostLinks.xml

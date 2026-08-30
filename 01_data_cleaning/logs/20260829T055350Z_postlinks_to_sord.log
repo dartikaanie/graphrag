@@ -1,0 +1,45 @@
+12:53:50 | Question-Question Edge Enrichment dari PostLinks (persiapan Kondisi C / GraphRAG)
+12:53:50 | Log file: logs/20260829T055350Z_postlinks_to_sord.log
+12:53:50 | ==============================================================================
+12:53:50 | STEP 1 - Validasi input
+12:53:50 | ==============================================================================
+12:53:50 | QUESTIONS_PARQUET : ../00_datasource/merged/questions_raw_union.parquet
+12:53:50 | PostLinks.xml     : ../00_datasource/PostLinks.xml (768.9 MB)
+12:53:50 | Output            : ../00_datasource/merged/question_links.parquet
+12:53:50 | ==============================================================================
+12:53:50 | STEP 2 - Parsing XML streaming + filter LinkTypeId in (1=Linked, 3=Duplicate)
+12:53:50 | ==============================================================================
+12:53:50 | Parsing streaming: ../00_datasource/PostLinks.xml
+12:53:51 |   ... 500,000 baris PostLinks dibaca, 500,000 lolos filter LinkTypeId
+12:53:52 |   ... 1,000,000 baris PostLinks dibaca, 1,000,000 lolos filter LinkTypeId
+12:53:53 |   ... 1,500,000 baris PostLinks dibaca, 1,500,000 lolos filter LinkTypeId
+12:53:54 |   ... 2,000,000 baris PostLinks dibaca, 2,000,000 lolos filter LinkTypeId
+12:53:56 |   ... 2,500,000 baris PostLinks dibaca, 2,500,000 lolos filter LinkTypeId
+12:53:57 |   ... 3,000,000 baris PostLinks dibaca, 3,000,000 lolos filter LinkTypeId
+12:53:58 |   ... 3,500,000 baris PostLinks dibaca, 3,500,000 lolos filter LinkTypeId
+12:53:59 |   ... 4,000,000 baris PostLinks dibaca, 4,000,000 lolos filter LinkTypeId
+12:54:01 |   ... 4,500,000 baris PostLinks dibaca, 4,500,000 lolos filter LinkTypeId
+12:54:02 |   ... 5,000,000 baris PostLinks dibaca, 5,000,000 lolos filter LinkTypeId
+12:54:03 |   ... 5,500,000 baris PostLinks dibaca, 5,500,000 lolos filter LinkTypeId
+12:54:05 |   ... 6,000,000 baris PostLinks dibaca, 6,000,000 lolos filter LinkTypeId
+12:54:06 |   ... 6,500,000 baris PostLinks dibaca, 6,500,000 lolos filter LinkTypeId
+12:54:06 | Parsing selesai dalam 16.3s
+12:54:06 | Total baris PostLinks (semua LinkTypeId) : 6,552,590
+12:54:06 | Setelah filter LinkTypeId in (1, 3)      : 6,552,590
+12:54:11 | ==============================================================================
+12:54:11 | STEP 3 - Inner-join PostId & RelatedPostId terhadap Question IDs SORD
+12:54:11 | ==============================================================================
+12:54:12 | Kandidat edge (sebelum join)              : 6,552,590
+12:54:12 |   - PostId cocok dengan Question ID SORD   : 806,123
+12:54:12 |   - RelatedPostId cocok Question ID SORD   : 730,936
+12:54:12 |   - KEDUANYA cocok (inner-join final)      : 160,647
+12:54:12 | Jumlah edge Question-Question final       : 160,647
+12:54:12 |   - Linked    : 149,808
+12:54:12 |   - Duplicate : 10,839
+12:54:12 | ==============================================================================
+12:54:12 | STEP 4 - Simpan hasil ke parquet
+12:54:12 | ==============================================================================
+12:54:12 | Tersimpan: ../00_datasource/merged/question_links.parquet (3,707.3 KB, 160,647 baris)
+12:54:12 | ==============================================================================
+12:54:12 | SELESAI dalam 22.4s
+12:54:12 | ==============================================================================

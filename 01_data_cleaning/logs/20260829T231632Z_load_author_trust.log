@@ -1,0 +1,23 @@
+06:16:32 | LOAD AUTHOR_TRUST -- tambahan ke KG yang sudah ada (tanpa full rebuild)
+06:16:32 | Log file: logs/20260829T231632Z_load_author_trust.log
+06:16:32 | ==============================================================================
+06:16:32 | STEP 1 - Koneksi Neo4j + ambil Answer.id yang sudah ada
+06:16:32 | ==============================================================================
+06:16:32 | Neo4j URI: bolt://localhost:7687 | User: neo4j | Database: graphrag
+06:16:32 | Terhubung ke Neo4j.
+06:16:48 | Answer node di Neo4j saat ini: 725,795
+06:16:48 | ==============================================================================
+06:16:48 | STEP 2 - Cari OwnerUserId per answer_id dari answers_raw_union.parquet
+06:16:48 | ==============================================================================
+06:16:48 | Answer dengan OwnerUserId ditemukan: 725,795 / 725,795
+06:16:48 | ==============================================================================
+06:16:48 | STEP 3 - Load reputation (users.parquet -> fallback FilteredUsers.csv)
+06:16:48 | ==============================================================================
+06:16:48 | Sumber reputation: ../00_datasource/merged/users.parquet (dump penuh)
+06:16:48 | User dengan reputation ditemukan: 293,078 / 294,412 unik dibutuhkan
+06:16:48 | ==============================================================================
+06:16:48 | STEP 4 - Hitung bobot AUTHOR_TRUST -- normalize(log(reputation)), clip P99
+06:16:48 | ==============================================================================
+06:16:48 | P99 reputation (basis normalisasi): 54,383
+06:16:48 | Edge AUTHOR_TRUST siap ditulis: 715,604
+06:16:48 | --dry-run aktif: TIDAK menulis ke Neo4j. Selesai.

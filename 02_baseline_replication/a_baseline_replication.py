@@ -318,15 +318,20 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 # Main
 # ---------------------------------------------------------------------
 
-def build_output_path(output_dir: str, provider: str, model: str) -> Path:
-    """Nama file JSONL otomatis dari provider+model yang benar-benar
-    dipakai run ini -- format: condition_a_{provider}_{safe_model}.jsonl.
-    Menggantikan mekanisme prefix 'dev_ollama_' sebelumnya: karena nama
-    file sekarang selalu menyertakan provider, hasil ollama/openai/
-    anthropic/local otomatis tidak akan pernah bentrok/menimpa satu sama
-    lain, tanpa perlu logic prefix khusus lagi."""
+def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int) -> Path:
+    """Nama file JSONL otomatis dari provider+model+n_sample+seed -- format:
+    condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl.
+
+    PENTING: n_sample & seed WAJIB ada di nama file (bukan cuma provider+
+    model). Kalau tidak, dua run dengan ukuran sample BERBEDA (mis. pilot
+    n=5 lalu n=30) akan menulis ke file yang SAMA, dan fitur resume di
+    bawah akan mengira sample lama sebagai 'sudah diproses' lalu
+    menambahkan sample baru ke situ -- hasilnya file JSONL berisi
+    campuran dua sample yang tidak koheren (pernah kejadian: n=5 + n=30
+    tercampur jadi 35 baris yang tidak merepresentasikan sample manapun
+    secara valid)."""
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
-    return Path(output_dir) / f"condition_a_{provider}_{safe_model}.jsonl"
+    return Path(output_dir) / f"condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl"
 
 
 def main():
@@ -372,7 +377,8 @@ def main():
     if args.output:
         log(f"[config] --output diisi manual -- auto-naming provider/model diabaikan.")
     else:
-        args.output = str(build_output_path(args.output_dir, args.provider, args.model))
+        args.output = str(build_output_path(args.output_dir, args.provider, args.model,
+                                             args.n_sample, args.seed))
         log(f"[config] output auto-generated dari provider='{args.provider}' "
               f"model='{args.model}' -> '{args.output}'")
 

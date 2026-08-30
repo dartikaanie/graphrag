@@ -68,6 +68,18 @@ MENU = [
         "skip_arg_confirm": True,
     },
     {
+        "label": "Dedup *_raw_union.parquet by Id (Fase 0.2b)",
+        "desc": "Buang baris duplikat Id (overlap Title/Body-match) langsung di file merged -- "
+                "supaya semua script konsumen (Kondisi A/B/C, KG construction) dapat data bersih.",
+        "script": "3b_dedup_merged_sources.py",
+        "cwd": "01_data_cleaning",
+        "default_args": ["--merged-dir", "../00_datasource/merged"],
+        "note": "Wajib dijalankan SEKALI setelah Merge (Fase 0.2) dan setiap kali Merge di-regenerate ulang. "
+                "Idempotent -- aman dijalankan berkali-kali, otomatis skip kalau sudah bersih. "
+                "File asli di-backup ke *.predup_backup sebelum ditimpa.",
+        "skip_arg_confirm": True,
+    },
+    {
         "label": "EDA sinyal kepercayaan & karakteristik datasource (19 chart)",
         "desc": "Grup A-E: kualitas data, konten/topik, sinyal kepercayaan komunitas, dimensi waktu, kelayakan KG.",
         "script": "5_eda_trust_signals.py",
@@ -76,6 +88,17 @@ MENU = [
         "note": "Butuh Parquet hasil merge (Fase 0.2). Tambah --skip-heavy kalau mau lewati "
                 "FilteredVotes/FilteredBadges (puluhan juta baris). Report sudah ada -> langsung "
                 "ditampilkan, tidak proses ulang (pakai --force untuk regenerate).",
+        "skip_arg_confirm": True,
+    },
+    {
+        "label": "Enrichment Question-Question edges (PostLinks -> SORD)",
+        "desc": "Join PostId & RelatedPostId dari StackExchange PostLinks.xml terhadap Question ID SORD -- "
+                "tambah edge Linked/Duplicate tanpa entitas baru. Persiapan Knowledge Graph Kondisi C.",
+        "script": "6_postlinks_to_sord.py",
+        "cwd": "01_data_cleaning",
+        "default_args": [],
+        "note": "Butuh PostLinks.xml sudah diekstrak (default: ../00_datasource/PostLinks.xml) dan "
+                "QUESTIONS_PARQUET di .env (root, sudah ada -- dipakai bersama Kondisi A/B).",
         "skip_arg_confirm": True,
     },
     {
