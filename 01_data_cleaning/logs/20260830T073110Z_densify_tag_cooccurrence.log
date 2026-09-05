@@ -1,0 +1,143 @@
+14:31:10 | DENSIFIKASI KG -- TAG_COOCCUR (Jaccard similarity)
+14:31:10 | Log file: logs/20260830T073110Z_densify_tag_cooccurrence.log
+14:31:10 | [config] max_df=200 jaccard_threshold=0.6 top_k=20 trust_weight=0.6
+14:31:10 | [config] memory_limit=2GB threads=2 temp_directory=_kg_workspace/_duckdb_tmp workspace_db=_kg_workspace/_workspace_tag_cooccur.duckdb
+14:31:10 | ==============================================================================
+14:31:10 | STEP 1 - Koneksi Neo4j
+14:31:10 | ==============================================================================
+14:31:10 | Neo4j URI: bolt://localhost:7687 | User: neo4j | Database: graphrag
+14:31:10 | Terhubung ke Neo4j.
+14:31:10 | ==============================================================================
+14:31:10 | STEP 2 - Tarik edge TAGGED_WITH dari Neo4j
+14:31:10 | ==============================================================================
+14:31:10 | Edge TAGGED_WITH di Neo4j: 8,525,257 -- menarik semua ke DuckDB...
+14:31:32 |   ... 1,000,000 baris ditarik (45,992 baris/detik)
+14:31:52 |   ... 2,000,000 baris ditarik (47,919 baris/detik)
+14:32:11 |   ... 3,000,000 baris ditarik (49,117 baris/detik)
+14:32:31 |   ... 4,000,000 baris ditarik (49,861 baris/detik)
+14:32:50 |   ... 5,000,000 baris ditarik (50,349 baris/detik)
+14:33:09 |   ... 6,000,000 baris ditarik (50,683 baris/detik)
+14:33:28 |   ... 7,000,000 baris ditarik (50,860 baris/detik)
+14:33:47 |   ... 8,000,000 baris ditarik (51,143 baris/detik)
+14:33:58 | Total TAGGED_WITH ditarik: 8,525,257
+14:33:58 | ==============================================================================
+14:33:58 | STEP 3 - Hitung tag co-occurrence (DuckDB: tag informatif -> candidate pair -> Jaccard -> top-K)
+14:33:58 | ==============================================================================
+14:33:59 | [tag-freq] Tag total: 56,435 | Tag informatif (df<=200): 52,402 (92.9%)
+14:33:59 | [tag-freq] Question dengan >=1 tag informatif: 865,631
+14:33:59 | [safety-check] Estimasi upper-bound directed candidate pair: 82,647,434 (SUM(df*(df-1)) per tag informatif -- overcount kalau ada tag ganda, aman sbg batas atas)
+14:33:59 | [candidate-pairs] Menjalankan self-join (bisa lama tergantung ukuran estimasi di atas)...
+14:34:08 | [candidate-pairs] Selesai dalam 8.2s -- 81,759,382 pasangan directed (sebelum filter Jaccard)
+14:34:12 | [jaccard] Pasangan dengan Jaccard >= 0.6: 35,356,288
+14:34:15 | [top-k] Edge TAG_COOCCUR final (cap top-20/node): 11,841,429 dari 749,699 Question sumber unik
+14:34:15 | ==============================================================================
+14:34:15 | STEP 4 - Tulis edge TAG_COOCCUR ke Neo4j
+14:34:15 | ==============================================================================
+14:34:38 |   [TAG_COOCCUR] 118,000/11,841,429 baris tertulis (5,294 baris/detik, ETA ~36.9 menit)
+14:34:50 |   [TAG_COOCCUR] 236,000/11,841,429 baris tertulis (6,735 baris/detik, ETA ~28.7 menit)
+14:35:03 |   [TAG_COOCCUR] 354,000/11,841,429 baris tertulis (7,348 baris/detik, ETA ~26.1 menit)
+14:35:17 |   [TAG_COOCCUR] 472,000/11,841,429 baris tertulis (7,625 baris/detik, ETA ~24.8 menit)
+14:35:31 |   [TAG_COOCCUR] 590,000/11,841,429 baris tertulis (7,763 baris/detik, ETA ~24.2 menit)
+14:35:45 |   [TAG_COOCCUR] 708,000/11,841,429 baris tertulis (7,874 baris/detik, ETA ~23.6 menit)
+14:35:59 |   [TAG_COOCCUR] 826,000/11,841,429 baris tertulis (7,939 baris/detik, ETA ~23.1 menit)
+14:36:13 |   [TAG_COOCCUR] 944,000/11,841,429 baris tertulis (7,995 baris/detik, ETA ~22.7 menit)
+14:36:28 |   [TAG_COOCCUR] 1,062,000/11,841,429 baris tertulis (8,000 baris/detik, ETA ~22.5 menit)
+14:36:45 |   [TAG_COOCCUR] 1,180,000/11,841,429 baris tertulis (7,862 baris/detik, ETA ~22.6 menit)
+14:37:01 |   [TAG_COOCCUR] 1,298,000/11,841,429 baris tertulis (7,830 baris/detik, ETA ~22.4 menit)
+14:37:17 |   [TAG_COOCCUR] 1,416,000/11,841,429 baris tertulis (7,807 baris/detik, ETA ~22.3 menit)
+14:37:33 |   [TAG_COOCCUR] 1,534,000/11,841,429 baris tertulis (7,751 baris/detik, ETA ~22.2 menit)
+14:37:50 |   [TAG_COOCCUR] 1,652,000/11,841,429 baris tertulis (7,682 baris/detik, ETA ~22.1 menit)
+14:38:06 |   [TAG_COOCCUR] 1,770,000/11,841,429 baris tertulis (7,659 baris/detik, ETA ~21.9 menit)
+14:38:23 |   [TAG_COOCCUR] 1,888,000/11,841,429 baris tertulis (7,630 baris/detik, ETA ~21.7 menit)
+14:38:40 |   [TAG_COOCCUR] 2,006,000/11,841,429 baris tertulis (7,586 baris/detik, ETA ~21.6 menit)
+14:38:55 |   [TAG_COOCCUR] 2,124,000/11,841,429 baris tertulis (7,585 baris/detik, ETA ~21.4 menit)
+14:39:12 |   [TAG_COOCCUR] 2,242,000/11,841,429 baris tertulis (7,564 baris/detik, ETA ~21.2 menit)
+14:39:29 |   [TAG_COOCCUR] 2,360,000/11,841,429 baris tertulis (7,532 baris/detik, ETA ~21.0 menit)
+14:39:45 |   [TAG_COOCCUR] 2,478,000/11,841,429 baris tertulis (7,507 baris/detik, ETA ~20.8 menit)
+14:40:00 |   [TAG_COOCCUR] 2,596,000/11,841,429 baris tertulis (7,533 baris/detik, ETA ~20.5 menit)
+14:40:17 |   [TAG_COOCCUR] 2,714,000/11,841,429 baris tertulis (7,502 baris/detik, ETA ~20.3 menit)
+14:40:34 |   [TAG_COOCCUR] 2,832,000/11,841,429 baris tertulis (7,486 baris/detik, ETA ~20.1 menit)
+14:40:49 |   [TAG_COOCCUR] 2,950,000/11,841,429 baris tertulis (7,494 baris/detik, ETA ~19.8 menit)
+14:41:07 |   [TAG_COOCCUR] 3,068,000/11,841,429 baris tertulis (7,458 baris/detik, ETA ~19.6 menit)
+14:41:24 |   [TAG_COOCCUR] 3,186,000/11,841,429 baris tertulis (7,430 baris/detik, ETA ~19.4 menit)
+14:41:41 |   [TAG_COOCCUR] 3,304,000/11,841,429 baris tertulis (7,406 baris/detik, ETA ~19.2 menit)
+14:42:00 |   [TAG_COOCCUR] 3,422,000/11,841,429 baris tertulis (7,364 baris/detik, ETA ~19.1 menit)
+14:42:18 |   [TAG_COOCCUR] 3,540,000/11,841,429 baris tertulis (7,329 baris/detik, ETA ~18.9 menit)
+14:42:35 |   [TAG_COOCCUR] 3,658,000/11,841,429 baris tertulis (7,323 baris/detik, ETA ~18.6 menit)
+14:42:53 |   [TAG_COOCCUR] 3,776,000/11,841,429 baris tertulis (7,295 baris/detik, ETA ~18.4 menit)
+14:43:09 |   [TAG_COOCCUR] 3,894,000/11,841,429 baris tertulis (7,290 baris/detik, ETA ~18.2 menit)
+14:43:28 |   [TAG_COOCCUR] 4,012,000/11,841,429 baris tertulis (7,259 baris/detik, ETA ~18.0 menit)
+14:43:48 |   [TAG_COOCCUR] 4,130,000/11,841,429 baris tertulis (7,214 baris/detik, ETA ~17.8 menit)
+14:44:07 |   [TAG_COOCCUR] 4,248,000/11,841,429 baris tertulis (7,184 baris/detik, ETA ~17.6 menit)
+14:44:27 |   [TAG_COOCCUR] 4,366,000/11,841,429 baris tertulis (7,133 baris/detik, ETA ~17.5 menit)
+14:44:48 |   [TAG_COOCCUR] 4,484,000/11,841,429 baris tertulis (7,091 baris/detik, ETA ~17.3 menit)
+14:45:10 |   [TAG_COOCCUR] 4,602,000/11,841,429 baris tertulis (7,031 baris/detik, ETA ~17.2 menit)
+14:45:30 |   [TAG_COOCCUR] 4,720,000/11,841,429 baris tertulis (6,993 baris/detik, ETA ~17.0 menit)
+14:45:52 |   [TAG_COOCCUR] 4,838,000/11,841,429 baris tertulis (6,943 baris/detik, ETA ~16.8 menit)
+14:46:13 |   [TAG_COOCCUR] 4,956,000/11,841,429 baris tertulis (6,910 baris/detik, ETA ~16.6 menit)
+14:46:36 |   [TAG_COOCCUR] 5,074,000/11,841,429 baris tertulis (6,846 baris/detik, ETA ~16.5 menit)
+14:46:58 |   [TAG_COOCCUR] 5,192,000/11,841,429 baris tertulis (6,810 baris/detik, ETA ~16.3 menit)
+14:47:19 |   [TAG_COOCCUR] 5,310,000/11,841,429 baris tertulis (6,772 baris/detik, ETA ~16.1 menit)
+14:47:42 |   [TAG_COOCCUR] 5,428,000/11,841,429 baris tertulis (6,731 baris/detik, ETA ~15.9 menit)
+14:48:05 |   [TAG_COOCCUR] 5,546,000/11,841,429 baris tertulis (6,682 baris/detik, ETA ~15.7 menit)
+14:48:29 |   [TAG_COOCCUR] 5,664,000/11,841,429 baris tertulis (6,636 baris/detik, ETA ~15.5 menit)
+14:48:53 |   [TAG_COOCCUR] 5,782,000/11,841,429 baris tertulis (6,589 baris/detik, ETA ~15.3 menit)
+14:49:18 |   [TAG_COOCCUR] 5,900,000/11,841,429 baris tertulis (6,535 baris/detik, ETA ~15.2 menit)
+14:49:43 |   [TAG_COOCCUR] 6,018,000/11,841,429 baris tertulis (6,484 baris/detik, ETA ~15.0 menit)
+14:50:07 |   [TAG_COOCCUR] 6,136,000/11,841,429 baris tertulis (6,450 baris/detik, ETA ~14.7 menit)
+14:50:30 |   [TAG_COOCCUR] 6,254,000/11,841,429 baris tertulis (6,417 baris/detik, ETA ~14.5 menit)
+14:50:53 |   [TAG_COOCCUR] 6,372,000/11,841,429 baris tertulis (6,387 baris/detik, ETA ~14.3 menit)
+14:51:22 |   [TAG_COOCCUR] 6,490,000/11,841,429 baris tertulis (6,324 baris/detik, ETA ~14.1 menit)
+14:51:53 |   [TAG_COOCCUR] 6,608,000/11,841,429 baris tertulis (6,248 baris/detik, ETA ~14.0 menit)
+14:52:23 |   [TAG_COOCCUR] 6,726,000/11,841,429 baris tertulis (6,184 baris/detik, ETA ~13.8 menit)
+14:52:48 |   [TAG_COOCCUR] 6,844,000/11,841,429 baris tertulis (6,151 baris/detik, ETA ~13.5 menit)
+14:53:13 |   [TAG_COOCCUR] 6,962,000/11,841,429 baris tertulis (6,118 baris/detik, ETA ~13.3 menit)
+14:53:42 |   [TAG_COOCCUR] 7,080,000/11,841,429 baris tertulis (6,066 baris/detik, ETA ~13.1 menit)
+14:54:11 |   [TAG_COOCCUR] 7,198,000/11,841,429 baris tertulis (6,021 baris/detik, ETA ~12.9 menit)
+14:54:46 |   [TAG_COOCCUR] 7,316,000/11,841,429 baris tertulis (5,947 baris/detik, ETA ~12.7 menit)
+14:55:11 |   [TAG_COOCCUR] 7,434,000/11,841,429 baris tertulis (5,921 baris/detik, ETA ~12.4 menit)
+14:55:36 |   [TAG_COOCCUR] 7,552,000/11,841,429 baris tertulis (5,896 baris/detik, ETA ~12.1 menit)
+14:56:06 |   [TAG_COOCCUR] 7,670,000/11,841,429 baris tertulis (5,851 baris/detik, ETA ~11.9 menit)
+14:56:33 |   [TAG_COOCCUR] 7,788,000/11,841,429 baris tertulis (5,823 baris/detik, ETA ~11.6 menit)
+14:57:02 |   [TAG_COOCCUR] 7,906,000/11,841,429 baris tertulis (5,784 baris/detik, ETA ~11.3 menit)
+14:57:27 |   [TAG_COOCCUR] 8,024,000/11,841,429 baris tertulis (5,763 baris/detik, ETA ~11.0 menit)
+14:57:53 |   [TAG_COOCCUR] 8,142,000/11,841,429 baris tertulis (5,743 baris/detik, ETA ~10.7 menit)
+14:58:21 |   [TAG_COOCCUR] 8,260,000/11,841,429 baris tertulis (5,713 baris/detik, ETA ~10.4 menit)
+14:58:54 |   [TAG_COOCCUR] 8,378,000/11,841,429 baris tertulis (5,667 baris/detik, ETA ~10.2 menit)
+14:59:21 |   [TAG_COOCCUR] 8,496,000/11,841,429 baris tertulis (5,643 baris/detik, ETA ~9.9 menit)
+14:59:51 |   [TAG_COOCCUR] 8,614,000/11,841,429 baris tertulis (5,610 baris/detik, ETA ~9.6 menit)
+15:00:19 |   [TAG_COOCCUR] 8,732,000/11,841,429 baris tertulis (5,584 baris/detik, ETA ~9.3 menit)
+15:00:46 |   [TAG_COOCCUR] 8,850,000/11,841,429 baris tertulis (5,563 baris/detik, ETA ~9.0 menit)
+15:01:16 |   [TAG_COOCCUR] 8,968,000/11,841,429 baris tertulis (5,534 baris/detik, ETA ~8.7 menit)
+15:01:44 |   [TAG_COOCCUR] 9,086,000/11,841,429 baris tertulis (5,510 baris/detik, ETA ~8.3 menit)
+15:02:12 |   [TAG_COOCCUR] 9,204,000/11,841,429 baris tertulis (5,488 baris/detik, ETA ~8.0 menit)
+15:02:41 |   [TAG_COOCCUR] 9,322,000/11,841,429 baris tertulis (5,466 baris/detik, ETA ~7.7 menit)
+15:03:11 |   [TAG_COOCCUR] 9,440,000/11,841,429 baris tertulis (5,438 baris/detik, ETA ~7.4 menit)
+15:03:42 |   [TAG_COOCCUR] 9,558,000/11,841,429 baris tertulis (5,409 baris/detik, ETA ~7.0 menit)
+15:04:12 |   [TAG_COOCCUR] 9,676,000/11,841,429 baris tertulis (5,386 baris/detik, ETA ~6.7 menit)
+15:04:44 |   [TAG_COOCCUR] 9,794,000/11,841,429 baris tertulis (5,356 baris/detik, ETA ~6.4 menit)
+15:05:12 |   [TAG_COOCCUR] 9,912,000/11,841,429 baris tertulis (5,339 baris/detik, ETA ~6.0 menit)
+15:05:40 |   [TAG_COOCCUR] 10,030,000/11,841,429 baris tertulis (5,322 baris/detik, ETA ~5.7 menit)
+15:06:08 |   [TAG_COOCCUR] 10,148,000/11,841,429 baris tertulis (5,307 baris/detik, ETA ~5.3 menit)
+15:06:35 |   [TAG_COOCCUR] 10,266,000/11,841,429 baris tertulis (5,292 baris/detik, ETA ~5.0 menit)
+15:07:06 |   [TAG_COOCCUR] 10,384,000/11,841,429 baris tertulis (5,270 baris/detik, ETA ~4.6 menit)
+15:07:37 |   [TAG_COOCCUR] 10,502,000/11,841,429 baris tertulis (5,246 baris/detik, ETA ~4.3 menit)
+15:08:14 |   [TAG_COOCCUR] 10,620,000/11,841,429 baris tertulis (5,209 baris/detik, ETA ~3.9 menit)
+15:08:44 |   [TAG_COOCCUR] 10,738,000/11,841,429 baris tertulis (5,191 baris/detik, ETA ~3.5 menit)
+15:09:21 |   [TAG_COOCCUR] 10,856,000/11,841,429 baris tertulis (5,156 baris/detik, ETA ~3.2 menit)
+15:09:58 |   [TAG_COOCCUR] 10,974,000/11,841,429 baris tertulis (5,122 baris/detik, ETA ~2.8 menit)
+15:10:34 |   [TAG_COOCCUR] 11,092,000/11,841,429 baris tertulis (5,091 baris/detik, ETA ~2.5 menit)
+15:11:09 |   [TAG_COOCCUR] 11,210,000/11,841,429 baris tertulis (5,064 baris/detik, ETA ~2.1 menit)
+15:11:44 |   [TAG_COOCCUR] 11,328,000/11,841,429 baris tertulis (5,038 baris/detik, ETA ~1.7 menit)
+15:12:17 |   [TAG_COOCCUR] 11,446,000/11,841,429 baris tertulis (5,015 baris/detik, ETA ~1.3 menit)
+15:12:49 |   [TAG_COOCCUR] 11,564,000/11,841,429 baris tertulis (4,999 baris/detik, ETA ~0.9 menit)
+15:13:20 |   [TAG_COOCCUR] 11,682,000/11,841,429 baris tertulis (4,983 baris/detik, ETA ~0.5 menit)
+15:13:53 |   [TAG_COOCCUR] 11,800,000/11,841,429 baris tertulis (4,964 baris/detik, ETA ~0.1 menit)
+15:14:04 |   [TAG_COOCCUR] 11,841,429/11,841,429 baris tertulis (4,957 baris/detik, ETA ~0.0 menit)
+15:14:04 | ==============================================================================
+15:14:04 | STEP 5 - Verifikasi -- hitung ulang edge TAG_COOCCUR langsung dari Neo4j
+15:14:04 | ==============================================================================
+15:14:04 |   Neo4j TAG_COOCCUR: 11,841,429
+15:14:04 | ==============================================================================
+15:14:04 | SELESAI dalam 42.9 menit
+15:14:04 | ==============================================================================

@@ -8,6 +8,7 @@ __pycache__/
 00_datasource/raw/*
 00_datasource/merged/*
 01_data_cleaning/.env
+01_data_cleaning/_kg_workspace/*
 .env
 02_baseline_replication/logs/*
 03_rag/logs/*00_datasource/PostLinks.xml

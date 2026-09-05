@@ -1,0 +1,29 @@
+14:02:14 | DENSIFIKASI KG -- TAG_COOCCUR (Jaccard similarity)
+14:02:14 | Log file: logs/20260830T070214Z_densify_tag_cooccurrence.log
+14:02:14 | [config] max_df=1,000 jaccard_threshold=0.3 top_k=20 trust_weight=0.6
+14:02:14 | [config] memory_limit=2GB threads=2 temp_directory=_kg_workspace/_duckdb_tmp workspace_db=_kg_workspace/_workspace_tag_cooccur.duckdb
+14:02:14 | ==============================================================================
+14:02:14 | STEP 1 - Koneksi Neo4j
+14:02:14 | ==============================================================================
+14:02:14 | Neo4j URI: bolt://localhost:7687 | User: neo4j | Database: graphrag
+14:02:15 | Terhubung ke Neo4j.
+14:02:15 | ==============================================================================
+14:02:15 | STEP 2 - Tarik edge TAGGED_WITH dari Neo4j
+14:02:15 | ==============================================================================
+14:02:15 | Edge TAGGED_WITH di Neo4j: 8,525,257 -- menarik semua ke DuckDB...
+14:02:37 |   ... 1,000,000 baris ditarik (45,070 baris/detik)
+14:02:56 |   ... 2,000,000 baris ditarik (47,671 baris/detik)
+14:03:16 |   ... 3,000,000 baris ditarik (48,491 baris/detik)
+14:03:36 |   ... 4,000,000 baris ditarik (49,026 baris/detik)
+14:03:55 |   ... 5,000,000 baris ditarik (49,765 baris/detik)
+14:04:14 |   ... 6,000,000 baris ditarik (50,184 baris/detik)
+14:04:34 |   ... 7,000,000 baris ditarik (50,076 baris/detik)
+14:04:54 |   ... 8,000,000 baris ditarik (50,284 baris/detik)
+14:05:09 | Total TAGGED_WITH ditarik: 8,525,257
+14:05:10 | ==============================================================================
+14:05:10 | STEP 3 - Hitung tag co-occurrence (DuckDB: tag informatif -> candidate pair -> Jaccard -> top-K)
+14:05:10 | ==============================================================================
+14:05:11 | [tag-freq] Tag total: 56,435 | Tag informatif (df<=1,000): 55,380 (98.1%)
+14:05:12 | [tag-freq] Question dengan >=1 tag informatif: 1,550,180
+14:05:12 | [safety-check] Estimasi upper-bound directed candidate pair: 743,903,438 (SUM(df*(df-1)) per tag informatif -- overcount kalau ada tag ganda, aman sbg batas atas)
+14:05:12 | [candidate-pairs] Menjalankan self-join (bisa lama tergantung ukuran estimasi di atas)...

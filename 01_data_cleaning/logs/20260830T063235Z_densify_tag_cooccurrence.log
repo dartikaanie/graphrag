@@ -1,0 +1,28 @@
+13:32:35 | DENSIFIKASI KG -- TAG_COOCCUR (Jaccard similarity)
+13:32:35 | Log file: logs/20260830T063235Z_densify_tag_cooccurrence.log
+13:32:35 | [config] max_df=10,000 jaccard_threshold=0.3 top_k=20 trust_weight=0.6
+13:32:35 | [config] memory_limit=2GB threads=2 temp_directory=_kg_workspace/_duckdb_tmp workspace_db=_kg_workspace/_workspace_tag_cooccur.duckdb
+13:32:35 | ==============================================================================
+13:32:35 | STEP 1 - Koneksi Neo4j
+13:32:35 | ==============================================================================
+13:32:35 | Neo4j URI: bolt://localhost:7687 | User: neo4j | Database: graphrag
+13:32:35 | Terhubung ke Neo4j.
+13:32:35 | ==============================================================================
+13:32:35 | STEP 2 - Tarik edge TAGGED_WITH dari Neo4j
+13:32:35 | ==============================================================================
+13:32:35 | Edge TAGGED_WITH di Neo4j: 8,525,257 -- menarik semua ke DuckDB...
+13:32:59 |   ... 1,000,000 baris ditarik (41,102 baris/detik)
+13:33:27 |   ... 2,000,000 baris ditarik (38,770 baris/detik)
+13:34:02 |   ... 3,000,000 baris ditarik (34,456 baris/detik)
+13:35:02 |   ... 4,000,000 baris ditarik (27,299 baris/detik)
+13:35:28 |   ... 5,000,000 baris ditarik (28,907 baris/detik)
+13:35:56 |   ... 6,000,000 baris ditarik (29,794 baris/detik)
+13:36:18 |   ... 7,000,000 baris ditarik (31,374 baris/detik)
+13:36:39 |   ... 8,000,000 baris ditarik (32,760 baris/detik)
+13:36:54 | Total TAGGED_WITH ditarik: 8,525,257
+13:36:54 | ==============================================================================
+13:36:54 | STEP 3 - Hitung tag co-occurrence (DuckDB: tag informatif -> candidate pair -> Jaccard -> top-K)
+13:36:54 | ==============================================================================
+13:36:55 | [tag-freq] Tag total: 56,435 | Tag informatif (df<=10,000): 56,338 (99.8%)
+13:36:57 | [tag-freq] Question dengan >=1 tag informatif: 2,320,920
+13:36:57 | [safety-check] Estimasi upper-bound directed candidate pair: 10,767,532,242 (SUM(df*(df-1)) per tag informatif -- overcount kalau ada tag ganda, aman sbg batas atas)

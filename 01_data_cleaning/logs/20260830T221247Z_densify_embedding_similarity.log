@@ -1,0 +1,29 @@
+05:12:47 | DENSIFIKASI KG -- EMBED_SIM (cosine similarity embedding Title+Body)
+05:12:47 | Log file: logs/20260830T221247Z_densify_embedding_similarity.log
+05:12:47 | [config] stage=edges top_k=10 cosine_threshold=0.7 trust_weight=0.4
+05:12:47 | Neo4j URI: bolt://localhost:7687 | User: neo4j | Database: graphrag
+05:12:47 | Terhubung ke Neo4j.
+05:12:47 | ==============================================================================
+05:12:47 | STEP 2 - Build FAISS ANN index + cari top-K tetangga + tulis edge EMBED_SIM
+05:12:47 | ==============================================================================
+05:12:47 | Embedding dimuat: 2,685,814 vektor (dim=384)
+05:12:47 | [faiss] Memuat index dari cache -> _kg_workspace/question_embeddings_ivf.faiss
+05:13:09 | [faiss] Index dimuat: 2,685,814 vektor, nprobe=32 (pakai --rebuild-index kalau embedding berubah)
+05:13:09 | [search] Mencari top-10 tetangga per node (cosine >= 0.7)...
+05:14:12 |   ... 10,000/2,685,814 query selesai (160/detik, ETA ~278.3 menit)
+05:18:35 |   ... 210,000/2,685,814 query selesai (645/detik, ETA ~64.0 menit)
+05:23:25 |   ... 410,000/2,685,814 query selesai (666/detik, ETA ~57.0 menit)
+05:28:13 |   ... 610,000/2,685,814 query selesai (675/detik, ETA ~51.2 menit)
+05:33:07 |   ... 810,000/2,685,814 query selesai (677/detik, ETA ~46.2 menit)
+05:38:13 |   ... 1,010,000/2,685,814 query selesai (672/detik, ETA ~41.6 menit)
+05:46:23 |   ... 1,210,000/2,685,814 query selesai (607/detik, ETA ~40.5 menit)
+05:54:26 |   ... 1,410,000/2,685,814 query selesai (569/detik, ETA ~37.3 menit)
+06:04:10 |   ... 1,610,000/2,685,814 query selesai (526/detik, ETA ~34.1 menit)
+06:15:07 |   ... 1,810,000/2,685,814 query selesai (487/detik, ETA ~30.0 menit)
+06:26:59 |   ... 2,010,000/2,685,814 query selesai (454/detik, ETA ~24.8 menit)
+06:36:50 |   ... 2,210,000/2,685,814 query selesai (440/detik, ETA ~18.0 menit)
+06:49:14 |   ... 2,410,000/2,685,814 query selesai (418/detik, ETA ~11.0 menit)
+06:58:58 |   ... 2,610,000/2,685,814 query selesai (411/detik, ETA ~3.1 menit)
+07:04:22 | [search] Edge EMBED_SIM ditemukan: 10,141,497 dari 1,736,862 Question sumber unik
+07:04:22 | Menulis edge EMBED_SIM ke Neo4j...
+07:05:13 |   [EMBED_SIM] 100,000/10,141,497 baris tertulis (1,980 baris/detik, ETA ~84.5 menit)

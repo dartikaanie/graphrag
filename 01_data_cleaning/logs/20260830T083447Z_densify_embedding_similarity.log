@@ -1,0 +1,40 @@
+15:34:47 | DENSIFIKASI KG -- EMBED_SIM (cosine similarity embedding Title+Body)
+15:34:47 | Log file: logs/20260830T083447Z_densify_embedding_similarity.log
+15:34:47 | [config] stage=all top_k=10 cosine_threshold=0.7 trust_weight=0.4
+15:34:47 | Neo4j URI: bolt://localhost:7687 | User: neo4j | Database: graphrag
+15:34:47 | Terhubung ke Neo4j.
+15:34:47 | ==============================================================================
+15:34:47 | STEP 1 - Encode embedding Title+Body (resumable)
+15:34:47 | ==============================================================================
+15:34:49 | Total Question untuk di-encode: 5,000
+15:34:49 | [fresh] Tidak ada checkpoint -- mulai encoding dari awal.
+15:34:49 | [device] MPS (Apple Silicon GPU) tersedia -- dipakai untuk encoding.
+15:35:19 |   ... 5,000/5,000 ter-encode & checkpoint tersimpan (174.3 teks/detik, ETA ~0.0 menit)
+15:35:19 | Encoding selesai: 5,000/5,000 Question ter-encode.
+15:35:19 | ==============================================================================
+15:35:19 | STEP 2 - Build FAISS ANN index + cari top-K tetangga + tulis edge EMBED_SIM
+15:35:19 | ==============================================================================
+15:35:19 | Embedding dimuat: 5,000 vektor (dim=384)
+15:35:19 | [faiss] Membangun IndexIVFFlat (nlist=140, metric=inner-product/cosine krn embedding sudah dinormalisasi)...
+15:35:19 | [faiss] Index trained pada 5,000 sampel dalam 0.1s
+15:35:19 | [faiss] Index terisi 5,000 vektor, nprobe=32
+15:35:20 | [faiss] Index di-cache -> _kg_workspace/question_embeddings_ivf.faiss (dipakai ulang oleh 12_validate_densification.py & nanti pipeline retrieval Kondisi C)
+15:35:20 | [search] Mencari top-10 tetangga per node (cosine >= 0.7)...
+15:35:20 |   ... 5,000/5,000 query selesai (19,969/detik, ETA ~0.0 menit)
+15:35:20 | [search] Edge EMBED_SIM ditemukan: 546 dari 463 Question sumber unik
+15:35:20 | --dry-run aktif: TIDAK menulis ke Neo4j.
+15:35:20 | Contoh 10 edge teratas by cosine_sim:
+ question_id  related_question_id  cosine_sim
+      243837               243852    1.000000
+      243852               243837    1.000000
+      243837               243886    0.993417
+      243886               243837    0.993417
+      243886               243852    0.993417
+      243852               243886    0.993417
+      209770               208707    0.934467
+      208707               209770    0.934467
+      217020               167439    0.879559
+      167439               217020    0.879559
+15:35:20 | ==============================================================================
+15:35:20 | SELESAI dalam 0.6 menit
+15:35:20 | ==============================================================================
