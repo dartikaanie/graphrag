@@ -1,0 +1,28 @@
+08:45:19 | [logging] Log detail run ini -> logs/20260906T014519Z_ollama_phi3_mini.log
+08:45:19 | [config] output auto-generated -> 'results/condition_c_ollama_phi3-mini_n30_seed42.jsonl'
+08:45:19 | [config] n_sample=30 seed=42 provider=ollama model=phi3:mini
+08:45:19 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+08:45:19 |       [dev/testing only] Provider ollama, model 'phi3:mini' -- hasil ini TIDAK untuk laporan evaluasi final.
+08:45:19 | [1/9] Mengambil oversample pool (90 kandidat)...
+08:45:24 |       Oversample pool diambil: 90 kandidat
+08:45:24 | [2/9] Menghitung token & filter <= 2048 token...
+08:45:25 |       90 -> 84 lolos filter token
+08:45:25 | [3/9] Sampling acak 30 pertanyaan evaluasi (seed=42)...
+08:45:25 | [4/9] Mengambil teks accepted answer (ground truth)...
+08:45:28 |       Ditemukan 30 accepted answer
+08:45:28 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+08:45:28 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+08:45:43 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+08:45:45 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+08:45:50 |       [resume] 30 pertanyaan sudah diproses sebelumnya
+08:45:50 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting phi3:mini untuk 30 pertanyaan...
+08:45:50 | [8/9] Selesai memproses seluruh sample.
+08:45:50 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_ollama_phi3-mini_n30_seed42.jsonl size_bytes=382389
+08:45:50 | 
+======================================================================
+08:45:50 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+08:45:50 | ======================================================================
+08:45:50 | Total pertanyaan diproses      : 30
+08:45:50 | Cosine similarity rata-rata    : 0.5707
+08:45:50 | Cosine similarity median       : 0.5721
+08:45:50 | % similarity > 0.5             : 76.7%

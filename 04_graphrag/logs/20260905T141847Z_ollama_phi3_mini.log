@@ -1,0 +1,63 @@
+21:18:47 | [logging] Log detail run ini -> logs/20260905T141847Z_ollama_phi3_mini.log
+21:18:47 | [config] output auto-generated -> 'results/condition_c_ollama_phi3-mini_n30_seed42.jsonl'
+21:18:47 | [config] n_sample=30 seed=42 provider=ollama model=phi3:mini
+21:18:47 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+21:18:47 |       [dev/testing only] Provider ollama, model 'phi3:mini' -- hasil ini TIDAK untuk laporan evaluasi final.
+21:18:47 | [1/9] Mengambil oversample pool (90 kandidat)...
+21:18:53 |       Oversample pool diambil: 90 kandidat
+21:18:53 | [2/9] Menghitung token & filter <= 2048 token...
+21:18:53 |       90 -> 84 lolos filter token
+21:18:53 | [3/9] Sampling acak 30 pertanyaan evaluasi (seed=42)...
+21:18:53 | [4/9] Mengambil teks accepted answer (ground truth)...
+21:18:57 |       Ditemukan 30 accepted answer
+21:18:57 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+21:18:58 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+21:19:11 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+21:19:12 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+21:19:16 |       [resume] 1 pertanyaan sudah diproses sebelumnya
+21:19:16 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting phi3:mini untuk 30 pertanyaan...
+21:20:57 |       [2/30] Id=59994807 anchors=3 context=5 citation=True similarity=0.439 retrieval=2.22s
+21:24:10 |       [3/30] Id=16980197 anchors=3 context=5 citation=True similarity=0.533 retrieval=2.10s
+21:26:31 |       [4/30] Id=6978367 anchors=3 context=5 citation=True similarity=0.582 retrieval=3.68s
+21:30:14 |       [5/30] Id=21426953 anchors=3 context=5 citation=True similarity=0.627 retrieval=2.91s
+21:34:52 |       [6/30] Id=68567120 anchors=3 context=5 citation=True similarity=0.400 retrieval=3.51s
+21:37:21 |       [7/30] Id=386071 anchors=3 context=5 citation=True similarity=0.698 retrieval=3.44s
+21:44:16 |       [8/30] Id=34692592 anchors=3 context=5 citation=True similarity=0.773 retrieval=2.81s
+21:53:51 |       [9/30] Id=70773763 anchors=3 context=3 citation=True similarity=0.685 retrieval=3.54s
+21:56:25 |       [10/30] Id=67735418 anchors=3 context=5 citation=True similarity=0.714 retrieval=9.21s
+23:16:19 |       [11/30] Id=69356041 anchors=3 context=5 citation=True similarity=0.670 retrieval=3.50s
+01:05:09 |       [12/30] Id=9750061 anchors=3 context=5 citation=False similarity=0.368 retrieval=4.07s
+01:08:40 |       [13/30] Id=34524722 anchors=3 context=5 citation=False similarity=0.066 retrieval=4.82s
+01:17:17 |       [14/30] Id=65604601 anchors=3 context=5 citation=False similarity=0.127 retrieval=4.65s
+01:21:57 |       [15/30] Id=15603760 anchors=3 context=5 citation=False similarity=-0.127 retrieval=4.27s
+01:29:31 |       [16/30] Id=26697538 anchors=3 context=5 citation=False similarity=0.041 retrieval=3.63s
+01:32:24 |       [17/30] Id=73951786 anchors=3 context=5 citation=False similarity=0.101 retrieval=3.15s
+01:55:40 |       [18/30] Id=2436996 anchors=3 context=5 citation=False similarity=0.034 retrieval=2.94s
+02:19:47 |       [19/30] Id=23444072 anchors=3 context=5 citation=False similarity=0.230 retrieval=3.87s
+02:42:07 |       [20/30] Id=28812782 anchors=3 context=5 citation=False similarity=0.058 retrieval=3.98s
+02:43:48 |       [21/30] Id=42529598 anchors=3 context=5 citation=False similarity=0.128 retrieval=3.52s
+02:44:34 |       [22/30] Id=8872473 anchors=3 context=5 citation=False similarity=0.115 retrieval=2.68s
+02:47:28 |       [23/30] Id=5111139 anchors=3 context=5 citation=False similarity=-0.057 retrieval=2.93s
+02:48:48 |       [24/30] Id=18373537 anchors=3 context=5 citation=False similarity=-0.010 retrieval=2.52s
+02:49:47 |       [25/30] Id=29517627 anchors=3 context=5 citation=False similarity=-0.055 retrieval=2.96s
+02:50:57 |       [26/30] Id=36708138 anchors=3 context=5 citation=False similarity=0.198 retrieval=2.58s
+02:52:42 |       [27/30] Id=32843350 anchors=3 context=5 citation=False similarity=0.052 retrieval=2.59s
+02:57:33 |       [28/30] Id=9998509 anchors=3 context=5 citation=False similarity=-0.037 retrieval=2.99s
+03:01:27 |       [29/30] Id=57361019 anchors=3 context=5 citation=False similarity=0.009 retrieval=2.69s
+03:02:18 |       [30/30] Id=36101524 anchors=3 context=5 citation=False similarity=-0.015 retrieval=2.54s
+03:02:18 | [8/9] Selesai memproses seluruh sample.
+03:02:18 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_ollama_phi3-mini_n30_seed42.jsonl size_bytes=484714
+03:02:19 | 
+======================================================================
+03:02:19 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+03:02:19 | ======================================================================
+03:02:19 | Total pertanyaan diproses      : 30
+03:02:19 | Cosine similarity rata-rata    : 0.2620
+03:02:19 | Cosine similarity median       : 0.1276
+03:02:19 | % similarity > 0.5             : 30.0%
+03:02:19 | % jawaban dgn >=1 kutipan (NF2): 36.7% [target: 100%] BELUM TERCAPAI
+03:02:19 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+03:02:19 | Retrieval latency -- avg: 3.43s, p95: 4.74s [NF3 target: <=15s] PASS
+03:02:19 | 
+Hasil lengkap tersimpan -> results/condition_c_ollama_phi3-mini_n30_seed42.jsonl
+03:02:19 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl

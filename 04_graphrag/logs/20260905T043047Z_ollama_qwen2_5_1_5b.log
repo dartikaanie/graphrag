@@ -1,0 +1,6 @@
+11:30:47 | [logging] Log detail run ini -> logs/20260905T043047Z_ollama_qwen2_5_1_5b.log
+11:30:47 | [config] output auto-generated -> 'results/condition_c_ollama_qwen2-5-1-5b_n5_seed42.jsonl'
+11:30:47 | [config] n_sample=5 seed=42 provider=ollama model=qwen2.5:1.5b
+11:30:47 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+11:30:47 |       [dev/testing only] Provider ollama, model 'qwen2.5:1.5b' -- hasil ini TIDAK untuk laporan evaluasi final.
+11:30:47 | [1/9] Mengambil oversample pool (15 kandidat)...

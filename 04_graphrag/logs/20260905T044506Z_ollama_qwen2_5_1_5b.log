@@ -1,0 +1,38 @@
+11:45:06 | [logging] Log detail run ini -> logs/20260905T044506Z_ollama_qwen2_5_1_5b.log
+11:45:06 | [config] output auto-generated -> 'results/condition_c_ollama_qwen2-5-1-5b_n5_seed42.jsonl'
+11:45:06 | [config] n_sample=5 seed=42 provider=ollama model=qwen2.5:1.5b
+11:45:06 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+11:45:07 |       [dev/testing only] Provider ollama, model 'qwen2.5:1.5b' -- hasil ini TIDAK untuk laporan evaluasi final.
+11:45:07 | [1/9] Mengambil oversample pool (15 kandidat)...
+11:45:20 |       Oversample pool diambil: 15 kandidat
+11:45:20 | [2/9] Menghitung token & filter <= 2048 token...
+11:45:23 |       15 -> 14 lolos filter token
+11:45:23 | [3/9] Sampling acak 5 pertanyaan evaluasi (seed=42)...
+11:45:23 | [4/9] Mengambil teks accepted answer (ground truth)...
+11:45:27 |       Ditemukan 5 accepted answer
+11:45:27 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+11:45:27 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+11:45:42 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+11:45:44 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+11:45:50 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting qwen2.5:1.5b untuk 5 pertanyaan...
+11:47:08 |       [1/5] Id=44034905 anchors=3 context=5 citation=False similarity=0.491 retrieval=6.23s
+11:48:07 |       [2/5] Id=16951300 anchors=3 context=5 citation=False similarity=0.691 retrieval=0.56s
+11:50:08 |       [3/5] Id=62699840 anchors=3 context=5 citation=False similarity=0.767 retrieval=0.53s
+11:51:16 |       [4/5] Id=68662220 anchors=3 context=1 citation=False similarity=0.583 retrieval=0.34s
+11:52:20 |       [5/5] Id=26947070 anchors=3 context=5 citation=False similarity=0.753 retrieval=2.59s
+11:52:20 | [8/9] Selesai memproses seluruh sample.
+11:52:20 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_ollama_qwen2-5-1-5b_n5_seed42.jsonl size_bytes=64899
+11:52:20 | 
+======================================================================
+11:52:20 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+11:52:20 | ======================================================================
+11:52:20 | Total pertanyaan diproses      : 5
+11:52:20 | Cosine similarity rata-rata    : 0.6569
+11:52:20 | Cosine similarity median       : 0.6905
+11:52:20 | % similarity > 0.5             : 80.0%
+11:52:20 | % jawaban dgn >=1 kutipan (NF2): 0.0% [target: 100%] BELUM TERCAPAI
+11:52:20 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+11:52:20 | Retrieval latency -- avg: 2.05s, p95: 5.50s [NF3 target: <=15s] PASS
+11:52:20 | 
+Hasil lengkap tersimpan -> results/condition_c_ollama_qwen2-5-1-5b_n5_seed42.jsonl
+11:52:20 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl

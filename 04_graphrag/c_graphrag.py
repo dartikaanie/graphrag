@@ -382,9 +382,12 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
             WHERE NOT q2.id IN $exclude_q
             MATCH (q2)-[r3:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
             WHERE NOT a.id IN $exclude_a
+            WITH q2, a, r2, r3, (r2.weight * r3.weight) AS edge_weight
+            ORDER BY edge_weight DESC
+            LIMIT 50
             RETURN q2.id AS via_question_id, q2.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
-                   a.isAccepted AS is_accepted, (r2.weight * r3.weight) AS edge_weight, 2 AS hop,
+                   a.isAccepted AS is_accepted, edge_weight, 2 AS hop,
                    (type(r2) + '->' + type(r3)) AS rel_type
             """,
             anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
@@ -513,12 +516,30 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
 # Citation check -- NF2 (100% jawaban dgn >=1 kutipan sumber)
 # ---------------------------------------------------------------------
 
-CITATION_PATTERN = re.compile(r"\[SO-(\d+)\]")
+CITATION_PATTERN = re.compile(r"\[SO[-: ]?(?:thread\s*)?(\d+)\]", re.IGNORECASE)
 
 
-def extract_citations(llm_answer: str) -> tuple[bool, list]:
+def extract_citations(llm_answer: str, retrieved: list) -> tuple[bool, list, bool, list]:
+    """Return (has_citation, cited_ids, has_valid_citation, valid_ids).
+
+    has_citation/cited_ids: deteksi longgar -- toleransi variasi format kecil
+    ([SO-1234], [SO:1234], [SO 1234], [SO thread 1234]) supaya percobaan
+    kutipan model kecil yang formatnya sedikit meleset tetap terdeteksi
+    sbg "mencoba mengutip", bukan otomatis dianggap tidak ada kutipan
+    sama sekali.
+
+    has_valid_citation/valid_ids: NF2 versi ketat -- id yang dikutip
+    di-cross-check terhadap question_id di retrieved_context yang BENAR
+    diberikan ke model. Ditambahkan setelah ditemukan kasus model
+    menghasilkan citation-like token dgn ID yang di-hallucinate (tidak
+    cocok konteks asli sama sekali, mis. [SO:4329876] padahal konteks
+    yg diberikan SO-5928724) -- format benar TIDAK CUKUP utk NF2 yang
+    sebenarnya dimaksud (provenance tertelusuri ke node KG sumber asli).
+    """
     ids = sorted(set(int(m) for m in CITATION_PATTERN.findall(llm_answer)))
-    return (len(ids) > 0, ids)
+    context_ids = {r.get("question_id") for r in (retrieved or []) if r.get("question_id") is not None}
+    valid_ids = sorted(i for i in ids if i in context_ids)
+    return (len(ids) > 0, ids, len(valid_ids) > 0, valid_ids)
 
 
 # ---------------------------------------------------------------------
@@ -527,8 +548,12 @@ def extract_citations(llm_answer: str) -> tuple[bool, list]:
 
 def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
     from sentence_transformers import util
-    emb_a = embed_model.encode(str(text_a), convert_to_tensor=True)
-    emb_b = embed_model.encode(str(text_b), convert_to_tensor=True)
+    # convert_to_numpy + device="cpu" dipilih sengaja (bukan default MPS):
+    # untuk teks pendek & model sekecil all-MiniLM-L6-v2, overhead MPS tidak
+    # sepadan, dan cache GPU PyTorch di Apple Silicon cenderung menumpuk
+    # perlahan sepanjang loop panjang (384 pertanyaan) kalau pakai tensor+MPS.
+    emb_a = embed_model.encode(str(text_a), convert_to_numpy=True, device="cpu")
+    emb_b = embed_model.encode(str(text_b), convert_to_numpy=True, device="cpu")
     return float(util.cos_sim(emb_a, emb_b).item())
 
 
@@ -591,6 +616,9 @@ def main():
     llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
 
     con = duckdb.connect()
+    con.execute("SET memory_limit='2GB'")
+    con.execute("SET threads=2")
+    con.execute("SET preserve_insertion_order=false")
 
     # --- 1-4: sample pertanyaan evaluasi + ground truth (identik A/B) ---
     candidates = get_candidate_questions(con, args.questions_parquet, args.answers_parquet,
@@ -613,7 +641,12 @@ def main():
 
     log(f"[6/9] Load model embedding ({args.embed_model})...")
     from sentence_transformers import SentenceTransformer
-    embed_model = SentenceTransformer(args.embed_model)
+    # device="cpu" sengaja dipaksa (bukan auto-detect MPS): model sekecil
+    # all-MiniLM-L6-v2 dengan teks pendek tidak butuh GPU, dan ini menghindari
+    # potensi memory creep MPS di loop panjang (384 pertanyaan). Perubahan ini
+    # berlaku untuk semua pemanggilan embed_model.encode() di script ini
+    # (embed_query, compute_similarity).
+    embed_model = SentenceTransformer(args.embed_model, device="cpu")
 
     # --- Resume support ---
     output_path = Path(args.output)
@@ -633,115 +666,131 @@ def main():
 
     n_no_context = 0
     n_no_citation = 0
+    n_no_valid_citation = 0
+    interrupted = False
 
-    with open(output_path, "a") as f_out:
-        for i, row in sample_df.iterrows():
-            qid = int(row["Id"])
-            if qid in already_done:
-                continue
+    try:
+        with open(output_path, "a") as f_out:
+            for i, row in sample_df.iterrows():
+                qid = int(row["Id"])
+                if qid in already_done:
+                    continue
 
-            t_query_start = time.time()
+                t_query_start = time.time()
 
-            # leakage exclusion set untuk pertanyaan evaluasi INI SAJA
-            exclude_question_ids = {qid}
-            exclude_answer_ids = set(all_answer_ids_map.get(qid, []))
-            exclude_answer_ids.add(int(row["AcceptedAnswerId"]))
+                # leakage exclusion set untuk pertanyaan evaluasi INI SAJA
+                exclude_question_ids = {qid}
+                exclude_answer_ids = set(all_answer_ids_map.get(qid, []))
+                exclude_answer_ids.add(int(row["AcceptedAnswerId"]))
 
-            # kalau embedding pertanyaan ini sendiri sudah ada di cache
-            # (harusnya iya, KG dibangun full population), pakai LANGSUNG
-            # dari memmap -- lebih cepat & konsisten drpd re-encode; fallback
-            # re-encode kalau belum ada di cache (mis. KG dibuild sebelum
-            # pertanyaan ini masuk parquet, jarang terjadi).
-            if qid in id_to_row:
-                query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
-                query_emb = np.ascontiguousarray(query_emb)
-            else:
-                query_text = f"{row['Title']} {str(row['Body'])[:1000]}"
-                query_emb = embed_query(query_text, embed_model)
+                # kalau embedding pertanyaan ini sendiri sudah ada di cache
+                # (harusnya iya, KG dibangun full population), pakai LANGSUNG
+                # dari memmap -- lebih cepat & konsisten drpd re-encode; fallback
+                # re-encode kalau belum ada di cache (mis. KG dibuild sebelum
+                # pertanyaan ini masuk parquet, jarang terjadi).
+                if qid in id_to_row:
+                    query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
+                    query_emb = np.ascontiguousarray(query_emb)
+                else:
+                    query_text = f"{row['Title']} {str(row['Body'])[:1000]}"
+                    query_emb = embed_query(query_text, embed_model)
 
-            # --- a. Entity Anchoring ---
-            anchors = anchor_via_vector_search(
-                query_emb, faiss_index, faiss_ids, args.n_anchor, exclude_question_ids,
-            )
-            anchor_ids = [qid_ for qid_, _ in anchors]
+                # --- a. Entity Anchoring ---
+                anchors = anchor_via_vector_search(
+                    query_emb, faiss_index, faiss_ids, args.n_anchor, exclude_question_ids,
+                )
+                anchor_ids = [qid_ for qid_, _ in anchors]
 
-            # --- b. Graph Traversal ---
-            graph_candidates = []
-            if anchor_ids:
-                graph_candidates = traverse_graph(
-                    driver, database, anchor_ids, exclude_question_ids, exclude_answer_ids,
+                # --- b. Graph Traversal ---
+                graph_candidates = []
+                if anchor_ids:
+                    graph_candidates = traverse_graph(
+                        driver, database, anchor_ids, exclude_question_ids, exclude_answer_ids,
+                    )
+
+                # --- c. Semantic Expansion ---
+                seen_qids = exclude_question_ids | set(anchor_ids)
+                expansion_candidates = semantic_expansion(
+                    driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
+                    args.n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
                 )
 
-            # --- c. Semantic Expansion ---
-            seen_qids = exclude_question_ids | set(anchor_ids)
-            expansion_candidates = semantic_expansion(
-                driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
-                args.n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
-            )
+                # --- Fusi + rerank + chunking + cap top-K ---
+                retrieved = fuse_and_rank(graph_candidates, expansion_candidates,
+                                           args.top_k, args.token_chunk_limit)
+                retrieval_latency = time.time() - t_query_start
+                if not retrieved:
+                    n_no_context += 1
 
-            # --- Fusi + rerank + chunking + cap top-K ---
-            retrieved = fuse_and_rank(graph_candidates, expansion_candidates,
-                                       args.top_k, args.token_chunk_limit)
-            retrieval_latency = time.time() - t_query_start
-            if not retrieved:
-                n_no_context += 1
+                messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
+                try:
+                    llm_answer = call_llm_fn(llm_client, messages, args.model)
+                except Exception as e:
+                    log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL] API error: {e}")
+                    continue
 
-            messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
-            try:
-                llm_answer = call_llm_fn(llm_client, messages, args.model)
-            except Exception as e:
-                log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL] API error: {e}")
-                continue
+                has_citation, cited_ids, has_valid_citation, valid_ids = extract_citations(llm_answer, retrieved)
+                if not has_citation:
+                    n_no_citation += 1
+                if not has_valid_citation:
+                    n_no_valid_citation += 1
 
-            has_citation, cited_ids = extract_citations(llm_answer)
-            if not has_citation:
-                n_no_citation += 1
+                similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
 
-            similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
+                view_count = row.get("ViewCount")
+                question_score = row.get("Score")
+                record = {
+                    "question_id": qid,
+                    "title": row["Title"],
+                    "tags": row["Tags"],
+                    "n_tokens": int(row["n_tokens"]),
+                    "view_count": None if pd.isna(view_count) else int(view_count),
+                    "question_score": None if pd.isna(question_score) else int(question_score),
+                    "accepted_answer_id": int(row["AcceptedAnswerId"]),
+                    "ground_truth_answer": row["AcceptedAnswerBody"],
+                    "retrieved_context": retrieved,
+                    "n_anchors": len(anchor_ids),
+                    "n_graph_candidates": len(graph_candidates),
+                    "n_expansion_candidates": len(expansion_candidates),
+                    "retrieval_latency_sec": round(retrieval_latency, 3),
+                    "llm_answer": llm_answer,
+                    "llm_model": args.model,
+                    "cosine_similarity": similarity,
+                    "has_citation": has_citation,
+                    "cited_source_ids": cited_ids,
+                    "has_valid_citation": has_valid_citation,
+                    "valid_cited_source_ids": valid_ids,
+                }
+                try:
+                    line = json.dumps(record, default=str)
+                except Exception as e:
+                    log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL-WRITE] {e}")
+                    continue
 
-            view_count = row.get("ViewCount")
-            question_score = row.get("Score")
-            record = {
-                "question_id": qid,
-                "title": row["Title"],
-                "tags": row["Tags"],
-                "n_tokens": int(row["n_tokens"]),
-                "view_count": None if pd.isna(view_count) else int(view_count),
-                "question_score": None if pd.isna(question_score) else int(question_score),
-                "accepted_answer_id": int(row["AcceptedAnswerId"]),
-                "ground_truth_answer": row["AcceptedAnswerBody"],
-                "retrieved_context": retrieved,
-                "n_anchors": len(anchor_ids),
-                "n_graph_candidates": len(graph_candidates),
-                "n_expansion_candidates": len(expansion_candidates),
-                "retrieval_latency_sec": round(retrieval_latency, 3),
-                "llm_answer": llm_answer,
-                "llm_model": args.model,
-                "cosine_similarity": similarity,
-                "has_citation": has_citation,
-                "cited_source_ids": cited_ids,
-            }
-            try:
-                line = json.dumps(record, default=str)
-            except Exception as e:
-                log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL-WRITE] {e}")
-                continue
+                f_out.write(line + "\n")
+                f_out.flush()
+                os.fsync(f_out.fileno())
+                log(f"      [{i+1}/{len(sample_df)}] Id={qid} anchors={len(anchor_ids)} "
+                    f"context={len(retrieved)} citation={has_citation} valid_citation={has_valid_citation} "
+                    f"similarity={similarity:.3f} retrieval={retrieval_latency:.2f}s")
 
-            f_out.write(line + "\n")
-            f_out.flush()
-            os.fsync(f_out.fileno())
-            log(f"      [{i+1}/{len(sample_df)}] Id={qid} anchors={len(anchor_ids)} "
-                f"context={len(retrieved)} citation={has_citation} "
-                f"similarity={similarity:.3f} retrieval={retrieval_latency:.2f}s")
+                if retrieval_latency > 15.0:
+                    log(f"      [WARN] Id={qid} retrieval_latency={retrieval_latency:.2f}s "
+                        f"MELEBIHI NF3 (<=15 detik)")
 
-            if retrieval_latency > 15.0:
-                log(f"      [WARN] Id={qid} retrieval_latency={retrieval_latency:.2f}s "
-                    f"MELEBIHI NF3 (<=15 detik)")
-
-            time.sleep(0.3)
+                time.sleep(0.3)
+    except KeyboardInterrupt:
+        interrupted = True
+        log("\n[INTERRUPTED] Proses dihentikan manual (Ctrl+C / kill). Ringkasan di bawah "
+            "dihitung dari hasil yang SUDAH tersimpan di file sejauh ini. Jalankan command "
+            "yang SAMA PERSIS lagi kapan saja -- otomatis lanjut (resume) dari sisa yang "
+            "belum diproses, tidak perlu mengulang dari awal.")
 
     driver.close()
-    log("[8/9] Selesai memproses seluruh sample.")
+    if interrupted:
+        log("[8/9] Diinterupsi sebelum semua sample selesai -- lihat catatan di atas.")
+    else:
+        log("[8/9] Selesai memproses seluruh sample.")
 
     file_exists = output_path.exists()
     file_size = output_path.stat().st_size if file_exists else -1
@@ -766,8 +815,11 @@ def main():
     log(f"Cosine similarity median       : {results_df['cosine_similarity'].median():.4f}")
     log(f"% similarity > 0.5             : {(results_df['cosine_similarity'] > 0.5).mean()*100:.1f}%")
     pct_citation = results_df["has_citation"].mean() * 100
-    log(f"% jawaban dgn >=1 kutipan (NF2): {pct_citation:.1f}% "
-        f"[target: 100%] {'PASS' if pct_citation >= 100 else 'BELUM TERCAPAI'}")
+    pct_valid_citation = results_df["has_valid_citation"].mean() * 100
+    log(f"% jawaban dgn >=1 kutipan format cocok  : {pct_citation:.1f}% (longgar, toleransi variasi format)")
+    log(f"% jawaban dgn >=1 kutipan VALID (NF2)   : {pct_valid_citation:.1f}% "
+        f"[target: 100%] {'PASS' if pct_valid_citation >= 100 else 'BELUM TERCAPAI'} "
+        f"(ID kutipan divalidasi ada di retrieved_context yg sebenarnya)")
     pct_no_context = (results_df["n_anchors"] == 0).mean() * 100
     log(f"% pertanyaan tanpa hasil retrieval sama sekali: {pct_no_context:.1f}%")
     avg_latency = results_df["retrieval_latency_sec"].mean()
@@ -777,7 +829,8 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
-        "run_started_at": run_started_at.isoformat(), "condition": "C", "status": "success",
+        "run_started_at": run_started_at.isoformat(), "condition": "C",
+        "status": "interrupted" if interrupted else "success",
         "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
         "n_processed": len(results_df), "seed": args.seed,
         "top_k": args.top_k, "n_anchor": args.n_anchor,
@@ -786,6 +839,7 @@ def main():
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
         "pct_with_citation": round(float(pct_citation), 1),
+        "pct_with_valid_citation": round(float(pct_valid_citation), 1),
         "pct_no_retrieval": round(float(pct_no_context), 1),
         "avg_retrieval_latency_sec": round(float(avg_latency), 3),
         "p95_retrieval_latency_sec": round(float(p95_latency), 3),

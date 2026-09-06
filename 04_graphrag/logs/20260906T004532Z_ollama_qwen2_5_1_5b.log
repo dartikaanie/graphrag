@@ -1,0 +1,64 @@
+07:45:32 | [logging] Log detail run ini -> logs/20260906T004532Z_ollama_qwen2_5_1_5b.log
+07:45:32 | [config] output auto-generated -> 'results/condition_c_ollama_qwen2-5-1-5b_n30_seed42.jsonl'
+07:45:32 | [config] n_sample=30 seed=42 provider=ollama model=qwen2.5:1.5b
+07:45:32 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+07:45:32 |       [dev/testing only] Provider ollama, model 'qwen2.5:1.5b' -- hasil ini TIDAK untuk laporan evaluasi final.
+07:45:32 | [1/9] Mengambil oversample pool (90 kandidat)...
+07:45:37 |       Oversample pool diambil: 90 kandidat
+07:45:37 | [2/9] Menghitung token & filter <= 2048 token...
+07:45:37 |       90 -> 84 lolos filter token
+07:45:37 | [3/9] Sampling acak 30 pertanyaan evaluasi (seed=42)...
+07:45:37 | [4/9] Mengambil teks accepted answer (ground truth)...
+07:45:41 |       Ditemukan 30 accepted answer
+07:45:41 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+07:45:41 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+07:45:50 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+07:45:53 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+07:45:59 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting qwen2.5:1.5b untuk 30 pertanyaan...
+07:46:20 |       [1/30] Id=36447196 anchors=3 context=5 citation=False valid_citation=False similarity=0.507 retrieval=3.92s
+07:46:41 |       [2/30] Id=59994807 anchors=3 context=5 citation=False valid_citation=False similarity=0.533 retrieval=0.64s
+07:47:50 |       [3/30] Id=16980197 anchors=3 context=5 citation=True valid_citation=False similarity=0.470 retrieval=0.86s
+07:48:26 |       [4/30] Id=6978367 anchors=3 context=5 citation=False valid_citation=False similarity=0.697 retrieval=1.18s
+07:49:13 |       [5/30] Id=21426953 anchors=3 context=5 citation=False valid_citation=False similarity=0.600 retrieval=1.70s
+07:50:16 |       [6/30] Id=68567120 anchors=3 context=5 citation=False valid_citation=False similarity=0.504 retrieval=0.62s
+07:50:54 |       [7/30] Id=386071 anchors=3 context=5 citation=True valid_citation=False similarity=0.418 retrieval=1.15s
+07:51:40 |       [8/30] Id=34692592 anchors=3 context=5 citation=False valid_citation=False similarity=0.745 retrieval=1.57s
+07:53:02 |       [9/30] Id=70773763 anchors=3 context=3 citation=False valid_citation=False similarity=0.558 retrieval=1.12s
+07:53:51 |       [10/30] Id=67735418 anchors=3 context=5 citation=False valid_citation=False similarity=0.771 retrieval=1.31s
+07:54:31 |       [11/30] Id=69356041 anchors=3 context=5 citation=True valid_citation=False similarity=0.607 retrieval=1.04s
+07:55:34 |       [12/30] Id=9750061 anchors=3 context=5 citation=True valid_citation=True similarity=0.459 retrieval=1.35s
+07:56:52 |       [13/30] Id=34524722 anchors=3 context=5 citation=False valid_citation=False similarity=0.675 retrieval=0.63s
+07:57:44 |       [14/30] Id=65604601 anchors=3 context=5 citation=False valid_citation=False similarity=0.607 retrieval=0.90s
+07:58:36 |       [15/30] Id=15603760 anchors=3 context=5 citation=False valid_citation=False similarity=0.638 retrieval=0.86s
+07:59:02 |       [16/30] Id=26697538 anchors=3 context=5 citation=False valid_citation=False similarity=0.713 retrieval=0.81s
+07:59:33 |       [17/30] Id=73951786 anchors=3 context=5 citation=False valid_citation=False similarity=0.296 retrieval=0.60s
+08:00:18 |       [18/30] Id=2436996 anchors=3 context=5 citation=True valid_citation=False similarity=0.411 retrieval=1.01s
+08:01:31 |       [19/30] Id=23444072 anchors=3 context=5 citation=False valid_citation=False similarity=0.682 retrieval=1.36s
+08:02:11 |       [20/30] Id=28812782 anchors=3 context=5 citation=False valid_citation=False similarity=0.849 retrieval=0.78s
+08:02:36 |       [21/30] Id=42529598 anchors=3 context=5 citation=False valid_citation=False similarity=0.113 retrieval=0.90s
+08:03:22 |       [22/30] Id=8872473 anchors=3 context=5 citation=True valid_citation=True similarity=0.538 retrieval=0.65s
+08:04:11 |       [23/30] Id=5111139 anchors=3 context=5 citation=True valid_citation=True similarity=0.529 retrieval=1.02s
+08:05:24 |       [24/30] Id=18373537 anchors=3 context=5 citation=False valid_citation=False similarity=0.450 retrieval=0.80s
+08:06:27 |       [25/30] Id=29517627 anchors=3 context=5 citation=True valid_citation=False similarity=0.539 retrieval=1.34s
+08:07:26 |       [26/30] Id=36708138 anchors=3 context=5 citation=True valid_citation=True similarity=0.419 retrieval=0.78s
+08:08:32 |       [27/30] Id=32843350 anchors=3 context=5 citation=False valid_citation=False similarity=0.715 retrieval=0.74s
+08:09:17 |       [28/30] Id=9998509 anchors=3 context=5 citation=True valid_citation=True similarity=0.650 retrieval=1.14s
+08:10:36 |       [29/30] Id=57361019 anchors=3 context=5 citation=False valid_citation=False similarity=0.571 retrieval=0.45s
+08:11:28 |       [30/30] Id=36101524 anchors=3 context=5 citation=True valid_citation=True similarity=0.592 retrieval=0.79s
+08:11:28 | [8/9] Selesai memproses seluruh sample.
+08:11:28 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_ollama_qwen2-5-1-5b_n30_seed42.jsonl size_bytes=347759
+08:11:29 | 
+======================================================================
+08:11:29 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+08:11:29 | ======================================================================
+08:11:29 | Total pertanyaan diproses      : 30
+08:11:29 | Cosine similarity rata-rata    : 0.5618
+08:11:29 | Cosine similarity median       : 0.5645
+08:11:29 | % similarity > 0.5             : 73.3%
+08:11:29 | % jawaban dgn >=1 kutipan format cocok  : 36.7% (longgar, toleransi variasi format)
+08:11:29 | % jawaban dgn >=1 kutipan VALID (NF2)   : 20.0% [target: 100%] BELUM TERCAPAI (ID kutipan divalidasi ada di retrieved_context yg sebenarnya)
+08:11:29 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+08:11:29 | Retrieval latency -- avg: 1.07s, p95: 1.64s [NF3 target: <=15s] PASS
+08:11:29 | 
+Hasil lengkap tersimpan -> results/condition_c_ollama_qwen2-5-1-5b_n30_seed42.jsonl
+08:11:29 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl

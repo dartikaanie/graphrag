@@ -1,0 +1,5 @@
+10:16:22 | [logging] Log detail run ini -> logs/20260905T031622Z_ollama_phi3_mini.log
+10:16:22 | [config] output auto-generated -> 'results/condition_c_ollama_phi3-mini_n384_seed42.jsonl'
+10:16:22 | [config] n_sample=384 seed=42 provider=ollama model=phi3:mini
+10:16:22 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+10:16:22 | [ERROR] Tidak bisa konek ke Ollama di localhost:11434 -- pastikan 'ollama serve' sudah jalan. Detail: Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download

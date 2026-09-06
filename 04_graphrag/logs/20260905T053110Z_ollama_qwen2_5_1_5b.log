@@ -1,0 +1,34 @@
+12:31:10 | [logging] Log detail run ini -> logs/20260905T053110Z_ollama_qwen2_5_1_5b.log
+12:31:10 | [config] output auto-generated -> 'results/condition_c_ollama_qwen2-5-1-5b_n5_seed42.jsonl'
+12:31:10 | [config] n_sample=5 seed=42 provider=ollama model=qwen2.5:1.5b
+12:31:10 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+12:31:11 |       [dev/testing only] Provider ollama, model 'qwen2.5:1.5b' -- hasil ini TIDAK untuk laporan evaluasi final.
+12:31:11 | [1/9] Mengambil oversample pool (15 kandidat)...
+12:31:23 |       Oversample pool diambil: 15 kandidat
+12:31:23 | [2/9] Menghitung token & filter <= 2048 token...
+12:31:23 |       15 -> 14 lolos filter token
+12:31:23 | [3/9] Sampling acak 5 pertanyaan evaluasi (seed=42)...
+12:31:23 | [4/9] Mengambil teks accepted answer (ground truth)...
+12:31:26 |       Ditemukan 5 accepted answer
+12:31:26 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+12:31:27 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+12:31:49 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+12:31:51 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+12:32:05 |       [resume] 5 pertanyaan sudah diproses sebelumnya
+12:32:05 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting qwen2.5:1.5b untuk 5 pertanyaan...
+12:32:05 | [8/9] Selesai memproses seluruh sample.
+12:32:05 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_ollama_qwen2-5-1-5b_n5_seed42.jsonl size_bytes=64899
+12:32:05 | 
+======================================================================
+12:32:05 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+12:32:05 | ======================================================================
+12:32:05 | Total pertanyaan diproses      : 5
+12:32:05 | Cosine similarity rata-rata    : 0.6569
+12:32:05 | Cosine similarity median       : 0.6905
+12:32:05 | % similarity > 0.5             : 80.0%
+12:32:05 | % jawaban dgn >=1 kutipan (NF2): 0.0% [target: 100%] BELUM TERCAPAI
+12:32:05 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+12:32:05 | Retrieval latency -- avg: 2.05s, p95: 5.50s [NF3 target: <=15s] PASS
+12:32:05 | 
+Hasil lengkap tersimpan -> results/condition_c_ollama_qwen2-5-1-5b_n5_seed42.jsonl
+12:32:05 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl

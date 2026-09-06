@@ -1,0 +1,38 @@
+12:11:58 | [logging] Log detail run ini -> logs/20260905T051158Z_ollama_phi3_mini.log
+12:11:58 | [config] output auto-generated -> 'results/condition_c_ollama_phi3-mini_n5_seed42.jsonl'
+12:11:58 | [config] n_sample=5 seed=42 provider=ollama model=phi3:mini
+12:11:58 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+12:11:58 |       [dev/testing only] Provider ollama, model 'phi3:mini' -- hasil ini TIDAK untuk laporan evaluasi final.
+12:11:58 | [1/9] Mengambil oversample pool (15 kandidat)...
+12:12:04 |       Oversample pool diambil: 15 kandidat
+12:12:04 | [2/9] Menghitung token & filter <= 2048 token...
+12:12:04 |       15 -> 14 lolos filter token
+12:12:04 | [3/9] Sampling acak 5 pertanyaan evaluasi (seed=42)...
+12:12:04 | [4/9] Mengambil teks accepted answer (ground truth)...
+12:12:07 |       Ditemukan 5 accepted answer
+12:12:07 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+12:12:07 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+12:12:18 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+12:12:18 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+12:12:24 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting phi3:mini untuk 5 pertanyaan...
+12:14:36 |       [1/5] Id=44034905 anchors=3 context=5 citation=True similarity=0.494 retrieval=2.11s
+12:16:58 |       [2/5] Id=16951300 anchors=3 context=5 citation=True similarity=0.719 retrieval=0.86s
+12:20:52 |       [3/5] Id=62699840 anchors=3 context=5 citation=False similarity=0.796 retrieval=1.80s
+12:24:07 |       [4/5] Id=68662220 anchors=3 context=1 citation=True similarity=0.747 retrieval=1.15s
+12:27:13 |       [5/5] Id=26947070 anchors=3 context=5 citation=True similarity=0.625 retrieval=2.37s
+12:27:14 | [8/9] Selesai memproses seluruh sample.
+12:27:14 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_ollama_phi3-mini_n5_seed42.jsonl size_bytes=65746
+12:27:14 | 
+======================================================================
+12:27:14 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+12:27:14 | ======================================================================
+12:27:14 | Total pertanyaan diproses      : 5
+12:27:14 | Cosine similarity rata-rata    : 0.6763
+12:27:14 | Cosine similarity median       : 0.7193
+12:27:14 | % similarity > 0.5             : 80.0%
+12:27:14 | % jawaban dgn >=1 kutipan (NF2): 80.0% [target: 100%] BELUM TERCAPAI
+12:27:14 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+12:27:14 | Retrieval latency -- avg: 1.66s, p95: 2.32s [NF3 target: <=15s] PASS
+12:27:14 | 
+Hasil lengkap tersimpan -> results/condition_c_ollama_phi3-mini_n5_seed42.jsonl
+12:27:14 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl
