@@ -1,0 +1,33 @@
+10:18:27 | [logging] Log detail run ini -> logs/20260906T031827Z_openai_gpt-4o-mini.log
+10:18:27 | [config] output auto-generated -> 'results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl'
+10:18:27 | [config] n_sample=5 seed=42 provider=openai model=gpt-4o-mini
+10:18:27 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+10:18:28 | [1/9] Mengambil oversample pool (15 kandidat)...
+10:18:40 |       Oversample pool diambil: 15 kandidat
+10:18:40 | [2/9] Menghitung token & filter <= 2048 token...
+10:18:40 |       15 -> 14 lolos filter token
+10:18:40 | [3/9] Sampling acak 5 pertanyaan evaluasi (seed=42)...
+10:18:40 | [4/9] Mengambil teks accepted answer (ground truth)...
+10:18:44 |       Ditemukan 5 accepted answer
+10:18:44 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+10:18:47 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+10:19:03 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+10:19:07 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+10:19:13 |       [resume] 5 pertanyaan sudah diproses sebelumnya
+10:19:13 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 5 pertanyaan...
+10:19:13 | [8/9] Selesai memproses seluruh sample.
+10:19:13 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl size_bytes=60454
+10:19:13 | 
+======================================================================
+10:19:13 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+10:19:13 | ======================================================================
+10:19:13 | Total pertanyaan diproses      : 5
+10:19:13 | Cosine similarity rata-rata    : 0.6543
+10:19:13 | Cosine similarity median       : 0.6882
+10:19:13 | % similarity > 0.5             : 100.0%
+10:19:13 | % jawaban dgn >=1 kutipan (NF2): 80.0% [target: 100%] BELUM TERCAPAI
+10:19:13 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+10:19:13 | Retrieval latency -- avg: 1.13s, p95: 3.12s [NF3 target: <=15s] PASS
+10:19:13 | 
+Hasil lengkap tersimpan -> results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl
+10:19:13 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl

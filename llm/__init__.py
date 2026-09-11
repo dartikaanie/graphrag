@@ -20,7 +20,7 @@ Kenapa dipisah ke sini (bukan diduplikasi per kondisi seperti sebelumnya):
     bukan disalin-tempel dan berisiko diam-diam berbeda dari waktu ke
     waktu.
 
-Cara pakai dari script kondisi (mis. 02_baseline_replication/a_*.py):
+Cara pakai dari script kondisi (mis. llm/a_pure_llm/a_*.py):
 
     import sys
     from pathlib import Path

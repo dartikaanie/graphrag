@@ -1,0 +1,121 @@
+02:15:37 | [logging] Log detail run ini -> logs/20260907T191537Z_openai_gpt-4o-mini.log
+02:15:37 | [config] output auto-generated -> 'results/condition_c_openai_gpt-4o-mini_n10_seed42.jsonl'
+02:15:37 | [config] n_sample=10 seed=42 provider=openai model=gpt-4o-mini
+02:15:37 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+02:15:37 | [1/9] Mengambil oversample pool (30 kandidat)...
+02:15:50 |       Oversample pool diambil: 30 kandidat
+02:15:51 | [2/9] Menghitung token & filter <= 2048 token...
+02:15:51 |       30 -> 27 lolos filter token
+02:15:51 | [3/9] Sampling acak 10 pertanyaan evaluasi (seed=42)...
+02:15:51 | [4/9] Mengambil teks accepted answer (ground truth)...
+02:15:59 |       Ditemukan 10 accepted answer
+02:15:59 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+02:16:00 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+02:16:28 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+02:16:32 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+02:16:44 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 10 pertanyaan...
+02:16:45 |       [debug-retrieval] traverse_graph 1-hop: 3 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [11626241]
+02:16:45 |       [debug-retrieval] traverse_graph TOTAL: hop1=3 hop2=40 raw=43
+02:16:45 |       [debug-retrieval] semantic_expansion: 43 traversal_candidates -> 3 seed unik: [11253257, 20212584, 18121711]
+02:16:47 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 34 PUNYA jawaban (20 answerless di-skip SEBELUM commit)
+02:16:47 |       [debug-retrieval]   seed qid=11253257 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [31459778, 43027313, 68749481]
+02:16:47 |       [debug-retrieval]   seed qid=20212584 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [41102106, 34508110, 18121711]
+02:16:47 |       [debug-retrieval]   seed qid=18121711 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [55291566, 4092603, 16059427]
+02:16:47 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid terpilih (pre-filtered) -> 14 kandidat jawaban kembali
+02:16:47 |       [debug-retrieval] fuse_and_rank: 43 graph_candidates + 14 expansion_candidates = 57 raw -> 48 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:16:57 |       [1/10] Id=29986735 anchors=3 context=5 citation=True similarity=0.719 retrieval=3.80s
+02:16:57 |       [debug-retrieval] traverse_graph 1-hop: 2 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [17459143]
+02:16:57 |       [debug-retrieval] traverse_graph TOTAL: hop1=2 hop2=9 raw=11
+02:16:57 |       [debug-retrieval] semantic_expansion: 11 traversal_candidates -> 3 seed unik: [64363862, 7050586, 54629328]
+02:16:58 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 10 PUNYA jawaban (44 answerless di-skip SEBELUM commit)
+02:16:58 |       [debug-retrieval]   seed qid=64363862 -> 2/3 tetangga BERJAWABAN terpilih (dari pool 18): [72456390, 8981841]
+02:16:58 |       [debug-retrieval]   seed qid=7050586 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [16598401, 15286571, 26281970]
+02:16:58 |       [debug-retrieval]   seed qid=54629328 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [28425008, 28020925, 63442815]
+02:16:59 |       [debug-retrieval] semantic_expansion TOTAL: 8 qid terpilih (pre-filtered) -> 10 kandidat jawaban kembali
+02:16:59 |       [debug-retrieval] fuse_and_rank: 11 graph_candidates + 10 expansion_candidates = 21 raw -> 21 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:03 |       [2/10] Id=61439443 anchors=3 context=5 citation=True similarity=0.793 retrieval=1.62s
+02:17:04 |       [debug-retrieval] traverse_graph 1-hop: 1 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [6531341, 11334399]
+02:17:07 |       [debug-retrieval] traverse_graph TOTAL: hop1=1 hop2=14 raw=15
+02:17:07 |       [debug-retrieval] semantic_expansion: 15 traversal_candidates -> 3 seed unik: [37137536, 39218791, 35517712]
+02:17:08 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 9 PUNYA jawaban (45 answerless di-skip SEBELUM commit)
+02:17:08 |       [debug-retrieval]   seed qid=37137536 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [1322816, 73490607, 8090081]
+02:17:08 |       [debug-retrieval]   seed qid=39218791 -> 2/3 tetangga BERJAWABAN terpilih (dari pool 18): [4895773, 18772689]
+02:17:08 |       [debug-retrieval]   seed qid=35517712 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [587357, 28389807, 69146596]
+02:17:08 |       [debug-retrieval] semantic_expansion TOTAL: 8 qid terpilih (pre-filtered) -> 12 kandidat jawaban kembali
+02:17:08 |       [debug-retrieval] fuse_and_rank: 15 graph_candidates + 12 expansion_candidates = 27 raw -> 17 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:12 |       [3/10] Id=1666588 anchors=3 context=5 citation=True similarity=0.456 retrieval=5.02s
+02:17:12 |       [debug-retrieval] traverse_graph 1-hop: 0 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [75953702, 39601738, 71241857]
+02:17:12 |       [debug-retrieval] traverse_graph TOTAL: hop1=0 hop2=11 raw=11
+02:17:12 |       [debug-retrieval] semantic_expansion: 11 traversal_candidates -> 3 seed unik: [30715339, 36781075, 45904310]
+02:17:13 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 14 PUNYA jawaban (40 answerless di-skip SEBELUM commit)
+02:17:13 |       [debug-retrieval]   seed qid=30715339 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [53528351, 6820462, 38224671]
+02:17:13 |       [debug-retrieval]   seed qid=36781075 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [73940984, 3412211, 16263420]
+02:17:13 |       [debug-retrieval]   seed qid=45904310 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [36679096, 18497625, 6698673]
+02:17:13 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid terpilih (pre-filtered) -> 9 kandidat jawaban kembali
+02:17:13 |       [debug-retrieval] fuse_and_rank: 11 graph_candidates + 9 expansion_candidates = 20 raw -> 20 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:16 |       [4/10] Id=58838875 anchors=3 context=5 citation=True similarity=0.571 retrieval=1.06s
+02:17:17 |       [debug-retrieval] traverse_graph 1-hop: 0 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [40390869, 72067830, 20380528]
+02:17:17 |       [debug-retrieval] traverse_graph TOTAL: hop1=0 hop2=5 raw=5
+02:17:17 |       [debug-retrieval] semantic_expansion: 5 traversal_candidates -> 3 seed unik: [8017741, 33446384, 15991819]
+02:17:18 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 22 PUNYA jawaban (32 answerless di-skip SEBELUM commit)
+02:17:18 |       [debug-retrieval]   seed qid=8017741 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [20771081, 38316324, 14532705]
+02:17:18 |       [debug-retrieval]   seed qid=33446384 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [15991819, 27050091, 55596580]
+02:17:18 |       [debug-retrieval]   seed qid=15991819 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [44111027, 29553231, 41076118]
+02:17:18 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid terpilih (pre-filtered) -> 10 kandidat jawaban kembali
+02:17:18 |       [debug-retrieval] fuse_and_rank: 5 graph_candidates + 10 expansion_candidates = 15 raw -> 14 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:26 |       [5/10] Id=46235671 anchors=3 context=5 citation=True similarity=0.732 retrieval=1.13s
+02:17:27 |       [debug-retrieval] traverse_graph 1-hop: 1 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [685930, 1340763]
+02:17:27 |       [debug-retrieval] traverse_graph TOTAL: hop1=1 hop2=11 raw=12
+02:17:27 |       [debug-retrieval] semantic_expansion: 12 traversal_candidates -> 3 seed unik: [1458854, 27699252, 8596121]
+02:17:28 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 20 PUNYA jawaban (34 answerless di-skip SEBELUM commit)
+02:17:28 |       [debug-retrieval]   seed qid=1458854 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [11333527, 53584812, 11833982]
+02:17:28 |       [debug-retrieval]   seed qid=27699252 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [38724171, 2669924, 75260992]
+02:17:28 |       [debug-retrieval]   seed qid=8596121 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [47459994, 8103379, 62043914]
+02:17:28 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid terpilih (pre-filtered) -> 13 kandidat jawaban kembali
+02:17:28 |       [debug-retrieval] fuse_and_rank: 12 graph_candidates + 13 expansion_candidates = 25 raw -> 24 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:33 |       [6/10] Id=1107825 anchors=3 context=5 citation=True similarity=0.522 retrieval=1.41s
+02:17:34 |       [debug-retrieval] traverse_graph 1-hop: 0 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [34314295, 71197993, 37001816]
+02:17:34 |       [debug-retrieval] traverse_graph TOTAL: hop1=0 hop2=13 raw=13
+02:17:34 |       [debug-retrieval] semantic_expansion: 13 traversal_candidates -> 3 seed unik: [45945535, 57461564, 65812734]
+02:17:34 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 18 PUNYA jawaban (36 answerless di-skip SEBELUM commit)
+02:17:34 |       [debug-retrieval]   seed qid=45945535 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [21051440, 39533411, 12362719]
+02:17:34 |       [debug-retrieval]   seed qid=57461564 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [78201024, 65812734, 57361752]
+02:17:34 |       [debug-retrieval]   seed qid=65812734 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [57461564, 73011417, 57774314]
+02:17:34 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid terpilih (pre-filtered) -> 12 kandidat jawaban kembali
+02:17:34 |       [debug-retrieval] fuse_and_rank: 13 graph_candidates + 12 expansion_candidates = 25 raw -> 13 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:39 |       [7/10] Id=50864215 anchors=3 context=5 citation=False similarity=0.693 retrieval=0.53s
+02:17:40 |       [debug-retrieval] traverse_graph 1-hop: 1 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [76553529, 15071924]
+02:17:40 |       [debug-retrieval] traverse_graph TOTAL: hop1=1 hop2=16 raw=17
+02:17:40 |       [debug-retrieval] semantic_expansion: 17 traversal_candidates -> 3 seed unik: [73518110, 23667439, 35154436]
+02:17:41 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 9 PUNYA jawaban (45 answerless di-skip SEBELUM commit)
+02:17:41 |       [debug-retrieval]   seed qid=73518110 -> 1/3 tetangga BERJAWABAN terpilih (dari pool 18): [77490956]
+02:17:41 |       [debug-retrieval]   seed qid=23667439 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [67174677, 13647895, 66984277]
+02:17:41 |       [debug-retrieval]   seed qid=35154436 -> 2/3 tetangga BERJAWABAN terpilih (dari pool 18): [70812056, 55733106]
+02:17:41 |       [debug-retrieval] semantic_expansion TOTAL: 6 qid terpilih (pre-filtered) -> 6 kandidat jawaban kembali
+02:17:41 |       [debug-retrieval] fuse_and_rank: 17 graph_candidates + 6 expansion_candidates = 23 raw -> 19 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:44 |       [8/10] Id=25399635 anchors=3 context=5 citation=True similarity=0.708 retrieval=1.38s
+02:17:45 |       [debug-retrieval] traverse_graph 1-hop: 0 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [18516157, 7748349, 22228887]
+02:17:45 |       [debug-retrieval] traverse_graph TOTAL: hop1=0 hop2=3 raw=3
+02:17:45 |       [debug-retrieval] semantic_expansion: 3 traversal_candidates -> 3 seed unik: [34508295, 35631138, 16539386]
+02:17:45 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 10 PUNYA jawaban (44 answerless di-skip SEBELUM commit)
+02:17:45 |       [debug-retrieval]   seed qid=34508295 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [17393718, 34478123, 959655]
+02:17:45 |       [debug-retrieval]   seed qid=35631138 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [42815786, 70789549, 7802449]
+02:17:45 |       [debug-retrieval]   seed qid=16539386 -> 0/3 tetangga BERJAWABAN terpilih (dari pool 18): []
+02:17:45 |       [debug-retrieval] semantic_expansion TOTAL: 6 qid terpilih (pre-filtered) -> 6 kandidat jawaban kembali
+02:17:45 |       [debug-retrieval] fuse_and_rank: 3 graph_candidates + 6 expansion_candidates = 9 raw -> 9 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:49 |       [9/10] Id=5334566 anchors=3 context=5 citation=True similarity=0.679 retrieval=0.80s
+02:17:50 |       [debug-retrieval] traverse_graph 1-hop: 4 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [55646383]
+02:17:50 |       [debug-retrieval] traverse_graph TOTAL: hop1=4 hop2=17 raw=21
+02:17:50 |       [debug-retrieval] semantic_expansion: 21 traversal_candidates -> 3 seed unik: [44238230, 17523513, 5722302]
+02:17:51 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 34 PUNYA jawaban (20 answerless di-skip SEBELUM commit)
+02:17:51 |       [debug-retrieval]   seed qid=44238230 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [30662595, 27589274, 18132331]
+02:17:51 |       [debug-retrieval]   seed qid=17523513 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [18240751, 24410682, 10007801]
+02:17:51 |       [debug-retrieval]   seed qid=5722302 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [55997615, 10052469, 27084036]
+02:17:51 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid terpilih (pre-filtered) -> 12 kandidat jawaban kembali
+02:17:51 |       [debug-retrieval] fuse_and_rank: 21 graph_candidates + 12 expansion_candidates = 33 raw -> 29 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+02:17:54 |       [10/10] Id=56135663 anchors=3 context=5 citation=True similarity=0.537 retrieval=1.07s
+02:17:55 | [8/9] Selesai memproses seluruh sample.
+02:17:55 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_openai_gpt-4o-mini_n10_seed42.jsonl size_bytes=0
+02:17:55 | 
+[ERROR] Tidak ada hasil tersimpan sama sekali.
+02:17:55 | [logging] Ringkasan run (gagal) dicatat -> logs/run_history.jsonl

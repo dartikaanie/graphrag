@@ -21,7 +21,7 @@ CARA PAKAI
 ----------
     python analyze_kg_feasibility.py
 
-Jalankan dari folder 02_baseline_replication/ (path .env sama).
+Jalankan dari folder llm/a_pure_llm/ (path .env sama).
 """
 
 import os

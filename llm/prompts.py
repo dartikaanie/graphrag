@@ -89,6 +89,15 @@ def build_graphrag_messages(title: str, body: str, tags: str, retrieved: list) -
             f"source thread it came from using its label (e.g. [SO-1234]) immediately "
             f"after the claim. If a claim draws on multiple sources, cite all of them "
             f"(e.g. [SO-1234][SO-5678]).\n\n"
+            f"Example of the exact citation style required (note the format is always "
+            f"square brackets, the letters SO, a hyphen, then digits -- with NO other "
+            f"variation such as a colon or the word 'thread'):\n"
+            f"\"You can fix this by adding a null check before accessing the array "
+            f"[SO-1234567]. If the error persists after that, verify your build "
+            f"configuration matches the recommended setup [SO-2233445][SO-8899001].\"\n"
+            f"(The numbers above are just an example format, not real sources -- "
+            f"always use the actual [SO-<id>] labels from the context given to you "
+            f"above, never invent a number that is not one of those labels.)\n\n"
         )
     else:
         # Tidak ada konteks ditemukan (retrieval gagal/graf terlalu jarang utk
@@ -105,7 +114,9 @@ def build_graphrag_messages(title: str, body: str, tags: str, retrieved: list) -
 
     return [
         {"role": "system",
-         "content": "You are an expert in software engineering with much experience on programming."},
+         "content": "You are an expert in software engineering with much experience on "
+                    "programming. When context is provided, you MUST cite the source "
+                    "thread label (e.g. [SO-1234]) for every claim you make."},
         {"role": "user",
          "content": f"Please, act as you have solid experience on these topics: {tag_list} ."},
         {"role": "assistant",
@@ -113,7 +124,10 @@ def build_graphrag_messages(title: str, body: str, tags: str, retrieved: list) -
         {"role": "user",
          "content": f"{context_section}"
                     f"Please, explain how to fix the problem below. {title}. "
-                    f"Below, you can find more details. {body}."},
+                    f"Below, you can find more details. {body}."
+                    + ("\n\nReminder: cite [SO-<id>] immediately after every factual "
+                       "claim, using the labels from the context above." if retrieved
+                       else "")},
     ]
 
 

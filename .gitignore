@@ -10,5 +10,10 @@ __pycache__/
 01_data_cleaning/.env
 01_data_cleaning/_kg_workspace/*
 .env
-02_baseline_replication/logs/*
-03_rag/logs/*00_datasource/PostLinks.xml
+*.env
+llm/a_pure_llm/logs/*
+llm/b_rag/logs/*
+00_datasource/PostLinks.xml
+
+# Local Claude Code tool config -- machine-specific, not project source
+.claude/

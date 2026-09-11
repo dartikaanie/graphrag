@@ -1,0 +1,7 @@
+fastapi>=0.112
+uvicorn[standard]>=0.30
+pydantic>=2.13
+pydantic-settings>=2.4
+neo4j>=5.23
+duckdb>=1.5
+python-dotenv>=1.0

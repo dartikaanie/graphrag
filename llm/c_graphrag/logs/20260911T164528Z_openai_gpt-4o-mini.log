@@ -1,0 +1,36 @@
+23:45:28 | [logging] Log detail run ini -> logs/20260911T164528Z_openai_gpt-4o-mini.log
+23:45:28 | [config] output auto-generated -> 'results/condition_c_openai_gpt-4o-mini_n1_seed42.jsonl'
+23:45:28 | [config] n_sample=1 seed=42 provider=openai model=gpt-4o-mini
+23:45:28 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+23:45:29 | [1/9] Mengambil oversample pool (1536 kandidat)...
+23:45:34 |       Oversample pool diambil: 1,536 kandidat
+23:45:34 | [2/9] Menghitung token & filter <= 2048 token...
+23:45:35 |       1,536 -> 1,471 lolos filter token
+23:45:35 | [3/9] Mengambil 1 pertanyaan evaluasi PERTAMA dari permutasi tetap (seed=42) -- prefix ini NESTED thd n_sample lain...
+23:45:35 | [4/9] Mengambil teks accepted answer (ground truth)...
+23:45:35 |       Ditemukan 1 accepted answer
+23:45:35 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+23:45:35 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+23:45:49 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../../01_data_cleaning/_kg_workspace
+23:45:52 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+23:45:59 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 1 pertanyaan...
+23:45:59 |       [debug-init] cwd='/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag' output_path=PosixPath('results/condition_c_openai_gpt-4o-mini_n1_seed42.jsonl') resolved=PosixPath('/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n1_seed42.jsonl') fileno=10
+23:46:09 |       [debug-write] Id=38118194 bytes_written_this_line=9629 file_size_now=9629 f_out.tell()=9629
+23:46:09 |       [1/1] Id=38118194 anchors=3 context=5 citation=True valid_citation=True similarity=0.650 retrieval=6.14s
+23:46:09 | [8/9] Selesai memproses seluruh sample.
+23:46:09 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n1_seed42.jsonl size_bytes=9629
+23:46:09 | 
+======================================================================
+23:46:09 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+23:46:09 | ======================================================================
+23:46:09 | Total pertanyaan diproses      : 1
+23:46:09 | Cosine similarity rata-rata    : 0.6501
+23:46:09 | Cosine similarity median       : 0.6501
+23:46:09 | % similarity > 0.5             : 100.0%
+23:46:09 | % jawaban dgn >=1 kutipan format cocok  : 100.0% (longgar, toleransi variasi format)
+23:46:09 | % jawaban dgn >=1 kutipan VALID (NF2)   : 100.0% [target: 100%] PASS (ID kutipan divalidasi ada di retrieved_context yg sebenarnya)
+23:46:09 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+23:46:09 | Retrieval latency -- avg: 6.14s, p95: 6.14s [NF3 target: <=15s] PASS
+23:46:09 | 
+Hasil lengkap tersimpan -> results/condition_c_openai_gpt-4o-mini_n1_seed42.jsonl
+23:46:09 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl

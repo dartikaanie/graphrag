@@ -12,7 +12,7 @@ CARA PAKAI
 
 Path parquet diambil dari .env yang sama dengan a_baseline_replecation.py
 (QUESTIONS_PARQUET, ANSWERS_PARQUET) -- jalankan dari folder
-02_baseline_replication/ supaya path relatif konsisten.
+llm/a_pure_llm/ supaya path relatif konsisten.
 """
 
 import os

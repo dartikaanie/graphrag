@@ -1,0 +1,94 @@
+02:41:18 | [logging] Log detail run ini -> logs/20260907T194118Z_openai_gpt-4o-mini.log
+02:41:18 | [config] output auto-generated -> 'results/condition_c_openai_gpt-4o-mini_n30_seed42.jsonl'
+02:41:18 | [config] n_sample=30 seed=42 provider=openai model=gpt-4o-mini
+02:41:18 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+02:41:19 | [1/9] Mengambil oversample pool (90 kandidat)...
+02:41:24 |       Oversample pool diambil: 90 kandidat
+02:41:24 | [2/9] Menghitung token & filter <= 2048 token...
+02:41:24 |       90 -> 84 lolos filter token
+02:41:24 | [3/9] Sampling acak 30 pertanyaan evaluasi (seed=42)...
+02:41:24 | [4/9] Mengambil teks accepted answer (ground truth)...
+02:41:28 |       Ditemukan 30 accepted answer
+02:41:28 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+02:41:28 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+02:41:47 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+02:41:50 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+02:41:55 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 30 pertanyaan...
+02:41:55 |       [debug-init] cwd='/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag' output_path=PosixPath('results/condition_c_openai_gpt-4o-mini_n30_seed42.jsonl') resolved=PosixPath('/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_openai_gpt-4o-mini_n30_seed42.jsonl') fileno=10
+02:42:01 |       [debug-write] Id=36447196 bytes_written_this_line=8854 file_size_now=8854 f_out.tell()=8854
+02:42:01 |       [1/30] Id=36447196 anchors=3 context=5 citation=True valid_citation=True similarity=0.491 retrieval=2.50s
+02:42:07 |       [debug-write] Id=59994807 bytes_written_this_line=16347 file_size_now=25201 f_out.tell()=25201
+02:42:07 |       [2/30] Id=59994807 anchors=3 context=5 citation=True valid_citation=True similarity=0.459 retrieval=0.34s
+02:42:13 |       [debug-write] Id=16980197 bytes_written_this_line=13183 file_size_now=38384 f_out.tell()=38384
+02:42:13 |       [3/30] Id=16980197 anchors=3 context=5 citation=True valid_citation=True similarity=0.603 retrieval=0.38s
+02:42:17 |       [debug-write] Id=6978367 bytes_written_this_line=6697 file_size_now=45081 f_out.tell()=45081
+02:42:17 |       [4/30] Id=6978367 anchors=3 context=5 citation=True valid_citation=True similarity=0.597 retrieval=0.49s
+02:42:23 |       [debug-write] Id=21426953 bytes_written_this_line=13060 file_size_now=58141 f_out.tell()=58141
+02:42:23 |       [5/30] Id=21426953 anchors=3 context=5 citation=True valid_citation=True similarity=0.568 retrieval=0.58s
+02:42:27 |       [debug-write] Id=68567120 bytes_written_this_line=12787 file_size_now=70928 f_out.tell()=70928
+02:42:27 |       [6/30] Id=68567120 anchors=3 context=5 citation=True valid_citation=True similarity=0.486 retrieval=0.26s
+02:42:31 |       [debug-write] Id=386071 bytes_written_this_line=8439 file_size_now=79367 f_out.tell()=79367
+02:42:31 |       [7/30] Id=386071 anchors=3 context=5 citation=True valid_citation=True similarity=0.788 retrieval=0.45s
+02:42:35 |       [debug-write] Id=34692592 bytes_written_this_line=9049 file_size_now=88416 f_out.tell()=88416
+02:42:35 |       [8/30] Id=34692592 anchors=3 context=5 citation=True valid_citation=True similarity=0.823 retrieval=0.42s
+02:42:40 |       [debug-write] Id=70773763 bytes_written_this_line=7827 file_size_now=96243 f_out.tell()=96243
+02:42:40 |       [9/30] Id=70773763 anchors=3 context=3 citation=True valid_citation=True similarity=0.575 retrieval=0.46s
+02:42:45 |       [debug-write] Id=67735418 bytes_written_this_line=12000 file_size_now=108243 f_out.tell()=108243
+02:42:45 |       [10/30] Id=67735418 anchors=3 context=5 citation=True valid_citation=True similarity=0.826 retrieval=0.46s
+02:42:52 |       [debug-write] Id=69356041 bytes_written_this_line=10873 file_size_now=119116 f_out.tell()=119116
+02:42:52 |       [11/30] Id=69356041 anchors=3 context=5 citation=True valid_citation=True similarity=0.679 retrieval=0.41s
+02:42:57 |       [debug-write] Id=9750061 bytes_written_this_line=10490 file_size_now=129606 f_out.tell()=129606
+02:42:57 |       [12/30] Id=9750061 anchors=3 context=5 citation=True valid_citation=True similarity=0.415 retrieval=0.54s
+02:43:03 |       [debug-write] Id=34524722 bytes_written_this_line=14879 file_size_now=144485 f_out.tell()=144485
+02:43:03 |       [13/30] Id=34524722 anchors=3 context=5 citation=True valid_citation=True similarity=0.648 retrieval=0.22s
+02:43:09 |       [debug-write] Id=65604601 bytes_written_this_line=10420 file_size_now=154905 f_out.tell()=154905
+02:43:09 |       [14/30] Id=65604601 anchors=3 context=5 citation=True valid_citation=True similarity=0.686 retrieval=0.36s
+02:43:14 |       [debug-write] Id=15603760 bytes_written_this_line=11455 file_size_now=166360 f_out.tell()=166360
+02:43:14 |       [15/30] Id=15603760 anchors=3 context=5 citation=True valid_citation=True similarity=0.644 retrieval=0.47s
+02:43:17 |       [debug-write] Id=26697538 bytes_written_this_line=10554 file_size_now=176914 f_out.tell()=176914
+02:43:17 |       [16/30] Id=26697538 anchors=3 context=5 citation=True valid_citation=True similarity=0.835 retrieval=0.31s
+02:43:23 |       [debug-write] Id=73951786 bytes_written_this_line=17315 file_size_now=194229 f_out.tell()=194229
+02:43:23 |       [17/30] Id=73951786 anchors=3 context=5 citation=True valid_citation=True similarity=0.288 retrieval=0.40s
+02:43:28 |       [debug-write] Id=2436996 bytes_written_this_line=9865 file_size_now=204094 f_out.tell()=204094
+02:43:28 |       [18/30] Id=2436996 anchors=3 context=5 citation=True valid_citation=True similarity=0.554 retrieval=0.50s
+02:43:34 |       [debug-write] Id=23444072 bytes_written_this_line=12557 file_size_now=216651 f_out.tell()=216651
+02:43:34 |       [19/30] Id=23444072 anchors=3 context=5 citation=True valid_citation=True similarity=0.705 retrieval=0.87s
+02:43:39 |       [debug-write] Id=28812782 bytes_written_this_line=10825 file_size_now=227476 f_out.tell()=227476
+02:43:39 |       [20/30] Id=28812782 anchors=3 context=5 citation=True valid_citation=True similarity=0.874 retrieval=0.34s
+02:43:43 |       [debug-write] Id=42529598 bytes_written_this_line=9246 file_size_now=236722 f_out.tell()=236722
+02:43:43 |       [21/30] Id=42529598 anchors=3 context=5 citation=True valid_citation=True similarity=0.571 retrieval=0.46s
+02:43:49 |       [debug-write] Id=8872473 bytes_written_this_line=10445 file_size_now=247167 f_out.tell()=247167
+02:43:49 |       [22/30] Id=8872473 anchors=3 context=5 citation=True valid_citation=True similarity=0.501 retrieval=0.28s
+02:43:53 |       [debug-write] Id=5111139 bytes_written_this_line=8726 file_size_now=255893 f_out.tell()=255893
+02:43:53 |       [23/30] Id=5111139 anchors=3 context=5 citation=True valid_citation=True similarity=0.492 retrieval=0.70s
+02:43:58 |       [debug-write] Id=18373537 bytes_written_this_line=15416 file_size_now=271309 f_out.tell()=271309
+02:43:58 |       [24/30] Id=18373537 anchors=3 context=5 citation=True valid_citation=True similarity=0.374 retrieval=1.55s
+02:44:03 |       [debug-write] Id=29517627 bytes_written_this_line=12307 file_size_now=283616 f_out.tell()=283616
+02:44:03 |       [25/30] Id=29517627 anchors=3 context=5 citation=True valid_citation=True similarity=0.634 retrieval=0.88s
+02:44:08 |       [debug-write] Id=36708138 bytes_written_this_line=10006 file_size_now=293622 f_out.tell()=293622
+02:44:08 |       [26/30] Id=36708138 anchors=3 context=5 citation=True valid_citation=True similarity=0.372 retrieval=0.36s
+02:44:15 |       [debug-write] Id=32843350 bytes_written_this_line=10434 file_size_now=304056 f_out.tell()=304056
+02:44:15 |       [27/30] Id=32843350 anchors=3 context=5 citation=True valid_citation=True similarity=0.773 retrieval=1.53s
+02:44:19 |       [debug-write] Id=9998509 bytes_written_this_line=10227 file_size_now=314283 f_out.tell()=314283
+02:44:19 |       [28/30] Id=9998509 anchors=3 context=5 citation=True valid_citation=True similarity=0.630 retrieval=0.77s
+02:44:24 |       [debug-write] Id=57361019 bytes_written_this_line=13064 file_size_now=327347 f_out.tell()=327347
+02:44:24 |       [29/30] Id=57361019 anchors=3 context=5 citation=True valid_citation=True similarity=0.612 retrieval=0.32s
+02:44:27 |       [debug-write] Id=36101524 bytes_written_this_line=9738 file_size_now=337085 f_out.tell()=337085
+02:44:27 |       [30/30] Id=36101524 anchors=3 context=5 citation=True valid_citation=True similarity=0.624 retrieval=0.38s
+02:44:28 | [8/9] Selesai memproses seluruh sample.
+02:44:28 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_openai_gpt-4o-mini_n30_seed42.jsonl size_bytes=337085
+02:44:28 | 
+======================================================================
+02:44:28 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+02:44:28 | ======================================================================
+02:44:28 | Total pertanyaan diproses      : 30
+02:44:28 | Cosine similarity rata-rata    : 0.6043
+02:44:28 | Cosine similarity median       : 0.6079
+02:44:28 | % similarity > 0.5             : 73.3%
+02:44:28 | % jawaban dgn >=1 kutipan format cocok  : 100.0% (longgar, toleransi variasi format)
+02:44:28 | % jawaban dgn >=1 kutipan VALID (NF2)   : 100.0% [target: 100%] PASS (ID kutipan divalidasi ada di retrieved_context yg sebenarnya)
+02:44:28 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+02:44:28 | Retrieval latency -- avg: 0.60s, p95: 1.54s [NF3 target: <=15s] PASS
+02:44:28 | 
+Hasil lengkap tersimpan -> results/condition_c_openai_gpt-4o-mini_n30_seed42.jsonl
+02:44:28 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl
