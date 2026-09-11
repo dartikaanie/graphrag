@@ -16,11 +16,17 @@ export function MetricSummaryCards({ summary, condition }: { summary: RunSummary
     { label: 'Median Cosine Similarity (0–1)', value: fmtScore(summary.cosine_similarity_median) },
     { label: '% Similarity > 0.5', value: fmtPct(summary.pct_similarity_above_0_5) },
   ]
+  // NF2 shows whenever the summary actually has it -- Condition B produces
+  // it too when --require-citation is on (default), so B vs C NF2 can be
+  // compared directly rather than gating this on condition === 'C'.
+  if (summary.pct_with_valid_citation !== undefined) {
+    cards.push({ label: 'NF2 — Citation Compliance', value: fmtPct(summary.pct_with_valid_citation) })
+  }
   if (condition === 'C') {
-    cards.push(
-      { label: 'NF2 — Citation Compliance', value: fmtPct(summary.pct_with_valid_citation) },
-      { label: 'Avg Retrieval Latency', value: summary.avg_retrieval_latency_sec != null ? `${summary.avg_retrieval_latency_sec.toFixed(2)}s` : '—' },
-    )
+    cards.push({
+      label: 'Avg Retrieval Latency',
+      value: summary.avg_retrieval_latency_sec != null ? `${summary.avg_retrieval_latency_sec.toFixed(2)}s` : '—',
+    })
   }
 
   return (

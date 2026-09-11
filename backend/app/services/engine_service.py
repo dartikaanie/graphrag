@@ -313,13 +313,20 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             chunk_df, embed_model, index_cache_dir, index_pool, token_chunk_limit, embed_model_name, rebuild=False,
         )
 
+        require_citation = bool(params.get("require_citation", True))
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, top_k, model, output_path, already_done,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+            require_citation=require_citation,
         )
 
         cancelled = run_registry.is_cancelled(run_id)
         summary = _summarize(results)
+        if require_citation and results:
+            n_citation = sum(1 for r in results if r.get("has_citation"))
+            n_valid_citation = sum(1 for r in results if r.get("has_valid_citation"))
+            summary["pct_with_citation"] = round(n_citation / len(results) * 100, 1)
+            summary["pct_with_valid_citation"] = round(n_valid_citation / len(results) * 100, 1)
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         cond.append_run_history({
             "run_started_at": run_started_at.isoformat(),
@@ -330,6 +337,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             "n_sample_target": params.get("n_sample", 1),
             "n_processed": len(results),
             "seed": seed,
+            "require_citation": require_citation,
             "index_pool": index_pool,
             "top_k": top_k,
             "output_path": str(output_path),

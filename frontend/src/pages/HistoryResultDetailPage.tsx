@@ -45,12 +45,14 @@ export function HistoryResultDetailPage() {
           <span className="text-text-secondary">Cosine similarity (0–1): </span>
           <span className="font-medium">{data.cosine_similarity.toFixed(4)}</span>
         </div>
+        {data.has_valid_citation !== undefined && (
+          <div>
+            <span className="text-text-secondary">Valid citation (NF2): </span>
+            {data.has_valid_citation ? <Badge tone="success">Yes</Badge> : <Badge tone="danger">No</Badge>}
+          </div>
+        )}
         {condition === 'C' && (
           <>
-            <div>
-              <span className="text-text-secondary">Valid citation (NF2): </span>
-              {data.has_valid_citation ? <Badge tone="success">Yes</Badge> : <Badge tone="danger">No</Badge>}
-            </div>
             {data.retrieval_latency_sec != null && (
               <div>
                 <span className="text-text-secondary">Retrieval latency: </span>

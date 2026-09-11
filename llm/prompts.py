@@ -131,17 +131,45 @@ def build_graphrag_messages(title: str, body: str, tags: str, retrieved: list) -
     ]
 
 
-def build_rag_messages(title: str, body: str, tags: str, retrieved: list) -> list[dict]:
+def build_rag_messages(title: str, body: str, tags: str, retrieved: list,
+                        require_citation: bool = False) -> list[dict]:
     """Struktur 4-turn SAMA PERSIS dengan build_base_messages(), DITAMBAH
     konteks komunitas hasil retrieval yang disisipkan di AWAL turn user
     terakhir, sebelum pertanyaan (retrieval-augmented generation
-    konvensional -- tanpa constraint grounding eksplisit, itu bedanya
+    konvensional -- tanpa constraint GROUNDING eksplisit, itu bedanya
     dari Kondisi C). Dipakai oleh Kondisi B; Kondisi C bisa memakai fungsi
     yang sama kalau format `retrieved` (list of dict dengan key
-    'chunk_text') tetap konsisten."""
+    'chunk_text') tetap konsisten.
+
+    `require_citation` (default False, opsional -- lihat
+    CONDITION_B_REQUIRE_CITATION di .env / --require-citation CLI flag
+    Kondisi B): kalau True, tiap item konteks diberi label eksplisit
+    "[SO-{question_id}]" (persis format Kondisi C, BUKAN "[Referensi N]"
+    generik) dan model diminta mengutip label itu per klaim -- TANPA
+    instruksi grounding "jangan mengarang di luar konteks" milik Kondisi C
+    (lihat build_graphrag_messages). Ini SENGAJA: tujuannya mengukur
+    apakah instruksi sitasi saja (tanpa constraint graf/grounding) sudah
+    cukup menghasilkan sitasi valid pada RAG datar, sebagai baseline
+    pembanding NF2 terhadap Kondisi C -- bukan mereplikasi Kondisi C.
+    """
     tag_list = _clean_tags(tags)
 
-    if retrieved:
+    if retrieved and require_citation:
+        context_block = "\n\n".join(
+            f"[SO-{r['question_id']}] {r['chunk_text']}" for r in retrieved
+        )
+        context_section = (
+            f"Here is some potentially relevant context from the Stack Overflow "
+            f"community that may help you answer (use your own judgment; not all "
+            f"references may be directly applicable), each labeled with its "
+            f"source thread id (e.g. [SO-1234]):\n\n{context_block}\n\n"
+            f"For EVERY factual claim or piece of advice in your answer, cite the "
+            f"source thread it came from using its label (e.g. [SO-1234]) immediately "
+            f"after the claim. If a claim draws on multiple sources, cite all of them "
+            f"(e.g. [SO-1234][SO-5678]). Use ONLY the exact [SO-<id>] labels given "
+            f"above, never invent a number that is not one of those labels.\n\n"
+        )
+    elif retrieved:
         context_block = "\n\n".join(
             f"[Referensi {i+1}] {r['chunk_text']}" for i, r in enumerate(retrieved)
         )
@@ -153,9 +181,16 @@ def build_rag_messages(title: str, body: str, tags: str, retrieved: list) -> lis
     else:
         context_section = ""
 
+    system_content = "You are an expert in software engineering with much experience on programming."
+    if require_citation:
+        system_content += (
+            " When context is provided, you MUST cite the source thread label "
+            "(e.g. [SO-1234]) for every claim you make."
+        )
+
     return [
         {"role": "system",
-         "content": "You are an expert in software engineering with much experience on programming."},
+         "content": system_content},
         {"role": "user",
          "content": f"Please, act as you have solid experience on these topics: {tag_list} ."},
         {"role": "assistant",
@@ -163,5 +198,8 @@ def build_rag_messages(title: str, body: str, tags: str, retrieved: list) -> lis
         {"role": "user",
          "content": f"{context_section}"
                     f"Please, explain how to fix the problem below. {title}. "
-                    f"Below, you can find more details. {body}."},
+                    f"Below, you can find more details. {body}."
+                    + ("\n\nReminder: cite [SO-<id>] immediately after every factual "
+                       "claim, using the labels from the context above." if (retrieved and require_citation)
+                       else "")},
     ]

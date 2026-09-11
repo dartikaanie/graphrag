@@ -36,10 +36,12 @@ export function RunConditionPage() {
   const [topK, setTopK] = useState(5)
   const [nAnchor, setNAnchor] = useState(3)
   const [nSemanticExpansion, setNSemanticExpansion] = useState(3)
+  const [requireCitation, setRequireCitation] = useState(true)
   const [questionId, setQuestionId] = useState('')
 
   const isRag = condition === 'B' || condition === 'C'
   const isGraph = condition === 'C'
+  const isConditionB = condition === 'B'
 
   const handleRun = () => {
     const params: RunCreateParams = {
@@ -47,6 +49,7 @@ export function RunConditionPage() {
       mode,
       provider,
       model,
+      ...(isConditionB ? { require_citation: requireCitation } : {}),
       ...(mode === 'batch'
         ? {
             n_sample: nSample,
@@ -136,6 +139,15 @@ export function RunConditionPage() {
               <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} />
             </Field>
           </div>
+        )}
+
+        {isConditionB && (
+          <label className="flex items-center gap-2 text-sm mt-3">
+            <input type="checkbox" checked={requireCitation} onChange={(e) => setRequireCitation(e.target.checked)} />
+            <span className="text-text-secondary">
+              Require [SO-&lt;id&gt;] citations (same format as Condition C, for NF2 comparison)
+            </span>
+          </label>
         )}
 
         {(seed !== 42 || (oversamplePool && oversamplePool !== '')) && mode === 'batch' && (

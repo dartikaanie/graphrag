@@ -143,6 +143,7 @@ load_dotenv()
 # (A/B/C) supaya cara panggil provider LLM & struktur prompt dasar tidak
 # terduplikasi/berisiko diam-diam berbeda antar file kondisi.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from llm.citations import extract_citations
 from llm.client_factory import get_llm_client
 from llm.prompts import build_rag_messages
 
@@ -445,7 +446,7 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 
 def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, index, meta_df: pd.DataFrame,
                     top_k: int, model: str, output_path: Path, already_done: set | None = None,
-                    on_progress=None, check_cancel=None) -> list[dict]:
+                    on_progress=None, check_cancel=None, require_citation: bool = True) -> list[dict]:
     """Proses satu-per-satu sample_df: retrieval top-k + prompt RAG + hitung
     cosine similarity, tulis ke output_path (append, resumable). Diekstrak
     dari main() dengan pola SAMA PERSIS dengan process_sample() Kondisi A
@@ -454,6 +455,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
     `on_progress(dict)` / `check_cancel()` -> lihat docstring Kondisi A;
     keduanya opsional supaya CLI (main()) tidak berubah perilaku.
+
+    `require_citation` (default True -- lihat --require-citation di main()):
+    kalau True, build_rag_messages() memberi label [SO-<id>] + instruksi
+    sitasi (format sama dgn Kondisi C), dan setiap jawaban divalidasi via
+    llm/citations.py.extract_citations() sehingga record punya field
+    has_citation/cited_source_ids/has_valid_citation/valid_cited_source_ids
+    -- dipakai utk membandingkan NF2 (citation compliance) Kondisi B vs C.
     """
     already_done = already_done or set()
     total = len(sample_df)
@@ -471,7 +479,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             query_text = f"{row['Title']}\n{row['Body']}"
             retrieved = retrieve_context(embed_model, index, meta_df, query_text, top_k)
 
-            messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
+            messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
+                                           require_citation=require_citation)
             try:
                 llm_answer = call_llm_fn(llm_client, messages, model)
             except Exception as e:
@@ -482,6 +491,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 continue
 
             similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
+
+            if require_citation:
+                has_citation, cited_ids, has_valid_citation, valid_ids = extract_citations(llm_answer, retrieved)
 
             view_count = row.get("ViewCount")
             question_score = row.get("Score")
@@ -502,6 +514,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 "llm_answer": llm_answer,
                 "llm_model": model,
                 "cosine_similarity": similarity,
+                **({
+                    "has_citation": has_citation,
+                    "cited_source_ids": cited_ids,
+                    "has_valid_citation": has_valid_citation,
+                    "valid_cited_source_ids": valid_ids,
+                } if require_citation else {}),
             }
             try:
                 line = json.dumps(record, default=str)
@@ -517,8 +535,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             f_out.flush()
             os.fsync(f_out.fileno())  # paksa OS tulis ke disk, hindari false-negative di stat() akhir
             results.append(record)
+            citation_note = f" citation={record['has_valid_citation']}" if require_citation else ""
             log(f"      [{i+1}/{total}] Id={qid} "
-                  f"retrieved={len(retrieved)} similarity={similarity:.3f} "
+                  f"retrieved={len(retrieved)} similarity={similarity:.3f}{citation_note} "
                   f"(tertulis {n_written} char)")
             if on_progress:
                 on_progress({"question_id": qid, "index": i, "total": total,
@@ -584,6 +603,15 @@ def main():
                               "HARUS SAMA dgn Kondisi A supaya similarity comparable.")
     parser.add_argument("--rebuild-index", action="store_true",
                          help="Paksa rebuild index FAISS meski cache sudah ada")
+    parser.add_argument("--require-citation", action=argparse.BooleanOptionalAction,
+                         default=os.getenv("CONDITION_B_REQUIRE_CITATION", "true").strip().lower()
+                         in ("1", "true", "yes", "on"),
+                         help="Wajibkan model mengutip [SO-<id>] per klaim, format PERSIS sama dgn "
+                              "Kondisi C, supaya NF2 (citation compliance) B vs C bisa dibandingkan "
+                              "apples-to-apples -- lihat llm/citations.py. Default: AKTIF, dari "
+                              "CONDITION_B_REQUIRE_CITATION di .env. Nonaktifkan dgn "
+                              "--no-require-citation utk RAG konvensional tanpa instruksi sitasi "
+                              "(perilaku Kondisi B sebelum fitur ini ada).")
     args = parser.parse_args()
 
     global log
@@ -626,6 +654,8 @@ def main():
           f"provider={args.provider} model={args.model}")
     log(f"[config] index_pool={args.index_pool} top_k={args.top_k} "
           f"token_chunk_limit={args.token_chunk_limit} embed_model={args.embed_model}")
+    log(f"[config] require_citation={args.require_citation} "
+          f"({'[SO-<id>] labels + citation instruction, format sama dgn Kondisi C' if args.require_citation else 'RAG konvensional tanpa instruksi sitasi'})")
 
     llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
 
@@ -683,7 +713,7 @@ def main():
           f"{len(sample_df)} pertanyaan...")
 
     process_sample(sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, args.top_k,
-                    args.model, output_path, already_done)
+                    args.model, output_path, already_done, require_citation=args.require_citation)
 
     log("[8/8] Selesai memproses seluruh sample.")
 
@@ -738,6 +768,18 @@ def main():
     log(f"Cosine similarity rata-rata: {results_df['cosine_similarity'].mean():.4f}")
     log(f"Cosine similarity median   : {results_df['cosine_similarity'].median():.4f}")
     log(f"% similarity > 0.5         : {(results_df['cosine_similarity'] > 0.5).mean()*100:.1f}%")
+
+    citation_summary = {}
+    if args.require_citation and "has_valid_citation" in results_df.columns:
+        pct_citation = results_df["has_citation"].mean() * 100
+        pct_valid_citation = results_df["has_valid_citation"].mean() * 100
+        log(f"% jawaban dgn >=1 kutipan format cocok  : {pct_citation:.1f}%")
+        log(f"% jawaban dgn >=1 kutipan VALID (NF2)   : {pct_valid_citation:.1f}% "
+            f"(pembanding langsung terhadap Kondisi C)")
+        citation_summary = {
+            "pct_with_citation": round(float(pct_citation), 1),
+            "pct_with_valid_citation": round(float(pct_valid_citation), 1),
+        }
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
@@ -752,9 +794,11 @@ def main():
         "index_pool": args.index_pool,
         "top_k": args.top_k,
         "token_chunk_limit": args.token_chunk_limit,
+        "require_citation": args.require_citation,
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
+        **citation_summary,
         "output_path": str(output_path),
         "log_path": str(log_path),
         "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),

@@ -16,6 +16,7 @@ export interface RunCreateParams {
   top_k?: number
   n_anchor?: number
   n_semantic_expansion?: number
+  require_citation?: boolean
   question_id?: number | null
   provider: string
   model: string
