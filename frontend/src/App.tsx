@@ -10,6 +10,10 @@ import { TagDetailPage } from '@/pages/TagDetailPage'
 import { RunConditionPage } from '@/pages/RunConditionPage'
 import { RunResultPage } from '@/pages/RunResultPage'
 import { RunResultDetailPage } from '@/pages/RunResultDetailPage'
+import { HistoryPage } from '@/pages/HistoryPage'
+import { HistoryComparePage } from '@/pages/HistoryComparePage'
+import { HistoryDetailPage } from '@/pages/HistoryDetailPage'
+import { HistoryResultDetailPage } from '@/pages/HistoryResultDetailPage'
 import { ComingSoonPage } from '@/pages/ComingSoonPage'
 
 export default function App() {
@@ -28,7 +32,11 @@ export default function App() {
         <Route path="/experiment/:condition/runs/:run_id" element={<RunResultPage />} />
         <Route path="/experiment/:condition/runs/:run_id/q/:question_id" element={<RunResultDetailPage />} />
 
-        <Route path="/history" element={<ComingSoonPage title="History" phase="Phase 6" />} />
+        <Route path="/history" element={<HistoryPage />} />
+        <Route path="/history/compare" element={<HistoryComparePage />} />
+        <Route path="/history/:history_id" element={<HistoryDetailPage />} />
+        <Route path="/history/:history_id/q/:question_id" element={<HistoryResultDetailPage />} />
+
         <Route path="/settings" element={<ComingSoonPage title="Settings" phase="Phase 7" />} />
       </Route>
     </Routes>
