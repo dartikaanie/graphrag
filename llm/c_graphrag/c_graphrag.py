@@ -99,7 +99,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -520,32 +519,12 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
 
 # ---------------------------------------------------------------------
 # Citation check -- NF2 (100% jawaban dgn >=1 kutipan sumber)
+# Diekstrak ke llm/citations.py supaya Kondisi B (mode --require-citation
+# opsional) bisa pakai validasi PERSIS SAMA -- perbandingan NF2 B vs C jadi
+# apples-to-apples, bukan dua implementasi yang bisa diam-diam berbeda.
 # ---------------------------------------------------------------------
 
-CITATION_PATTERN = re.compile(r"\[SO[-: ]?(?:thread\s*)?(\d+)\]", re.IGNORECASE)
-
-
-def extract_citations(llm_answer: str, retrieved: list) -> tuple[bool, list, bool, list]:
-    """Return (has_citation, cited_ids, has_valid_citation, valid_ids).
-
-    has_citation/cited_ids: deteksi longgar -- toleransi variasi format kecil
-    ([SO-1234], [SO:1234], [SO 1234], [SO thread 1234]) supaya percobaan
-    kutipan model kecil yang formatnya sedikit meleset tetap terdeteksi
-    sbg "mencoba mengutip", bukan otomatis dianggap tidak ada kutipan
-    sama sekali.
-
-    has_valid_citation/valid_ids: NF2 versi ketat -- id yang dikutip
-    di-cross-check terhadap question_id di retrieved_context yang BENAR
-    diberikan ke model. Ditambahkan setelah ditemukan kasus model
-    menghasilkan citation-like token dgn ID yang di-hallucinate (tidak
-    cocok konteks asli sama sekali, mis. [SO:4329876] padahal konteks
-    yg diberikan SO-5928724) -- format benar TIDAK CUKUP utk NF2 yang
-    sebenarnya dimaksud (provenance tertelusuri ke node KG sumber asli).
-    """
-    ids = sorted(set(int(m) for m in CITATION_PATTERN.findall(llm_answer)))
-    context_ids = {r.get("question_id") for r in (retrieved or []) if r.get("question_id") is not None}
-    valid_ids = sorted(i for i in ids if i in context_ids)
-    return (len(ids) > 0, ids, len(valid_ids) > 0, valid_ids)
+from llm.citations import CITATION_PATTERN, extract_citations  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------

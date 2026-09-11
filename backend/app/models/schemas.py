@@ -85,6 +85,9 @@ class RunCreateRequest(BaseModel):
     top_k: int = 5
     n_anchor: int = 3
     n_semantic_expansion: int = 3
+    # Condition B only -- default True to match CONDITION_B_REQUIRE_CITATION
+    # in .env; lets NF2 (citation compliance) be compared B vs C.
+    require_citation: bool = True
     # single mode
     question_id: int | None = None
     # shared
