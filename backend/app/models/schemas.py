@@ -73,3 +73,47 @@ class StatsSummary(BaseModel):
     total_answers: int
     total_tags: int
     total_edges: int
+
+
+class RunCreateRequest(BaseModel):
+    condition: str  # "A" | "B" | "C"
+    mode: str  # "batch" | "single"
+    # batch mode
+    n_sample: int = 30
+    seed: int = 42
+    oversample_pool: int | None = None
+    top_k: int = 5
+    n_anchor: int = 3
+    n_semantic_expansion: int = 3
+    # single mode
+    question_id: int | None = None
+    # shared
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+
+
+class RunCreateResponse(BaseModel):
+    run_id: str
+
+
+class RunStatus(BaseModel):
+    run_id: str
+    condition: str
+    mode: str
+    status: str  # pending | running | completed | failed | cancelled
+    params: dict[str, Any]
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    progress: dict[str, Any]
+    summary: dict[str, Any] | None = None
+    error: str | None = None
+    output_path: str | None = None
+
+
+class RunResultItem(BaseModel):
+    question_id: int
+    index: int
+    status: str
+    similarity: float | None = None
+    error: str | None = None

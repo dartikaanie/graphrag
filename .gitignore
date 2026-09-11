@@ -17,3 +17,6 @@ llm/b_rag/logs/*
 
 # Local Claude Code tool config -- machine-specific, not project source
 .claude/
+
+# Dashboard run-registry persistence (ephemeral job state, not source of truth)
+backend/.runs/

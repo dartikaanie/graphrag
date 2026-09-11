@@ -440,6 +440,93 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 
 
 # ---------------------------------------------------------------------
+# Proses per-pertanyaan (dipakai CLI main() DAN dashboard backend/engine_service)
+# ---------------------------------------------------------------------
+
+def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, index, meta_df: pd.DataFrame,
+                    top_k: int, model: str, output_path: Path, already_done: set | None = None,
+                    on_progress=None, check_cancel=None) -> list[dict]:
+    """Proses satu-per-satu sample_df: retrieval top-k + prompt RAG + hitung
+    cosine similarity, tulis ke output_path (append, resumable). Diekstrak
+    dari main() dengan pola SAMA PERSIS dengan process_sample() Kondisi A
+    (llm/a_pure_llm/a_baseline_replication.py) supaya CLI dan dashboard
+    backend (PLAN_UI_UX.md §5.7) berbagi satu implementasi.
+
+    `on_progress(dict)` / `check_cancel()` -> lihat docstring Kondisi A;
+    keduanya opsional supaya CLI (main()) tidak berubah perilaku.
+    """
+    already_done = already_done or set()
+    total = len(sample_df)
+    results = []
+    with open(output_path, "a") as f_out:
+        for i, row in sample_df.iterrows():
+            if check_cancel is not None and check_cancel():
+                log(f"      [cancelled] Dihentikan setelah {len(results)}/{total} pertanyaan.")
+                break
+
+            qid = int(row["Id"])
+            if qid in already_done:
+                continue
+
+            query_text = f"{row['Title']}\n{row['Body']}"
+            retrieved = retrieve_context(embed_model, index, meta_df, query_text, top_k)
+
+            messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
+            try:
+                llm_answer = call_llm_fn(llm_client, messages, model)
+            except Exception as e:
+                log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
+                if on_progress:
+                    on_progress({"question_id": qid, "index": i, "total": total,
+                                 "status": "failed", "error": str(e)})
+                continue
+
+            similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
+
+            view_count = row.get("ViewCount")
+            question_score = row.get("Score")
+            record = {
+                "question_id": qid,
+                "title": row["Title"],
+                "tags": row["Tags"],
+                "n_tokens": int(row["n_tokens"]),
+                # cast eksplisit ke native Python (numpy int64/float64 dari pandas
+                # tidak JSON-serializable secara default) -- + default=str di bawah
+                # sebagai jaring pengaman kalau ada tipe non-serializable lain lolos.
+                "view_count": None if pd.isna(view_count) else int(view_count),
+                "question_score": None if pd.isna(question_score) else int(question_score),
+                "accepted_answer_id": int(row["AcceptedAnswerId"]),
+                "ground_truth_answer": row["AcceptedAnswerBody"],
+                "retrieved_context": retrieved,  # utk RAGAS (context precision/recall) nanti
+                "llm_answer": llm_answer,
+                "llm_model": model,
+                "cosine_similarity": similarity,
+            }
+            try:
+                line = json.dumps(record, default=str)
+            except Exception as e:
+                log(f"      [{i+1}/{total}] Id={qid} [FAIL-WRITE] "
+                      f"gagal serialize record ke JSON: {e}")
+                if on_progress:
+                    on_progress({"question_id": qid, "index": i, "total": total,
+                                 "status": "failed", "error": str(e)})
+                continue
+
+            n_written = f_out.write(line + "\n")
+            f_out.flush()
+            os.fsync(f_out.fileno())  # paksa OS tulis ke disk, hindari false-negative di stat() akhir
+            results.append(record)
+            log(f"      [{i+1}/{total}] Id={qid} "
+                  f"retrieved={len(retrieved)} similarity={similarity:.3f} "
+                  f"(tertulis {n_written} char)")
+            if on_progress:
+                on_progress({"question_id": qid, "index": i, "total": total,
+                             "status": "done", "similarity": similarity, "record": record})
+            time.sleep(0.3)
+    return results
+
+
+# ---------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------
 
@@ -594,57 +681,8 @@ def main():
     log(f"[7/8] Retrieval top-{args.top_k} + prompting {args.model} untuk "
           f"{len(sample_df)} pertanyaan...")
 
-    with open(output_path, "a") as f_out:
-        for i, row in sample_df.iterrows():
-            qid = int(row["Id"])
-            if qid in already_done:
-                continue
-
-            query_text = f"{row['Title']}\n{row['Body']}"
-            retrieved = retrieve_context(embed_model, index, meta_df, query_text, args.top_k)
-
-            messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
-            try:
-                llm_answer = call_llm_fn(llm_client, messages, args.model)
-            except Exception as e:
-                log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL] API error: {e}")
-                continue
-
-            similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
-
-            view_count = row.get("ViewCount")
-            question_score = row.get("Score")
-            record = {
-                "question_id": qid,
-                "title": row["Title"],
-                "tags": row["Tags"],
-                "n_tokens": int(row["n_tokens"]),
-                # cast eksplisit ke native Python (numpy int64/float64 dari pandas
-                # tidak JSON-serializable secara default) -- + default=str di bawah
-                # sebagai jaring pengaman kalau ada tipe non-serializable lain lolos.
-                "view_count": None if pd.isna(view_count) else int(view_count),
-                "question_score": None if pd.isna(question_score) else int(question_score),
-                "accepted_answer_id": int(row["AcceptedAnswerId"]),
-                "ground_truth_answer": row["AcceptedAnswerBody"],
-                "retrieved_context": retrieved,  # utk RAGAS (context precision/recall) nanti
-                "llm_answer": llm_answer,
-                "llm_model": args.model,
-                "cosine_similarity": similarity,
-            }
-            try:
-                line = json.dumps(record, default=str)
-            except Exception as e:
-                log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL-WRITE] "
-                      f"gagal serialize record ke JSON: {e}")
-                continue
-
-            n_written = f_out.write(line + "\n")
-            f_out.flush()
-            os.fsync(f_out.fileno())  # paksa OS tulis ke disk, hindari false-negative di stat() akhir
-            log(f"      [{i+1}/{len(sample_df)}] Id={qid} "
-                  f"retrieved={len(retrieved)} similarity={similarity:.3f} "
-                  f"(tertulis {n_written} char)")
-            time.sleep(0.3)
+    process_sample(sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, args.top_k,
+                    args.model, output_path, already_done)
 
     log("[8/8] Selesai memproses seluruh sample.")
 
