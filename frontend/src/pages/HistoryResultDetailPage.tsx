@@ -40,13 +40,7 @@ export function HistoryResultDetailPage() {
         </Link>
       </p>
 
-      <AnswerComparisonPanel
-        llmAnswer={data.llm_answer}
-        groundTruthAnswer={data.ground_truth_answer}
-        llmLabel={`LLM Answer (Condition ${condition})`}
-      />
-
-      <div className="border border-border rounded-lg bg-surface p-4 my-4 flex flex-wrap gap-6 text-sm">
+      <div className="border border-border rounded-lg bg-surface p-4 mb-4 flex flex-wrap gap-6 text-sm">
         <div>
           <span className="text-text-secondary">Cosine similarity (0–1): </span>
           <span className="font-medium">{data.cosine_similarity.toFixed(4)}</span>
@@ -67,7 +61,13 @@ export function HistoryResultDetailPage() {
         )}
       </div>
 
-      <div className="mb-4">
+      <AnswerComparisonPanel
+        llmAnswer={data.llm_answer}
+        groundTruthAnswer={data.ground_truth_answer}
+        llmLabel={`LLM Answer (Condition ${condition})`}
+      />
+
+      <div className="mb-4 mt-4">
         <PromptTranscript messages={data.prompt_messages ?? []} />
       </div>
 
