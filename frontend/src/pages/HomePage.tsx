@@ -1,9 +1,43 @@
-import { useNavigate } from 'react-router-dom'
-import { usePartialGraph, useStatsSummary } from '@/api/hooks'
+import { Link, useNavigate } from 'react-router-dom'
+import { useHistory, usePartialGraph, useStatsSummary } from '@/api/hooks'
 import { StatCard } from '@/components/StatCard'
 import { GraphView } from '@/components/GraphView'
 import { EdgeLegend } from '@/components/EdgeLegend'
+import { Badge } from '@/components/Badge'
 import type { GraphNode } from '@/types/graph'
+import type { RunCondition } from '@/types/run'
+
+const CONDITIONS: { key: RunCondition; label: string }[] = [
+  { key: 'A', label: 'Condition A — Pure LLM' },
+  { key: 'B', label: 'Condition B — LLM + RAG' },
+  { key: 'C', label: 'Condition C — LLM + GraphRAG' },
+]
+
+function LatestRunCard({ condition, label }: { condition: RunCondition; label: string }) {
+  const { data, isLoading } = useHistory(condition, 1, 1)
+  const latest = data?.items[0]
+
+  return (
+    <div className="border border-border rounded-lg bg-surface p-4">
+      <div className="text-sm font-medium text-text-primary mb-2">{label}</div>
+      {isLoading && <div className="text-xs text-text-muted">Loading...</div>}
+      {!isLoading && !latest && <div className="text-xs text-text-muted">No runs yet.</div>}
+      {latest && (
+        <>
+          <div className="text-xl font-semibold text-text-primary mb-1">
+            {latest.cosine_similarity_mean != null ? latest.cosine_similarity_mean.toFixed(4) : '—'}
+          </div>
+          <div className="text-xs text-text-secondary mb-2">
+            n={latest.n_processed}/{latest.n_sample_target} · <Badge tone={latest.status === 'success' ? 'success' : 'warning'}>{latest.status}</Badge>
+          </div>
+          <Link to={`/history/${latest.history_id}`} className="text-xs text-primary hover:underline">
+            View details →
+          </Link>
+        </>
+      )}
+    </div>
+  )
+}
 
 export function HomePage() {
   const { data, isLoading, isError } = useStatsSummary()
@@ -59,6 +93,13 @@ export function HomePage() {
           </div>
         </>
       )}
+
+      <h2 className="text-sm font-medium text-text-secondary mt-8 mb-2">Latest Runs</h2>
+      <div className="grid grid-cols-3 gap-4">
+        {CONDITIONS.map((c) => (
+          <LatestRunCard key={c.key} condition={c.key} label={c.label} />
+        ))}
+      </div>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   MessageSquare,
@@ -9,6 +9,7 @@ import {
   Settings,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 interface NavItem {
   to: string
@@ -64,6 +65,7 @@ function NavGroup({ title, items }: { title?: string; items: NavItem[] }) {
 }
 
 export function DashboardLayout() {
+  const location = useLocation()
   return (
     <div className="flex min-h-screen">
       <aside className="w-60 shrink-0 border-r border-border bg-surface px-2 py-4 flex flex-col">
@@ -78,8 +80,12 @@ export function DashboardLayout() {
           <NavGroup items={footerNav} />
         </div>
       </aside>
-      <main className="flex-1 min-w-0 px-8 py-6">
-        <Outlet />
+      <main className="flex-1 min-w-0 px-8 py-6 overflow-x-auto">
+        {/* key={pathname} remounts the boundary on every navigation, so an
+            error on one page never persists onto the next page visited. */}
+        <ErrorBoundary key={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   )

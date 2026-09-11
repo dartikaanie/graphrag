@@ -15,6 +15,7 @@ import { HistoryComparePage } from '@/pages/HistoryComparePage'
 import { HistoryDetailPage } from '@/pages/HistoryDetailPage'
 import { HistoryResultDetailPage } from '@/pages/HistoryResultDetailPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export default function App() {
   return (
@@ -38,6 +39,8 @@ export default function App() {
         <Route path="/history/:history_id/q/:question_id" element={<HistoryResultDetailPage />} />
 
         <Route path="/settings" element={<SettingsPage />} />
+
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   )
