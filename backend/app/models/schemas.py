@@ -116,4 +116,30 @@ class RunResultItem(BaseModel):
     index: int
     status: str
     similarity: float | None = None
+
+
+class SettingsUpdate(BaseModel):
+    provider: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    anthropic_api_key: str | None = None
+    ollama_host: str | None = None
+    num_ctx: int | None = None
+    neo4j_uri: str | None = None
+    neo4j_user: str | None = None
+    neo4j_password: str | None = None
+    neo4j_database: str | None = None
+    questions_parquet: str | None = None
+    answers_parquet: str | None = None
+
+
+class TestConnectionRequest(BaseModel):
+    target: str  # "neo4j" | "llm"
+    provider: str | None = None
+    api_key: str | None = None
+    model: str | None = None
+    ollama_host: str | None = None
+    neo4j_uri: str | None = None
+    neo4j_user: str | None = None
+    neo4j_password: str | None = None
     error: str | None = None

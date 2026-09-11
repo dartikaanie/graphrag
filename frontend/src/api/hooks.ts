@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { API_BASE, apiGet, apiPost } from './client'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { API_BASE, apiGet, apiPost, apiPut } from './client'
 import type {
   AnswerDetail,
   AnswerListResponse,
@@ -13,6 +13,7 @@ import type {
 import type { GraphData } from '@/types/graph'
 import type { RunCreateParams, RunResultDetail, RunState } from '@/types/run'
 import type { HistoryListResponse } from '@/types/history'
+import type { SettingsState, TestConnectionResult } from '@/types/settings'
 
 export function useStatsSummary() {
   return useQuery({
@@ -178,5 +179,26 @@ export function useHistoryResultDetail(historyId: string, questionId: number | s
     queryKey: ['history-result-detail', historyId, questionId],
     queryFn: () => apiGet<RunResultDetail>(`/api/history/${historyId}/results/${questionId}`),
     enabled: !!historyId && questionId !== undefined,
+  })
+}
+
+export function useSettings() {
+  return useQuery({
+    queryKey: ['settings'],
+    queryFn: () => apiGet<SettingsState>('/api/settings'),
+  })
+}
+
+export function useUpdateSettings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (patch: Record<string, unknown>) => apiPut<SettingsState>('/api/settings', patch),
+    onSuccess: (data) => queryClient.setQueryData(['settings'], data),
+  })
+}
+
+export function useTestConnection() {
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => apiPost<TestConnectionResult>('/api/settings/test-connection', body),
   })
 }

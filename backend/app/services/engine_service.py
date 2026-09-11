@@ -23,7 +23,17 @@ import duckdb
 
 from app.config import get_settings
 from app.db.duckdb_client import dedup_answers_cte, dedup_questions_cte
-from app.services import run_registry
+from app.services import run_registry, settings_service
+
+
+def _questions_parquet() -> str:
+    override = settings_service.get_raw_settings().get("questions_parquet")
+    return override or get_settings().resolved_questions_parquet()
+
+
+def _answers_parquet() -> str:
+    override = settings_service.get_raw_settings().get("answers_parquet")
+    return override or get_settings().resolved_answers_parquet()
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -168,7 +178,6 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
     run, so History (Phase 6) sees dashboard runs and CLI runs identically.
     """
     cond = _condition_a_module()
-    settings = get_settings()
     run_started_at = datetime.now(timezone.utc)
     run_registry.update_run(run_id, status="running", started_at=run_started_at.isoformat())
 
@@ -187,12 +196,12 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             oversample_pool = int(params.get("oversample_pool") or n_sample * 3)
             con = duckdb.connect()
             candidates = cond.get_candidate_questions(
-                con, settings.resolved_questions_parquet(), settings.resolved_answers_parquet(), oversample_pool, seed
+                con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
             )
             candidates = cond.filter_by_token_limit(candidates)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
-            answers_df = cond.get_accepted_answers(con, settings.resolved_answers_parquet(), accepted_ids)
+            answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
             output_path = cond.build_output_path("results", provider, model, n_sample, seed)
@@ -252,7 +261,6 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
     build_or_load_faiss_index exactly as the CLI does.
     """
     cond = _condition_b_module()
-    settings = get_settings()
     run_started_at = datetime.now(timezone.utc)
     run_registry.update_run(run_id, status="running", started_at=run_started_at.isoformat())
 
@@ -277,12 +285,12 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             seed = int(params["seed"])
             oversample_pool = int(params.get("oversample_pool") or n_sample * 4)
             candidates = cond.get_candidate_questions(
-                con, settings.resolved_questions_parquet(), settings.resolved_answers_parquet(), oversample_pool, seed
+                con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
             )
             candidates = cond.filter_by_token_limit(candidates)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
-            answers_df = cond.get_accepted_answers(con, settings.resolved_answers_parquet(), accepted_ids)
+            answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
             output_path = cond.build_output_path("results", provider, model, n_sample, seed)
@@ -295,7 +303,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
 
         eval_question_ids = sample_df["Id"].astype(int).tolist()
         corpus_df = cond.build_retrieval_corpus(
-            con, settings.resolved_questions_parquet(), settings.resolved_answers_parquet(),
+            con, _questions_parquet(), _answers_parquet(),
             index_pool, seed, eval_question_ids, accepted_ids,
         )
         chunk_df = cond.chunk_corpus(corpus_df, token_chunk_limit)
@@ -346,7 +354,6 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     11_densify_embedding_similarity.py -- NOT rebuilt here, same as the CLI).
     """
     cond = _condition_c_module()
-    settings = get_settings()
     run_started_at = datetime.now(timezone.utc)
     run_registry.update_run(run_id, status="running", started_at=run_started_at.isoformat())
 
@@ -370,12 +377,12 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             seed = int(params["seed"])
             oversample_pool = int(params.get("oversample_pool") or n_sample * 4)
             candidates = cond.get_candidate_questions(
-                con, settings.resolved_questions_parquet(), settings.resolved_answers_parquet(), oversample_pool, seed
+                con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
             )
             candidates = cond.filter_by_token_limit(candidates)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
-            answers_df = cond.get_accepted_answers(con, settings.resolved_answers_parquet(), accepted_ids)
+            answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
             output_path = cond.build_output_path("results", provider, model, n_sample, seed)
@@ -387,7 +394,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
 
         eval_question_ids = sample_df["Id"].astype(int).tolist()
-        all_answer_ids_map = cond.get_all_answer_ids_for_questions(con, settings.resolved_answers_parquet(), eval_question_ids)
+        all_answer_ids_map = cond.get_all_answer_ids_for_questions(con, _answers_parquet(), eval_question_ids)
 
         driver, database = cond.connect_neo4j(print)
         kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
@@ -455,4 +462,9 @@ def start_run(run_id: str, condition: str, params: dict[str, Any]) -> None:
     if runner is None:
         run_registry.update_run(run_id, status="failed", error=f"Unknown condition '{condition}'")
         return
+    # Apply Settings-page values (API keys, Neo4j credentials) to the process
+    # env right before running, so a saved Settings key actually takes
+    # effect for dashboard-triggered runs instead of only ever reading
+    # whatever the repo-root .env happened to have at backend startup.
+    settings_service.apply_to_environment()
     runner(run_id, params)
