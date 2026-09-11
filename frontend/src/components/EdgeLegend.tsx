@@ -2,6 +2,10 @@ import type { EdgeType } from '@/types/graph'
 import { EDGE_COLORS, EDGE_LABELS } from '@/lib/graphColors'
 
 const ORDER: EdgeType[] = [
+  'ANCHOR',
+  'GRAPH_TRAVERSAL',
+  'SEMANTIC_EXPANSION',
+  'RETRIEVED',
   'HAS_ACCEPTED_ANSWER',
   'HAS_ANSWER',
   'IS_RELATED_TO',

@@ -11,6 +11,11 @@ export const EDGE_COLORS: Record<EdgeType, string> = {
   EMBED_SIM: '#94a3b8',
   TAGGED_WITH: '#cbd5e1',
   AUTHOR_TRUST: '#c4b5fd',
+  // Synthetic, run-result-graph-only edge types (see get_run_result_graph)
+  ANCHOR: '#d97706',
+  GRAPH_TRAVERSAL: '#0d9488',
+  SEMANTIC_EXPANSION: '#9333ea',
+  RETRIEVED: '#64748b',
 }
 
 export const EDGE_LABELS: Record<EdgeType, string> = {
@@ -21,6 +26,10 @@ export const EDGE_LABELS: Record<EdgeType, string> = {
   EMBED_SIM: 'Embedding similarity',
   TAGGED_WITH: 'Tagged with',
   AUTHOR_TRUST: 'Author trust',
+  ANCHOR: 'Entity anchor (vector search)',
+  GRAPH_TRAVERSAL: 'Graph traversal',
+  SEMANTIC_EXPANSION: 'Semantic expansion',
+  RETRIEVED: 'Retrieved',
 }
 
 export const NODE_COLORS: Record<GraphNodeType, string> = {

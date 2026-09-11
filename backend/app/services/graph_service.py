@@ -350,3 +350,102 @@ def get_node_subgraph(node_type: str, node_id: str, hops: int = 2) -> dict:
     if node_type == "tag":
         return get_tag_subgraph(node_id, hops)
     raise ValueError(f"Unknown node_type '{node_type}', expected question/answer/tag")
+
+
+def get_run_result_graph(record: dict) -> dict:
+    """Reconstructs the ACTUAL retrieval path used for one Condition C run
+    result -- entity anchoring -> graph traversal -> semantic expansion --
+    from the provenance persisted in that question's result record
+    (anchor_question_ids, retrieved_context[].source_stage/hop/question_id/
+    answer_id), added specifically so a run can be audited after the fact:
+    "did retrieval actually reach what I expect for this question". Not a
+    generic node-centered subgraph (get_question_subgraph) -- exactly the
+    nodes/edges this run's retrieval touched, nothing more.
+
+    Works for any condition's record: Condition A/B records simply lack
+    anchor_question_ids / retrieved_context[].source_stage, so the result
+    degrades gracefully to just the eval question + its accepted answer
+    (B additionally shows its flat retrieved_context, labeled RETRIEVED).
+    """
+    question_id = record.get("question_id")
+    accepted_answer_id = record.get("accepted_answer_id")
+    anchors = record.get("anchor_question_ids") or []
+    retrieved = record.get("retrieved_context") or []
+
+    question_ids = {question_id} | {a["question_id"] for a in anchors}
+    question_ids |= {c["question_id"] for c in retrieved if c.get("question_id") is not None}
+    answer_ids = {c["answer_id"] for c in retrieved if c.get("answer_id") is not None}
+    if accepted_answer_id is not None:
+        answer_ids.add(accepted_answer_id)
+
+    q_by_id = {}
+    if question_ids:
+        rows = run_query(
+            """
+            UNWIND $ids AS qid
+            MATCH (q:Question {id: qid})
+            RETURN q.id AS id, q.title AS title, q.score AS score, q.trustScore AS trustScore, q.domainTag AS domainTag
+            """,
+            {"ids": list(question_ids)},
+        )
+        q_by_id = {r["id"]: r for r in rows}
+
+    a_by_id = {}
+    if answer_ids:
+        rows = run_query(
+            """
+            UNWIND $ids AS aid
+            MATCH (a:Answer {id: aid})
+            RETURN a.id AS id, a.score AS score, a.trustScore AS trustScore, a.isAccepted AS isAccepted
+            """,
+            {"ids": list(answer_ids)},
+        )
+        a_by_id = {r["id"]: r for r in rows}
+
+    nodes: dict[str, dict] = {}
+    links: list[dict] = []
+
+    def add_qnode(qid: int) -> dict:
+        r = q_by_id.get(qid)
+        title = r["title"] if r else (record.get("title") if qid == question_id else f"Question {qid}")
+        node = _qnode(qid, title, r["score"] if r else None, r["trustScore"] if r else None, r["domainTag"] if r else None)
+        nodes[node["id"]] = node
+        return node
+
+    def add_anode(aid: int) -> dict:
+        r = a_by_id.get(aid)
+        node = _anode(
+            aid, r["score"] if r else None, r["trustScore"] if r else None,
+            r["isAccepted"] if r else (aid == accepted_answer_id),
+        )
+        nodes[node["id"]] = node
+        return node
+
+    center = add_qnode(question_id)
+
+    if accepted_answer_id is not None:
+        an = add_anode(accepted_answer_id)
+        links.append(_link(center["id"], an["id"], "HAS_ACCEPTED_ANSWER", 1.0))
+
+    for a in anchors:
+        n = add_qnode(a["question_id"])
+        links.append(_link(center["id"], n["id"], "ANCHOR", a.get("similarity")))
+
+    for c in retrieved:
+        qid_, aid_ = c.get("question_id"), c.get("answer_id")
+        stage = c.get("source_stage")
+        edge_type = "GRAPH_TRAVERSAL" if stage == "graph_traversal" else ("SEMANTIC_EXPANSION" if stage == "semantic_expansion" else "RETRIEVED")
+
+        source_node = add_qnode(qid_) if qid_ is not None else None
+        if aid_ is not None:
+            an = add_anode(aid_)
+            if source_node is not None:
+                links.append(_link(source_node["id"], an["id"], "HAS_ANSWER", c.get("trust_weight")))
+            target_id = an["id"]
+        elif source_node is not None:
+            target_id = source_node["id"]
+        else:
+            continue
+        links.append(_link(center["id"], target_id, edge_type, c.get("combined_score")))
+
+    return {"nodes": list(nodes.values()), "links": links}
