@@ -1,0 +1,83 @@
+export type RunCondition = 'A' | 'B' | 'C'
+export type RunMode = 'batch' | 'single'
+export type RunStatusValue = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface RunCreateParams {
+  condition: RunCondition
+  mode: RunMode
+  n_sample?: number
+  seed?: number
+  oversample_pool?: number | null
+  top_k?: number
+  n_anchor?: number
+  n_semantic_expansion?: number
+  question_id?: number | null
+  provider: string
+  model: string
+}
+
+export interface RunResultItem {
+  question_id: number
+  index: number
+  total: number
+  status: 'done' | 'failed'
+  similarity: number | null
+  error: string | null
+}
+
+export interface RunSummary {
+  n_processed: number
+  cosine_similarity_mean: number | null
+  cosine_similarity_median?: number
+  pct_similarity_above_0_5?: number
+  pct_with_citation?: number
+  pct_with_valid_citation?: number
+  avg_retrieval_latency_sec?: number
+}
+
+export interface RunState {
+  run_id: string
+  condition: RunCondition
+  mode: RunMode
+  status: RunStatusValue
+  params: RunCreateParams
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  progress: { current: number; total: number }
+  results: RunResultItem[]
+  summary: RunSummary | null
+  error: string | null
+  output_path: string | null
+  cancel_requested?: boolean
+}
+
+export interface RetrievedContextItem {
+  question_id?: number
+  chunk_text: string
+  trust_weight?: number
+  hop?: number
+}
+
+export interface RunResultDetail {
+  question_id: number
+  title: string
+  tags: string
+  n_tokens: number
+  view_count: number | null
+  question_score: number | null
+  accepted_answer_id: number
+  ground_truth_answer: string
+  retrieved_context?: RetrievedContextItem[]
+  n_anchors?: number
+  n_graph_candidates?: number
+  n_expansion_candidates?: number
+  retrieval_latency_sec?: number
+  llm_answer: string
+  llm_model: string
+  cosine_similarity: number
+  has_citation?: boolean
+  cited_source_ids?: string[]
+  has_valid_citation?: boolean
+  valid_cited_source_ids?: string[]
+}

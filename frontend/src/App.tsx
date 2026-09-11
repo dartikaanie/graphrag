@@ -7,6 +7,9 @@ import { AnswerListPage } from '@/pages/AnswerListPage'
 import { AnswerDetailPage } from '@/pages/AnswerDetailPage'
 import { TagListPage } from '@/pages/TagListPage'
 import { TagDetailPage } from '@/pages/TagDetailPage'
+import { RunConditionPage } from '@/pages/RunConditionPage'
+import { RunResultPage } from '@/pages/RunResultPage'
+import { RunResultDetailPage } from '@/pages/RunResultDetailPage'
 import { ComingSoonPage } from '@/pages/ComingSoonPage'
 
 export default function App() {
@@ -21,12 +24,10 @@ export default function App() {
         <Route path="/tags" element={<TagListPage />} />
         <Route path="/tags/:name" element={<TagDetailPage />} />
 
-        <Route path="/experiment/a" element={<ComingSoonPage title="Condition A — Pure LLM" phase="Phase 4/5" />} />
-        <Route path="/experiment/b" element={<ComingSoonPage title="Condition B — LLM + RAG" phase="Phase 4/5" />} />
-        <Route
-          path="/experiment/c"
-          element={<ComingSoonPage title="Condition C — LLM + GraphRAG" phase="Phase 4/5" />}
-        />
+        <Route path="/experiment/:condition" element={<RunConditionPage />} />
+        <Route path="/experiment/:condition/runs/:run_id" element={<RunResultPage />} />
+        <Route path="/experiment/:condition/runs/:run_id/q/:question_id" element={<RunResultDetailPage />} />
+
         <Route path="/history" element={<ComingSoonPage title="History" phase="Phase 6" />} />
         <Route path="/settings" element={<ComingSoonPage title="Settings" phase="Phase 7" />} />
       </Route>
