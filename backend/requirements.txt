@@ -5,3 +5,4 @@ pydantic-settings>=2.4
 neo4j>=5.23
 duckdb>=1.5
 python-dotenv>=1.0
+cryptography>=42.0

@@ -14,7 +14,7 @@ import { HistoryPage } from '@/pages/HistoryPage'
 import { HistoryComparePage } from '@/pages/HistoryComparePage'
 import { HistoryDetailPage } from '@/pages/HistoryDetailPage'
 import { HistoryResultDetailPage } from '@/pages/HistoryResultDetailPage'
-import { ComingSoonPage } from '@/pages/ComingSoonPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 
 export default function App() {
   return (
@@ -37,7 +37,7 @@ export default function App() {
         <Route path="/history/:history_id" element={<HistoryDetailPage />} />
         <Route path="/history/:history_id/q/:question_id" element={<HistoryResultDetailPage />} />
 
-        <Route path="/settings" element={<ComingSoonPage title="Settings" phase="Phase 7" />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   )
