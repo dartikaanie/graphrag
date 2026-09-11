@@ -1,6 +1,11 @@
 export type RunCondition = 'A' | 'B' | 'C'
 export type RunMode = 'batch' | 'single'
-export type RunStatusValue = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+// Live runs use pending/running/completed/failed/cancelled; history entries
+// (read straight from run_history.jsonl, written by the CLI's own
+// conventions predating the dashboard) can also be success/no_results/
+// no_valid_records/interrupted/unknown -- kept as a plain string rather than
+// re-deriving/duplicating that whole legacy vocabulary here.
+export type RunStatusValue = string
 
 export interface RunCreateParams {
   condition: RunCondition

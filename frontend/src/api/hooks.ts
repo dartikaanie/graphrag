@@ -12,6 +12,7 @@ import type {
 } from '@/types/api'
 import type { GraphData } from '@/types/graph'
 import type { RunCreateParams, RunResultDetail, RunState } from '@/types/run'
+import type { HistoryListResponse } from '@/types/history'
 
 export function useStatsSummary() {
   return useQuery({
@@ -153,5 +154,29 @@ export function useRunResultDetail(runId: string, questionId: number | string) {
     queryKey: ['run-result-detail', runId, questionId],
     queryFn: () => apiGet<RunResultDetail>(`/api/runs/${runId}/results/${questionId}`),
     enabled: !!runId && questionId !== undefined,
+  })
+}
+
+export function useHistory(condition: string | undefined, page: number, pageSize: number) {
+  return useQuery({
+    queryKey: ['history', condition, page, pageSize],
+    queryFn: () => apiGet<HistoryListResponse>('/api/history', { condition, page, page_size: pageSize }),
+    placeholderData: (prev) => prev,
+  })
+}
+
+export function useHistoryDetail(historyId: string) {
+  return useQuery({
+    queryKey: ['history-detail', historyId],
+    queryFn: () => apiGet<RunState>(`/api/history/${historyId}`),
+    enabled: !!historyId,
+  })
+}
+
+export function useHistoryResultDetail(historyId: string, questionId: number | string) {
+  return useQuery({
+    queryKey: ['history-result-detail', historyId, questionId],
+    queryFn: () => apiGet<RunResultDetail>(`/api/history/${historyId}/results/${questionId}`),
+    enabled: !!historyId && questionId !== undefined,
   })
 }
