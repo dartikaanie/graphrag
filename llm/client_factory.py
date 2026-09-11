@@ -67,8 +67,29 @@ def call_llm_ollama(client, messages: list[dict], model: str) -> str:
     (openai/anthropic/local Llama-2-7b). Ollama chat API sudah native
     mendukung array messages dengan role system/user/assistant, jadi
     4-turn dialog terkirim langsung tanpa perlu konversi. Butuh
-    `ollama serve` jalan di background & model sudah di-pull."""
-    response = client.chat(model=model, messages=messages)
+    `ollama serve` jalan di background & model sudah di-pull.
+
+    num_ctx dinaikkan eksplisit ke 8192 (bukan default Ollama yang untuk
+    banyak model cuma 2048) -- penting karena Kondisi B/C menyisipkan
+    konteks retrieval (bisa >2000 token utk 5 chunk x 400 token) ke
+    prompt; tanpa num_ctx yang cukup, prompt panjang ke-truncate diam-diam
+    dan menyebabkan generasi jawaban yang tidak relevan/berulang-ulang
+    (terkonfirmasi dari drop similarity mendadak di run n=30 Kondisi B).
+
+    num_predict dibatasi ke 1536 token: tanpa batas ini, model kecil yang
+    masuk mode repetition loop akan terus generate sampai mentok num_ctx
+    (bisa >10 menit per pertanyaan di CPU M2), bukan berhenti wajar.
+    1536 token (~6000 karakter) sudah lebih dari cukup utk gaya jawaban
+    "explain how to fix" yang dipakai di seluruh eksperimen ini.
+
+    repeat_penalty dinaikkan sedikit (1.3, default Ollama 1.1) utk
+    mengurangi kecenderungan model kecil masuk mode repetisi sejak awal,
+    bukan cuma membatasi dampaknya lewat num_predict."""
+    response = client.chat(
+        model=model,
+        messages=messages,
+        options={"num_ctx": 8192, "num_predict": 1536, "repeat_penalty": 1.3},
+    )
     return response["message"]["content"]
 
 

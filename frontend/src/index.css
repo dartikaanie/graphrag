@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+  /* Neutral (Slate) */
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #64748b;
+  --color-text-muted: #94a3b8;
+
+  /* Accent -- blue, used sparingly */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #eff6ff;
+  --color-primary-border: #bfdbfe;
+
+  /* Semantic -- run status & metrics only */
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+
+  /* Graph edges -- follow the real trust-weight hierarchy, not arbitrary colors */
+  --color-edge-accepted-answer: #2563eb;
+  --color-edge-has-answer: #93c5fd;
+  --color-edge-related-to: #0ea5e9;
+  --color-edge-tag-cooccur: #64748b;
+  --color-edge-embed-sim: #94a3b8;
+  --color-edge-tagged-with: #cbd5e1;
+  --color-edge-author-trust: #c4b5fd;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}

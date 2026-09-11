@@ -1,0 +1,78 @@
+10:27:19 | [logging] Log detail run ini -> logs/20260906T032719Z_openai_gpt-4o-mini.log
+10:27:19 | [config] output auto-generated -> 'results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl'
+10:27:19 | [config] n_sample=5 seed=42 provider=openai model=gpt-4o-mini
+10:27:19 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+10:27:19 | [1/9] Mengambil oversample pool (15 kandidat)...
+10:27:26 |       Oversample pool diambil: 15 kandidat
+10:27:26 | [2/9] Menghitung token & filter <= 2048 token...
+10:27:26 |       15 -> 14 lolos filter token
+10:27:26 | [3/9] Sampling acak 5 pertanyaan evaluasi (seed=42)...
+10:27:26 | [4/9] Mengambil teks accepted answer (ground truth)...
+10:27:29 |       Ditemukan 5 accepted answer
+10:27:29 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+10:27:31 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+10:27:50 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+10:28:02 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+10:28:07 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 5 pertanyaan...
+10:28:07 |       [debug-retrieval] traverse_graph 1-hop: 0 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [55262325, 37255085, 23827048]
+10:28:07 |       [debug-retrieval] traverse_graph TOTAL: hop1=0 hop2=5 raw=5
+10:28:07 |       [debug-retrieval] semantic_expansion: 5 traversal_candidates -> 3 seed unik: [46258449, 67437821, 39840077]
+10:28:10 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 10 PUNYA jawaban (44 answerless di-skip SEBELUM commit)
+10:28:10 |       [debug-retrieval]   seed qid=46258449 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [64368532, 67123254, 54913846]
+10:28:10 |       [debug-retrieval]   seed qid=67437821 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [30067314, 37369946, 28284765]
+10:28:10 |       [debug-retrieval]   seed qid=39840077 -> 1/3 tetangga BERJAWABAN terpilih (dari pool 18): [2858741]
+10:28:10 |       [debug-retrieval] semantic_expansion TOTAL: 7 qid terpilih (pre-filtered) -> 11 kandidat jawaban kembali
+10:28:10 |       [debug-retrieval] fuse_and_rank: 5 graph_candidates + 11 expansion_candidates = 16 raw -> 15 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+10:28:17 |       [1/5] Id=44034905 anchors=3 context=5 citation=True similarity=0.589 retrieval=3.30s
+10:28:17 |       [debug-retrieval] traverse_graph 1-hop: 2 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [24430453]
+10:28:17 |       [debug-retrieval] traverse_graph TOTAL: hop1=2 hop2=0 raw=2
+10:28:17 |       [debug-retrieval] semantic_expansion: 2 traversal_candidates -> 2 seed unik: [1604391, 73385972]
+10:28:18 |       [debug-retrieval] semantic_expansion: pool=36 qid (buffer 6x), 15 PUNYA jawaban (21 answerless di-skip SEBELUM commit)
+10:28:18 |       [debug-retrieval]   seed qid=1604391 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [1622708, 1699661, 3836679]
+10:28:18 |       [debug-retrieval]   seed qid=73385972 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [7247868, 51740026, 60048449]
+10:28:18 |       [debug-retrieval] semantic_expansion TOTAL: 6 qid terpilih (pre-filtered) -> 8 kandidat jawaban kembali
+10:28:18 |       [debug-retrieval] fuse_and_rank: 2 graph_candidates + 8 expansion_candidates = 10 raw -> 10 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+10:28:24 |       [2/5] Id=16951300 anchors=3 context=5 citation=True similarity=0.656 retrieval=0.77s
+10:28:25 |       [debug-retrieval] traverse_graph 1-hop: 1 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [39806964, 48866843]
+10:28:25 |       [debug-retrieval] traverse_graph TOTAL: hop1=1 hop2=1 raw=2
+10:28:25 |       [debug-retrieval] semantic_expansion: 2 traversal_candidates -> 2 seed unik: [65752843, 51376945]
+10:28:25 |       [debug-retrieval] semantic_expansion: pool=36 qid (buffer 6x), 8 PUNYA jawaban (28 answerless di-skip SEBELUM commit)
+10:28:25 |       [debug-retrieval]   seed qid=65752843 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [55080855, 38485233, 68685741]
+10:28:25 |       [debug-retrieval]   seed qid=51376945 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [10892478, 78247503, 8200319]
+10:28:25 |       [debug-retrieval] semantic_expansion TOTAL: 6 qid terpilih (pre-filtered) -> 7 kandidat jawaban kembali
+10:28:25 |       [debug-retrieval] fuse_and_rank: 2 graph_candidates + 7 expansion_candidates = 9 raw -> 9 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+10:28:31 |       [3/5] Id=62699840 anchors=3 context=5 citation=True similarity=0.804 retrieval=0.84s
+10:28:32 |       [debug-retrieval] traverse_graph 1-hop: 1 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [2205112, 1663012]
+10:28:32 |       [debug-retrieval] traverse_graph TOTAL: hop1=1 hop2=1 raw=2
+10:28:32 |       [debug-retrieval] semantic_expansion: 2 traversal_candidates -> 1 seed unik: [38022748]
+10:28:32 |       [debug-retrieval] semantic_expansion: pool=18 qid (buffer 6x), 1 PUNYA jawaban (17 answerless di-skip SEBELUM commit)
+10:28:32 |       [debug-retrieval]   seed qid=38022748 -> 1/3 tetangga BERJAWABAN terpilih (dari pool 18): [7351417]
+10:28:32 |       [debug-retrieval] semantic_expansion TOTAL: 1 qid terpilih (pre-filtered) -> 1 kandidat jawaban kembali
+10:28:32 |       [debug-retrieval] fuse_and_rank: 2 graph_candidates + 1 expansion_candidates = 3 raw -> 2 unik setelah dedup by answer_id -> 2 final (cap top_k=5)
+10:28:37 |       [4/5] Id=68662220 anchors=3 context=2 citation=True similarity=0.797 retrieval=0.74s
+10:28:37 |       [debug-retrieval] traverse_graph 1-hop: 2 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [21112774, 55130522]
+10:28:37 |       [debug-retrieval] traverse_graph TOTAL: hop1=2 hop2=5 raw=7
+10:28:37 |       [debug-retrieval] semantic_expansion: 7 traversal_candidates -> 3 seed unik: [37192233, 38539369, 10308098]
+10:28:38 |       [debug-retrieval] semantic_expansion: pool=54 qid (buffer 6x), 11 PUNYA jawaban (43 answerless di-skip SEBELUM commit)
+10:28:38 |       [debug-retrieval]   seed qid=37192233 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [12077414, 10308098, 9074357]
+10:28:38 |       [debug-retrieval]   seed qid=38539369 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [13623329, 22954346, 39270801]
+10:28:38 |       [debug-retrieval]   seed qid=10308098 -> 3/3 tetangga BERJAWABAN terpilih (dari pool 18): [5194334, 39628095, 21216753]
+10:28:38 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid terpilih (pre-filtered) -> 10 kandidat jawaban kembali
+10:28:38 |       [debug-retrieval] fuse_and_rank: 7 graph_candidates + 10 expansion_candidates = 17 raw -> 16 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+10:28:41 |       [5/5] Id=26947070 anchors=3 context=5 citation=True similarity=0.751 retrieval=0.53s
+10:28:42 | [8/9] Selesai memproses seluruh sample.
+10:28:42 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl size_bytes=61488
+10:28:42 | 
+======================================================================
+10:28:42 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+10:28:42 | ======================================================================
+10:28:42 | Total pertanyaan diproses      : 5
+10:28:42 | Cosine similarity rata-rata    : 0.7195
+10:28:42 | Cosine similarity median       : 0.7514
+10:28:42 | % similarity > 0.5             : 100.0%
+10:28:42 | % jawaban dgn >=1 kutipan (NF2): 100.0% [target: 100%] PASS
+10:28:42 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+10:28:42 | Retrieval latency -- avg: 1.24s, p95: 2.81s [NF3 target: <=15s] PASS
+10:28:42 | 
+Hasil lengkap tersimpan -> results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl
+10:28:42 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl

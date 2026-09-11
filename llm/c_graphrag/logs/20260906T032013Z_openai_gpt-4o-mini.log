@@ -1,0 +1,91 @@
+10:20:13 | [logging] Log detail run ini -> logs/20260906T032013Z_openai_gpt-4o-mini.log
+10:20:13 | [config] output auto-generated -> 'results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl'
+10:20:13 | [config] n_sample=5 seed=42 provider=openai model=gpt-4o-mini
+10:20:13 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+10:20:14 | [1/9] Mengambil oversample pool (15 kandidat)...
+10:20:19 |       Oversample pool diambil: 15 kandidat
+10:20:19 | [2/9] Menghitung token & filter <= 2048 token...
+10:20:19 |       15 -> 14 lolos filter token
+10:20:19 | [3/9] Sampling acak 5 pertanyaan evaluasi (seed=42)...
+10:20:19 | [4/9] Mengambil teks accepted answer (ground truth)...
+10:20:23 |       Ditemukan 5 accepted answer
+10:20:23 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+10:20:25 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+10:20:39 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari ../01_data_cleaning/_kg_workspace
+10:20:43 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+10:21:12 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 5 pertanyaan...
+10:21:16 |       [debug-retrieval] traverse_graph 1-hop: 0 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [55262325, 37255085, 23827048]
+10:21:24 |       [debug-retrieval] traverse_graph 2-hop anchor=55262325: 10 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 2 di antaranya PUNYA jawaban
+10:21:24 |       [debug-retrieval] traverse_graph 2-hop anchor=37255085: 12 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 1 di antaranya PUNYA jawaban
+10:21:24 |       [debug-retrieval] traverse_graph 2-hop anchor=23827048: 9 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 2 di antaranya PUNYA jawaban
+10:21:24 |       [debug-retrieval] traverse_graph TOTAL: hop1=0 hop2=5 raw=5
+10:21:24 |       [debug-retrieval] semantic_expansion: 5 traversal_candidates -> 3 seed unik: [46258449, 67437821, 39840077]
+10:21:29 |       [debug-retrieval]   seed qid=46258449 title='CORS Error: “requests are only supported for protocol scheme' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=5): [65422104, 48477748, 64368532]
+10:21:30 |       [debug-retrieval]   seed qid=67437821 title="Can't render iframe on another domain using rack-cors" -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=8): [30067314, 65428941, 75627044]
+10:21:30 |       [debug-retrieval]   seed qid=39840077 title='Perform HTTP OPTIONS request from Rails 5 for CORS pre-fligh' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=11): [12235500, 20012585, 70500903]
+10:21:30 |       [debug-retrieval] semantic_expansion: 7/9 tetangga FAISS TIDAK PUNYA jawaban (HAS_ACCEPTED_ANSWER/HAS_ANSWER) di graph sama sekali -> qid=[12235500, 20012585, 48477748, 65422104, 65428941, 70500903, 75627044] -- ini kandidat kuat 'isolated/answerless node' yang lolos vector search tapi tidak berguna utk retrieval
+10:21:30 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid diminta -> 3 kandidat jawaban kembali
+10:21:30 |       [debug-retrieval] fuse_and_rank: 5 graph_candidates + 3 expansion_candidates = 8 raw -> 7 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+10:21:38 |       [1/5] Id=44034905 anchors=3 context=5 citation=True similarity=0.634 retrieval=18.80s
+10:21:38 |       [WARN] Id=44034905 retrieval_latency=18.80s MELEBIHI NF3 (<=15 detik)
+10:21:39 |       [debug-retrieval] traverse_graph 1-hop: 2 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [24430453]
+10:21:39 |       [debug-retrieval] traverse_graph TOTAL: hop1=2 hop2=0 raw=2
+10:21:39 |       [debug-retrieval] semantic_expansion: 2 traversal_candidates -> 2 seed unik: [1604391, 73385972]
+10:21:39 |       [debug-retrieval]   seed qid=1604391 title='Object oriented design?' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=4): [1622708, 4890529, 1699661]
+10:21:40 |       [debug-retrieval]   seed qid=73385972 title='Class attribute with value and callable methods' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=7): [7247868, 68724272, 17735520]
+10:21:40 |       [debug-retrieval] semantic_expansion: 3/6 tetangga FAISS TIDAK PUNYA jawaban (HAS_ACCEPTED_ANSWER/HAS_ANSWER) di graph sama sekali -> qid=[4890529, 17735520, 68724272] -- ini kandidat kuat 'isolated/answerless node' yang lolos vector search tapi tidak berguna utk retrieval
+10:21:40 |       [debug-retrieval] semantic_expansion TOTAL: 6 qid diminta -> 4 kandidat jawaban kembali
+10:21:40 |       [debug-retrieval] fuse_and_rank: 2 graph_candidates + 4 expansion_candidates = 6 raw -> 6 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+10:21:47 |       [2/5] Id=16951300 anchors=3 context=5 citation=True similarity=0.718 retrieval=1.32s
+10:21:48 |       [debug-retrieval] traverse_graph 1-hop: 1 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [39806964, 48866843]
+10:21:48 |       [debug-retrieval] traverse_graph 2-hop anchor=39806964: 9 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 1 di antaranya PUNYA jawaban
+10:21:48 |       [debug-retrieval] traverse_graph 2-hop anchor=48866843: 2 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 0 di antaranya PUNYA jawaban
+10:21:48 |       [debug-retrieval] traverse_graph 2-hop anchor=65752843: 6 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 0 di antaranya PUNYA jawaban
+10:21:48 |       [debug-retrieval] traverse_graph TOTAL: hop1=1 hop2=1 raw=2
+10:21:48 |       [debug-retrieval] semantic_expansion: 2 traversal_candidates -> 2 seed unik: [65752843, 51376945]
+10:21:48 |       [debug-retrieval]   seed qid=65752843 title='How to create a input autosuggest or select option search us' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=4): [46746068, 78528838, 67124239]
+10:21:48 |       [debug-retrieval]   seed qid=51376945 title='hide content when character are in textbox' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=8): [3669126, 10892478, 78247503]
+10:21:48 |       [debug-retrieval] semantic_expansion: 4/6 tetangga FAISS TIDAK PUNYA jawaban (HAS_ACCEPTED_ANSWER/HAS_ANSWER) di graph sama sekali -> qid=[3669126, 46746068, 67124239, 78528838] -- ini kandidat kuat 'isolated/answerless node' yang lolos vector search tapi tidak berguna utk retrieval
+10:21:48 |       [debug-retrieval] semantic_expansion TOTAL: 6 qid diminta -> 3 kandidat jawaban kembali
+10:21:48 |       [debug-retrieval] fuse_and_rank: 2 graph_candidates + 3 expansion_candidates = 5 raw -> 5 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+10:21:55 |       [3/5] Id=62699840 anchors=3 context=5 citation=False similarity=0.737 retrieval=1.05s
+10:21:55 |       [debug-retrieval] traverse_graph 1-hop: 1 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [2205112, 1663012]
+10:21:55 |       [debug-retrieval] traverse_graph 2-hop anchor=2205112: 9 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 1 di antaranya PUNYA jawaban
+10:21:55 |       [debug-retrieval] traverse_graph 2-hop anchor=1663012: 2 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 0 di antaranya PUNYA jawaban
+10:21:55 |       [debug-retrieval] traverse_graph 2-hop anchor=38022748: 3 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 0 di antaranya PUNYA jawaban
+10:21:55 |       [debug-retrieval] traverse_graph TOTAL: hop1=1 hop2=1 raw=2
+10:21:55 |       [debug-retrieval] semantic_expansion: 2 traversal_candidates -> 1 seed unik: [38022748]
+10:21:56 |       [debug-retrieval]   seed qid=38022748 title='Draggable and droppable items with multiple lists and orders' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=4): [10666051, 62560991, 7648659]
+10:21:56 |       [debug-retrieval] semantic_expansion: 3/3 tetangga FAISS TIDAK PUNYA jawaban (HAS_ACCEPTED_ANSWER/HAS_ANSWER) di graph sama sekali -> qid=[7648659, 10666051, 62560991] -- ini kandidat kuat 'isolated/answerless node' yang lolos vector search tapi tidak berguna utk retrieval
+10:21:56 |       [debug-retrieval] semantic_expansion TOTAL: 3 qid diminta -> 0 kandidat jawaban kembali
+10:21:56 |       [debug-retrieval] fuse_and_rank: 2 graph_candidates + 0 expansion_candidates = 2 raw -> 1 unik setelah dedup by answer_id -> 1 final (cap top_k=5)
+10:22:02 |       [4/5] Id=68662220 anchors=3 context=1 citation=True similarity=0.718 retrieval=0.67s
+10:22:02 |       [debug-retrieval] traverse_graph 1-hop: 2 kandidat dari 3 anchor -- anchor TANPA hasil (tidak punya HAS_ACCEPTED_ANSWER/HAS_ANSWER, atau semua jawabannya ke-exclude): [21112774, 55130522]
+10:22:03 |       [debug-retrieval] traverse_graph 2-hop anchor=21112774: 10 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 1 di antaranya PUNYA jawaban
+10:22:03 |       [debug-retrieval] traverse_graph 2-hop anchor=37192233: 10 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 1 di antaranya PUNYA jawaban
+10:22:03 |       [debug-retrieval] traverse_graph 2-hop anchor=55130522: 10 tetangga (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM), 3 di antaranya PUNYA jawaban
+10:22:03 |       [debug-retrieval] traverse_graph TOTAL: hop1=2 hop2=5 raw=7
+10:22:03 |       [debug-retrieval] semantic_expansion: 7 traversal_candidates -> 3 seed unik: [37192233, 38539369, 10308098]
+10:22:03 |       [debug-retrieval]   seed qid=37192233 title='How to select a column for a MySQL table and compare it with' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=4): [16418265, 12077414, 11630666]
+10:22:03 |       [debug-retrieval]   seed qid=38539369 title='Comparing Query Results to Current User' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=8): [3961502, 39200312, 17035041]
+10:22:03 |       [debug-retrieval]   seed qid=10308098 title='php mysql comparing data' -> FAISS ditemukan 3/3 tetangga baru (exclude_set_size=11): [38631025, 9241186, 57127668]
+10:22:04 |       [debug-retrieval] semantic_expansion: 8/9 tetangga FAISS TIDAK PUNYA jawaban (HAS_ACCEPTED_ANSWER/HAS_ANSWER) di graph sama sekali -> qid=[3961502, 9241186, 11630666, 16418265, 17035041, 38631025, 39200312, 57127668] -- ini kandidat kuat 'isolated/answerless node' yang lolos vector search tapi tidak berguna utk retrieval
+10:22:04 |       [debug-retrieval] semantic_expansion TOTAL: 9 qid diminta -> 2 kandidat jawaban kembali
+10:22:04 |       [debug-retrieval] fuse_and_rank: 7 graph_candidates + 2 expansion_candidates = 9 raw -> 9 unik setelah dedup by answer_id -> 5 final (cap top_k=5)
+10:22:08 |       [5/5] Id=26947070 anchors=3 context=5 citation=True similarity=0.729 retrieval=1.97s
+10:22:08 | [8/9] Selesai memproses seluruh sample.
+10:22:08 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/04_graphrag/results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl size_bytes=60341
+10:22:08 | 
+======================================================================
+10:22:08 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+10:22:08 | ======================================================================
+10:22:08 | Total pertanyaan diproses      : 5
+10:22:08 | Cosine similarity rata-rata    : 0.7074
+10:22:08 | Cosine similarity median       : 0.7180
+10:22:08 | % similarity > 0.5             : 100.0%
+10:22:08 | % jawaban dgn >=1 kutipan (NF2): 80.0% [target: 100%] BELUM TERCAPAI
+10:22:08 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+10:22:08 | Retrieval latency -- avg: 4.76s, p95: 15.44s [NF3 target: <=15s] PASS
+10:22:08 | 
+Hasil lengkap tersimpan -> results/condition_c_openai_gpt-4o-mini_n5_seed42.jsonl
+10:22:08 | [logging] Ringkasan run dicatat -> logs/run_history.jsonl

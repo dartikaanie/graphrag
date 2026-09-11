@@ -62,7 +62,7 @@ LOG_DIR = Path("logs")
 
 # ---------------------------------------------------------------------
 # Logging (file + console), pola sama dengan setup_logging() di
-# 02_baseline_replication/a_baseline_replication.py
+# llm/a_pure_llm/a_baseline_replication.py
 # ---------------------------------------------------------------------
 
 def setup_logging() -> tuple[logging.Logger, Path]:
