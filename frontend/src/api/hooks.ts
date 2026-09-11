@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { apiGet } from './client'
+import { useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { API_BASE, apiGet, apiPost } from './client'
 import type {
   AnswerDetail,
   AnswerListResponse,
@@ -10,6 +11,7 @@ import type {
   TagListResponse,
 } from '@/types/api'
 import type { GraphData } from '@/types/graph'
+import type { RunCreateParams, RunResultDetail, RunState } from '@/types/run'
 
 export function useStatsSummary() {
   return useQuery({
@@ -89,5 +91,67 @@ export function useNodeSubgraph(nodeType: 'question' | 'answer' | 'tag', nodeId:
     queryFn: () => apiGet<GraphData>(`/api/graph/node/${nodeType}/${encodeURIComponent(String(nodeId))}`, { hops }),
     enabled: !!nodeId,
     staleTime: 5 * 60_000,
+  })
+}
+
+export function useCreateRun() {
+  return useMutation({
+    mutationFn: (params: RunCreateParams) => apiPost<{ run_id: string }>('/api/runs', params),
+  })
+}
+
+/**
+ * Live run state via SSE, per PLAN_UI_UX.md §5.4/§8 point 4: fetches the
+ * current state once immediately (so a page refresh mid-run or after
+ * completion shows correct data even before/without a stream connecting),
+ * then layers live updates on top via EventSource. The backend closes the
+ * stream itself once the run reaches a terminal status.
+ */
+export function useRunStream(runId: string | undefined) {
+  const [run, setRun] = useState<RunState | null>(null)
+  const [connectionError, setConnectionError] = useState(false)
+  const esRef = useRef<EventSource | null>(null)
+
+  useEffect(() => {
+    if (!runId) return
+    let cancelled = false
+    setRun(null)
+    setConnectionError(false)
+
+    apiGet<RunState>(`/api/runs/${runId}`)
+      .then((r) => !cancelled && setRun(r))
+      .catch(() => {})
+
+    const es = new EventSource(`${API_BASE}/api/runs/${runId}/stream`)
+    esRef.current = es
+    es.onmessage = (event) => {
+      try {
+        setRun(JSON.parse(event.data) as RunState)
+      } catch {
+        // ignore malformed event
+      }
+    }
+    es.onerror = () => setConnectionError(true)
+
+    return () => {
+      cancelled = true
+      es.close()
+    }
+  }, [runId])
+
+  return { run, connectionError }
+}
+
+export function useCancelRun() {
+  return useMutation({
+    mutationFn: (runId: string) => apiPost(`/api/runs/${runId}/cancel`),
+  })
+}
+
+export function useRunResultDetail(runId: string, questionId: number | string) {
+  return useQuery({
+    queryKey: ['run-result-detail', runId, questionId],
+    queryFn: () => apiGet<RunResultDetail>(`/api/runs/${runId}/results/${questionId}`),
+    enabled: !!runId && questionId !== undefined,
   })
 }
