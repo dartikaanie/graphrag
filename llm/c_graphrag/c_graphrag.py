@@ -564,6 +564,186 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 
 
 # ---------------------------------------------------------------------
+# Proses per-pertanyaan (dipakai CLI main() DAN dashboard backend/engine_service)
+# ---------------------------------------------------------------------
+
+def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, driver, database,
+                    faiss_index, faiss_ids, faiss_embeddings, id_to_row: dict, all_answer_ids_map: dict,
+                    top_k: int, n_anchor: int, n_semantic_expansion: int, token_chunk_limit: int,
+                    model: str, output_path: Path, already_done: set | None = None,
+                    on_progress=None, check_cancel=None) -> tuple[list[dict], dict]:
+    """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
+    semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
+    + validasi sitasi, tulis ke output_path (append, resumable). Diekstrak
+    dari main() dengan pola SAMA dengan process_sample() Kondisi A/B supaya
+    CLI dan dashboard backend (PLAN_UI_UX.md §5.7) berbagi satu implementasi.
+
+    Return (results, stats) -- stats berisi n_no_context/n_no_citation/
+    n_no_valid_citation/interrupted, dipakai main() untuk ringkasan run.
+    `on_progress(dict)` / `check_cancel()` -> lihat docstring Kondisi A;
+    keduanya opsional supaya CLI (main()) tidak berubah perilaku.
+    """
+    already_done = already_done or set()
+    total = len(sample_df)
+    results = []
+    n_no_context = 0
+    n_no_citation = 0
+    n_no_valid_citation = 0
+    interrupted = False
+
+    try:
+        with open(output_path, "a") as f_out:
+            log(f"      [debug-init] cwd={os.getcwd()!r} output_path={output_path!r} "
+                f"resolved={output_path.resolve()!r} fileno={f_out.fileno()}")
+            for i, row in sample_df.iterrows():
+                if check_cancel is not None and check_cancel():
+                    log(f"      [cancelled] Dihentikan setelah {len(results)}/{total} pertanyaan.")
+                    break
+
+                qid = int(row["Id"])
+                if qid in already_done:
+                    continue
+
+                t_query_start = time.time()
+
+                # leakage exclusion set untuk pertanyaan evaluasi INI SAJA
+                exclude_question_ids = {qid}
+                exclude_answer_ids = set(all_answer_ids_map.get(qid, []))
+                exclude_answer_ids.add(int(row["AcceptedAnswerId"]))
+
+                # kalau embedding pertanyaan ini sendiri sudah ada di cache
+                # (harusnya iya, KG dibangun full population), pakai LANGSUNG
+                # dari memmap -- lebih cepat & konsisten drpd re-encode; fallback
+                # re-encode kalau belum ada di cache (mis. KG dibuild sebelum
+                # pertanyaan ini masuk parquet, jarang terjadi).
+                if qid in id_to_row:
+                    query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
+                    query_emb = np.ascontiguousarray(query_emb)
+                else:
+                    query_text = f"{row['Title']} {str(row['Body'])[:1000]}"
+                    query_emb = embed_query(query_text, embed_model)
+
+                # --- a. Entity Anchoring ---
+                anchors = anchor_via_vector_search(
+                    query_emb, faiss_index, faiss_ids, n_anchor, exclude_question_ids,
+                )
+                anchor_ids = [qid_ for qid_, _ in anchors]
+
+                # --- b. Graph Traversal ---
+                graph_candidates = []
+                if anchor_ids:
+                    graph_candidates = traverse_graph(
+                        driver, database, anchor_ids, exclude_question_ids, exclude_answer_ids,
+                    )
+
+                # --- c. Semantic Expansion ---
+                seen_qids = exclude_question_ids | set(anchor_ids)
+                expansion_candidates = semantic_expansion(
+                    driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
+                    n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
+                )
+
+                # --- Fusi + rerank + chunking + cap top-K ---
+                retrieved = fuse_and_rank(graph_candidates, expansion_candidates,
+                                           top_k, token_chunk_limit)
+                retrieval_latency = time.time() - t_query_start
+                if not retrieved:
+                    n_no_context += 1
+
+                messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
+                try:
+                    llm_answer = call_llm_fn(llm_client, messages, model)
+                except Exception as e:
+                    log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
+                    if on_progress:
+                        on_progress({"question_id": qid, "index": i, "total": total,
+                                     "status": "failed", "error": str(e)})
+                    continue
+
+                has_citation, cited_ids, has_valid_citation, valid_ids = extract_citations(llm_answer, retrieved)
+                if not has_citation:
+                    n_no_citation += 1
+                if not has_valid_citation:
+                    n_no_valid_citation += 1
+
+                similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
+
+                view_count = row.get("ViewCount")
+                question_score = row.get("Score")
+                record = {
+                    "question_id": qid,
+                    "title": row["Title"],
+                    "tags": row["Tags"],
+                    "n_tokens": int(row["n_tokens"]),
+                    "view_count": None if pd.isna(view_count) else int(view_count),
+                    "question_score": None if pd.isna(question_score) else int(question_score),
+                    "accepted_answer_id": int(row["AcceptedAnswerId"]),
+                    "ground_truth_answer": row["AcceptedAnswerBody"],
+                    "retrieved_context": retrieved,
+                    "n_anchors": len(anchor_ids),
+                    "n_graph_candidates": len(graph_candidates),
+                    "n_expansion_candidates": len(expansion_candidates),
+                    "retrieval_latency_sec": round(retrieval_latency, 3),
+                    "llm_answer": llm_answer,
+                    "llm_model": model,
+                    "cosine_similarity": similarity,
+                    "has_citation": has_citation,
+                    "cited_source_ids": cited_ids,
+                    "has_valid_citation": has_valid_citation,
+                    "valid_cited_source_ids": valid_ids,
+                }
+                try:
+                    line = json.dumps(record, default=str)
+                except Exception as e:
+                    log(f"      [{i+1}/{total}] Id={qid} [FAIL-WRITE] {e}")
+                    if on_progress:
+                        on_progress({"question_id": qid, "index": i, "total": total,
+                                     "status": "failed", "error": str(e)})
+                    continue
+
+                try:
+                    n_bytes_written = f_out.write(line + "\n")
+                    f_out.flush()
+                    os.fsync(f_out.fileno())
+                    size_after = os.path.getsize(output_path)
+                    log(f"      [debug-write] Id={qid} bytes_written_this_line={n_bytes_written} "
+                        f"file_size_now={size_after} f_out.tell()={f_out.tell()}")
+                except Exception as e:
+                    import traceback
+                    log(f"      [debug-write] [EXCEPTION SAAT WRITE] Id={qid}: {e}")
+                    log(traceback.format_exc())
+                    raise
+                results.append(record)
+                log(f"      [{i+1}/{total}] Id={qid} anchors={len(anchor_ids)} "
+                    f"context={len(retrieved)} citation={has_citation} valid_citation={has_valid_citation} "
+                    f"similarity={similarity:.3f} retrieval={retrieval_latency:.2f}s")
+
+                if retrieval_latency > 15.0:
+                    log(f"      [WARN] Id={qid} retrieval_latency={retrieval_latency:.2f}s "
+                        f"MELEBIHI NF3 (<=15 detik)")
+
+                if on_progress:
+                    on_progress({"question_id": qid, "index": i, "total": total,
+                                 "status": "done", "similarity": similarity, "record": record})
+
+                time.sleep(0.3)
+    except KeyboardInterrupt:
+        interrupted = True
+        log("\n[INTERRUPTED] Proses dihentikan manual (Ctrl+C / kill). Ringkasan di bawah "
+            "dihitung dari hasil yang SUDAH tersimpan di file sejauh ini. Jalankan command "
+            "yang SAMA PERSIS lagi kapan saja -- otomatis lanjut (resume) dari sisa yang "
+            "belum diproses, tidak perlu mengulang dari awal.")
+
+    stats = {
+        "n_no_context": n_no_context,
+        "n_no_citation": n_no_citation,
+        "n_no_valid_citation": n_no_valid_citation,
+        "interrupted": interrupted,
+    }
+    return results, stats
+
+
+# ---------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------
 
@@ -680,138 +860,13 @@ def main():
     log(f"[7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting {args.model} "
         f"untuk {len(sample_df)} pertanyaan...")
 
-    n_no_context = 0
-    n_no_citation = 0
-    n_no_valid_citation = 0
-    interrupted = False
-
-    try:
-        with open(output_path, "a") as f_out:
-            log(f"      [debug-init] cwd={os.getcwd()!r} output_path={output_path!r} "
-                f"resolved={output_path.resolve()!r} fileno={f_out.fileno()}")
-            for i, row in sample_df.iterrows():
-                qid = int(row["Id"])
-                if qid in already_done:
-                    continue
-
-                t_query_start = time.time()
-
-                # leakage exclusion set untuk pertanyaan evaluasi INI SAJA
-                exclude_question_ids = {qid}
-                exclude_answer_ids = set(all_answer_ids_map.get(qid, []))
-                exclude_answer_ids.add(int(row["AcceptedAnswerId"]))
-
-                # kalau embedding pertanyaan ini sendiri sudah ada di cache
-                # (harusnya iya, KG dibangun full population), pakai LANGSUNG
-                # dari memmap -- lebih cepat & konsisten drpd re-encode; fallback
-                # re-encode kalau belum ada di cache (mis. KG dibuild sebelum
-                # pertanyaan ini masuk parquet, jarang terjadi).
-                if qid in id_to_row:
-                    query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
-                    query_emb = np.ascontiguousarray(query_emb)
-                else:
-                    query_text = f"{row['Title']} {str(row['Body'])[:1000]}"
-                    query_emb = embed_query(query_text, embed_model)
-
-                # --- a. Entity Anchoring ---
-                anchors = anchor_via_vector_search(
-                    query_emb, faiss_index, faiss_ids, args.n_anchor, exclude_question_ids,
-                )
-                anchor_ids = [qid_ for qid_, _ in anchors]
-
-                # --- b. Graph Traversal ---
-                graph_candidates = []
-                if anchor_ids:
-                    graph_candidates = traverse_graph(
-                        driver, database, anchor_ids, exclude_question_ids, exclude_answer_ids,
-                    )
-
-                # --- c. Semantic Expansion ---
-                seen_qids = exclude_question_ids | set(anchor_ids)
-                expansion_candidates = semantic_expansion(
-                    driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
-                    args.n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
-                )
-
-                # --- Fusi + rerank + chunking + cap top-K ---
-                retrieved = fuse_and_rank(graph_candidates, expansion_candidates,
-                                           args.top_k, args.token_chunk_limit)
-                retrieval_latency = time.time() - t_query_start
-                if not retrieved:
-                    n_no_context += 1
-
-                messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
-                try:
-                    llm_answer = call_llm_fn(llm_client, messages, args.model)
-                except Exception as e:
-                    log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL] API error: {e}")
-                    continue
-
-                has_citation, cited_ids, has_valid_citation, valid_ids = extract_citations(llm_answer, retrieved)
-                if not has_citation:
-                    n_no_citation += 1
-                if not has_valid_citation:
-                    n_no_valid_citation += 1
-
-                similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
-
-                view_count = row.get("ViewCount")
-                question_score = row.get("Score")
-                record = {
-                    "question_id": qid,
-                    "title": row["Title"],
-                    "tags": row["Tags"],
-                    "n_tokens": int(row["n_tokens"]),
-                    "view_count": None if pd.isna(view_count) else int(view_count),
-                    "question_score": None if pd.isna(question_score) else int(question_score),
-                    "accepted_answer_id": int(row["AcceptedAnswerId"]),
-                    "ground_truth_answer": row["AcceptedAnswerBody"],
-                    "retrieved_context": retrieved,
-                    "n_anchors": len(anchor_ids),
-                    "n_graph_candidates": len(graph_candidates),
-                    "n_expansion_candidates": len(expansion_candidates),
-                    "retrieval_latency_sec": round(retrieval_latency, 3),
-                    "llm_answer": llm_answer,
-                    "llm_model": args.model,
-                    "cosine_similarity": similarity,
-                    "has_citation": has_citation,
-                    "cited_source_ids": cited_ids,
-                    "has_valid_citation": has_valid_citation,
-                    "valid_cited_source_ids": valid_ids,
-                }
-                try:
-                    line = json.dumps(record, default=str)
-                except Exception as e:
-                    log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL-WRITE] {e}")
-                    continue
-
-                try:
-                    n_bytes_written = f_out.write(line + "\n")
-                    f_out.flush()
-                    os.fsync(f_out.fileno())
-                    size_after = os.path.getsize(output_path)
-                    log(f"      [debug-write] Id={qid} bytes_written_this_line={n_bytes_written} "
-                        f"file_size_now={size_after} f_out.tell()={f_out.tell()}")
-                except Exception as e:
-                    import traceback
-                    log(f"      [debug-write] [EXCEPTION SAAT WRITE] Id={qid}: {e}")
-                    log(traceback.format_exc())
-                    raise
-                log(f"      [{i+1}/{len(sample_df)}] Id={qid} anchors={len(anchor_ids)} "
-                    f"context={len(retrieved)} citation={has_citation} valid_citation={has_valid_citation} "
-                    f"similarity={similarity:.3f} retrieval={retrieval_latency:.2f}s")
-
-                if retrieval_latency > 15.0:
-                    log(f"      [WARN] Id={qid} retrieval_latency={retrieval_latency:.2f}s "
-                        f"MELEBIHI NF3 (<=15 detik)")
-
-                time.sleep(0.3)
-    except KeyboardInterrupt:
-        interrupted = True
-        log("\n[INTERRUPTED] Proses dihentikan manual (Ctrl+C / kill). Ringkasan di bawah "
-            "dihitung dari hasil yang SUDAH tersimpan di file sejauh ini. Jalankan command "
-            "yang SAMA PERSIS lagi kapan saja -- otomatis lanjut (resume) dari sisa yang "
-            "belum diproses, tidak perlu mengulang dari awal.")
+    results, stats = process_sample(
+        sample_df, llm_client, call_llm_fn, embed_model, driver, database,
+        faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
+        args.top_k, args.n_anchor, args.n_semantic_expansion, args.token_chunk_limit,
+        args.model, output_path, already_done,
+    )
+    interrupted = stats["interrupted"]
 
     driver.close()
     if interrupted:

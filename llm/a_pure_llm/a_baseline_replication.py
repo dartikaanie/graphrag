@@ -330,6 +330,74 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 
 
 # ---------------------------------------------------------------------
+# Proses per-pertanyaan (dipakai CLI main() DAN dashboard backend/engine_service)
+# ---------------------------------------------------------------------
+
+def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, model: str,
+                    output_path: Path, already_done: set | None = None, on_progress=None,
+                    check_cancel=None) -> list[dict]:
+    """Proses satu-per-satu sample_df: panggil LLM, hitung cosine similarity,
+    tulis ke output_path (append, resumable via `already_done`). Diekstrak
+    dari main() supaya SATU-SATUNYA implementasi loop generasi dipakai baik
+    oleh CLI maupun oleh dashboard backend (lihat PLAN_UI_UX.md §5.7) --
+    tidak ada risiko keduanya diam-diam berbeda perilaku.
+
+    `on_progress(dict)` dipanggil setelah setiap pertanyaan selesai (sukses
+    maupun gagal) -- dipakai backend untuk push event SSE progress ke UI.
+    `check_cancel()` -> bool, dicek di awal tiap iterasi -- dipakai backend
+    untuk POST /api/runs/{id}/cancel (§5.4). Kedua parameter opsional supaya
+    CLI (main()) tidak perlu berubah perilaku.
+    """
+    already_done = already_done or set()
+    total = len(sample_df)
+    results = []
+    with open(output_path, "a") as f_out:
+        for i, row in sample_df.iterrows():
+            if check_cancel is not None and check_cancel():
+                log(f"      [cancelled] Dihentikan setelah {len(results)}/{total} pertanyaan.")
+                break
+
+            qid = int(row["Id"])
+            if qid in already_done:
+                continue
+
+            messages = build_base_messages(row["Title"], row["Body"], row["Tags"])
+            try:
+                llm_answer = call_llm_fn(llm_client, messages, model)
+            except Exception as e:
+                log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
+                if on_progress:
+                    on_progress({"question_id": qid, "index": i, "total": total,
+                                 "status": "failed", "error": str(e)})
+                continue
+
+            similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
+
+            record = {
+                "question_id": qid,
+                "title": row["Title"],
+                "tags": row["Tags"],
+                "n_tokens": int(row["n_tokens"]),
+                "view_count": row.get("ViewCount"),
+                "question_score": row.get("Score"),
+                "accepted_answer_id": int(row["AcceptedAnswerId"]),
+                "ground_truth_answer": row["AcceptedAnswerBody"],
+                "llm_answer": llm_answer,
+                "llm_model": model,
+                "cosine_similarity": similarity,
+            }
+            f_out.write(json.dumps(record) + "\n")
+            f_out.flush()
+            results.append(record)
+            log(f"      [{i+1}/{total}] Id={qid} similarity={similarity:.3f}")
+            if on_progress:
+                on_progress({"question_id": qid, "index": i, "total": total,
+                             "status": "done", "similarity": similarity, "record": record})
+            time.sleep(0.3)  # jaga-jaga rate limit
+    return results
+
+
+# ---------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------
 
@@ -468,38 +536,7 @@ def main():
     log(f"[6/6] Prompting {args.model} untuk {len(sample_df)} pertanyaan "
           f"(1 panggilan per pertanyaan, konfigurasi default)...")
 
-    with open(output_path, "a") as f_out:
-        for i, row in sample_df.iterrows():
-            qid = int(row["Id"])
-            if qid in already_done:
-                continue
-
-            messages = build_base_messages(row["Title"], row["Body"], row["Tags"])
-            try:
-                llm_answer = call_llm_fn(llm_client, messages, args.model)
-            except Exception as e:
-                log(f"      [{i+1}/{len(sample_df)}] Id={qid} [FAIL] API error: {e}")
-                continue
-
-            similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
-
-            record = {
-                "question_id": qid,
-                "title": row["Title"],
-                "tags": row["Tags"],
-                "n_tokens": int(row["n_tokens"]),
-                "view_count": row.get("ViewCount"),
-                "question_score": row.get("Score"),
-                "accepted_answer_id": int(row["AcceptedAnswerId"]),
-                "ground_truth_answer": row["AcceptedAnswerBody"],
-                "llm_answer": llm_answer,
-                "llm_model": args.model,
-                "cosine_similarity": similarity,
-            }
-            f_out.write(json.dumps(record) + "\n")
-            f_out.flush()
-            log(f"      [{i+1}/{len(sample_df)}] Id={qid} similarity={similarity:.3f}")
-            time.sleep(0.3)  # jaga-jaga rate limit
+    process_sample(sample_df, llm_client, call_llm_fn, embed_model, args.model, output_path, already_done)
 
     # --- Ringkasan akhir ---
     if not output_path.exists() or output_path.stat().st_size == 0:
