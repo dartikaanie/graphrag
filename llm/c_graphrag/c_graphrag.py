@@ -680,6 +680,10 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "accepted_answer_id": int(row["AcceptedAnswerId"]),
                     "ground_truth_answer": row["AcceptedAnswerBody"],
                     "retrieved_context": retrieved,
+                    "anchor_question_ids": [
+                        {"question_id": int(aid), "similarity": round(float(score), 4)} for aid, score in anchors
+                    ],
+                    "prompt_messages": messages,
                     "n_anchors": len(anchor_ids),
                     "n_graph_candidates": len(graph_candidates),
                     "n_expansion_candidates": len(expansion_candidates),

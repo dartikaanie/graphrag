@@ -59,9 +59,24 @@ export interface RunState {
 
 export interface RetrievedContextItem {
   question_id?: number
+  answer_id?: number
   chunk_text: string
   trust_weight?: number
+  combined_score?: number
   hop?: number
+  rel_type?: string | null
+  source_stage?: 'graph_traversal' | 'semantic_expansion'
+  is_accepted?: boolean | null
+}
+
+export interface AnchorQuestion {
+  question_id: number
+  similarity: number
+}
+
+export interface PromptMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
 }
 
 export interface RunResultDetail {
@@ -74,6 +89,8 @@ export interface RunResultDetail {
   accepted_answer_id: number
   ground_truth_answer: string
   retrieved_context?: RetrievedContextItem[]
+  anchor_question_ids?: AnchorQuestion[]
+  prompt_messages?: PromptMessage[]
   n_anchors?: number
   n_graph_candidates?: number
   n_expansion_candidates?: number

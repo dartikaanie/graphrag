@@ -1,17 +1,29 @@
-import { Link, useParams } from 'react-router-dom'
-import { useHistoryResultDetail } from '@/api/hooks'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useHistoryResultDetail, useHistoryResultGraph } from '@/api/hooks'
 import { AnswerComparisonPanel } from '@/components/AnswerComparisonPanel'
 import { RetrievalEvidenceList } from '@/components/RetrievalEvidenceList'
+import { PromptTranscript } from '@/components/PromptTranscript'
+import { GraphView } from '@/components/GraphView'
+import { EdgeLegend } from '@/components/EdgeLegend'
 import { Badge } from '@/components/Badge'
+import type { GraphNode } from '@/types/graph'
 
 export function HistoryResultDetailPage() {
   const { history_id = '', question_id = '' } = useParams()
+  const navigate = useNavigate()
   const { data, isLoading, isError } = useHistoryResultDetail(history_id, question_id)
   const condition = history_id.split('-')[0] || 'A'
   const isRag = condition === 'B' || condition === 'C'
+  const isGraphRag = condition === 'C'
+  const { data: graph, isLoading: graphLoading } = useHistoryResultGraph(history_id, question_id)
 
   if (isLoading) return <div className="text-sm text-text-muted">Loading...</div>
   if (isError || !data) return <div className="text-sm text-danger">Result not found.</div>
+
+  const handleNodeClick = (node: GraphNode) => {
+    if (node.type === 'Question') navigate(`/questions/${node.properties.id}`)
+    else if (node.type === 'Answer') navigate(`/answers/${node.properties.id}`)
+  }
 
   return (
     <div>
@@ -21,7 +33,12 @@ export function HistoryResultDetailPage() {
         </Link>
       </div>
       <h1 className="text-lg font-semibold text-text-primary mb-1 break-words">{data.title}</h1>
-      <p className="text-sm text-text-secondary mb-4">Question #{data.question_id}</p>
+      <p className="text-sm text-text-secondary mb-4">
+        Question #{data.question_id} · Accepted answer:{' '}
+        <Link to={`/answers/${data.accepted_answer_id}`} className="text-primary hover:underline">
+          #{data.accepted_answer_id}
+        </Link>
+      </p>
 
       <AnswerComparisonPanel
         llmAnswer={data.llm_answer}
@@ -50,10 +67,35 @@ export function HistoryResultDetailPage() {
         )}
       </div>
 
+      <div className="mb-4">
+        <PromptTranscript messages={data.prompt_messages ?? []} />
+      </div>
+
       {isRag && (
-        <div className="border border-border rounded-lg bg-surface p-4">
+        <div className="border border-border rounded-lg bg-surface p-4 mb-4">
           <h2 className="text-sm font-medium text-text-secondary mb-3">Retrieval Evidence</h2>
           <RetrievalEvidenceList items={data.retrieved_context ?? []} />
+        </div>
+      )}
+
+      {isGraphRag && (
+        <div>
+          <h2 className="text-sm font-medium text-text-secondary mb-2">
+            Retrieval Path — Entity Anchoring → Graph Traversal → Semantic Expansion
+          </h2>
+          {graphLoading && (
+            <div className="border border-border rounded-lg bg-surface p-4 text-sm text-text-muted h-[320px] flex items-center justify-center">
+              Loading graph...
+            </div>
+          )}
+          {graph && (
+            <>
+              <GraphView data={graph} height={320} onNodeClick={handleNodeClick} centerNodeId={`Question-${data.question_id}`} />
+              <div className="mt-2 border border-border rounded-lg bg-surface px-3 py-2.5">
+                <EdgeLegend present={new Set(graph.links.map((l) => l.type))} />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services import history_service as svc
+from app.services import graph_service, history_service as svc
 
 router = APIRouter(prefix="/api/history")
 
@@ -37,3 +37,11 @@ def get_history_result_detail(history_id: str, question_id: int):
     if not record:
         raise HTTPException(status_code=404, detail=f"Question {question_id} not found in this run's output")
     return record
+
+
+@router.get("/{history_id}/results/{question_id}/graph")
+def get_history_result_graph(history_id: str, question_id: int):
+    record = svc.get_history_result_detail(history_id, question_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Question {question_id} not found in this run's output")
+    return graph_service.get_run_result_graph(record)

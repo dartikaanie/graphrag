@@ -202,3 +202,19 @@ export function useTestConnection() {
     mutationFn: (body: Record<string, unknown>) => apiPost<TestConnectionResult>('/api/settings/test-connection', body),
   })
 }
+
+export function useRunResultGraph(runId: string, questionId: number | string) {
+  return useQuery({
+    queryKey: ['run-result-graph', runId, questionId],
+    queryFn: () => apiGet<GraphData>(`/api/runs/${runId}/results/${questionId}/graph`),
+    enabled: !!runId && questionId !== undefined,
+  })
+}
+
+export function useHistoryResultGraph(historyId: string, questionId: number | string) {
+  return useQuery({
+    queryKey: ['history-result-graph', historyId, questionId],
+    queryFn: () => apiGet<GraphData>(`/api/history/${historyId}/results/${questionId}/graph`),
+    enabled: !!historyId && questionId !== undefined,
+  })
+}

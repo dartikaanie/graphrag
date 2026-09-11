@@ -382,6 +382,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 "question_score": row.get("Score"),
                 "accepted_answer_id": int(row["AcceptedAnswerId"]),
                 "ground_truth_answer": row["AcceptedAnswerBody"],
+                "prompt_messages": messages,
                 "llm_answer": llm_answer,
                 "llm_model": model,
                 "cosine_similarity": similarity,

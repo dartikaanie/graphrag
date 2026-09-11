@@ -6,9 +6,26 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.models.schemas import RunCreateRequest, RunCreateResponse
-from app.services import engine_service, run_registry
+from app.services import engine_service, graph_service, run_registry
 
 router = APIRouter(prefix="/api/runs")
+
+
+def _find_result_record(output_path: str | None, question_id: int) -> dict | None:
+    if not output_path:
+        return None
+    try:
+        with open(output_path) as f:
+            for line in f:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("question_id") == question_id:
+                    return record
+    except FileNotFoundError:
+        pass
+    return None
 
 
 @router.post("", response_model=RunCreateResponse)
@@ -54,21 +71,27 @@ def get_run_result_detail(run_id: str, question_id: int):
     run = run_registry.get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    output_path = run.get("output_path")
-    if not output_path:
-        raise HTTPException(status_code=404, detail="Run has no output yet")
-    try:
-        with open(output_path) as f:
-            for line in f:
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if record.get("question_id") == question_id:
-                    return record
-    except FileNotFoundError:
-        pass
-    raise HTTPException(status_code=404, detail=f"Question {question_id} not found in this run's output")
+    record = _find_result_record(run.get("output_path"), question_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Question {question_id} not found in this run's output")
+    return record
+
+
+@router.get("/{run_id}/results/{question_id}/graph")
+def get_run_result_graph(run_id: str, question_id: int):
+    """The actual retrieval path used for this one question (entity anchor
+    -> graph traversal -> semantic expansion for Condition C), reconstructed
+    from the provenance already persisted in its result record -- lets you
+    verify what a run actually retrieved for a specific question, not just
+    trust the aggregate metrics.
+    """
+    run = run_registry.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    record = _find_result_record(run.get("output_path"), question_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"Question {question_id} not found in this run's output")
+    return graph_service.get_run_result_graph(record)
 
 
 @router.post("/{run_id}/cancel")

@@ -15,6 +15,12 @@ export type EdgeType =
   | 'TAG_COOCCUR'
   | 'EMBED_SIM'
   | 'AUTHOR_TRUST'
+  // Synthetic edge types for a single run result's retrieval-path graph
+  // (not real KG edges) -- see get_run_result_graph on the backend.
+  | 'ANCHOR'
+  | 'GRAPH_TRAVERSAL'
+  | 'SEMANTIC_EXPANSION'
+  | 'RETRIEVED'
 
 export interface GraphLink {
   source: string
