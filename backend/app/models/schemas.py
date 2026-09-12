@@ -76,7 +76,7 @@ class StatsSummary(BaseModel):
 
 
 class RunCreateRequest(BaseModel):
-    condition: str  # "A" | "B" | "C"
+    condition: str  # "A" | "B" | "C" | "D"
     mode: str  # "batch" | "single"
     # batch mode
     n_sample: int = 30
@@ -96,6 +96,19 @@ class RunCreateRequest(BaseModel):
     fusion_w_path_trust: float = 0.7
     fusion_w_intrinsic: float = 0.3
     semantic_expansion_trust_cap: float = 0.4
+    # Condition C only -- ablation switch to skip the semantic expansion
+    # stage entirely (retrieval = anchor + graph traversal only).
+    enable_semantic_expansion: bool | None = True
+    # Condition D only -- dual-level retrieval (adaptasi LightRAG), lihat
+    # llm/d_lightrag/d_lightrag.py. Runs on the SAME KG/FAISS cache as
+    # Condition C (no trust weighting at all).
+    n_low_level: int | None = None
+    n_high_level: int | None = None
+    # Condition C AND D -- grounding constraint toggle (see
+    # build_graphrag_messages()/build_lightrag_messages() in llm/prompts.py).
+    # True (default): dual-constraint grounding+citation. False: citation
+    # instruction only, no "don't introduce facts outside the context" rule.
+    require_grounding: bool | None = True
     # single mode
     question_id: int | None = None
     # shared

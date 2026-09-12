@@ -21,6 +21,7 @@ HISTORY_PATHS: dict[str, Path] = {
     "A": REPO_ROOT / "llm" / "a_pure_llm" / "logs" / "run_history.jsonl",
     "B": REPO_ROOT / "llm" / "b_rag" / "logs" / "run_history.jsonl",
     "C": REPO_ROOT / "llm" / "c_graphrag" / "logs" / "run_history.jsonl",
+    "D": REPO_ROOT / "llm" / "d_lightrag" / "logs" / "run_history.jsonl",
 }
 
 
@@ -139,6 +140,10 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
             "fusion_w_path_trust": record.get("fusion_w_path_trust"),
             "fusion_w_intrinsic": record.get("fusion_w_answer_intrinsic_trust"),
             "semantic_expansion_trust_cap": record.get("semantic_expansion_trust_cap"),
+            "enable_semantic_expansion": record.get("enable_semantic_expansion"),
+            "n_low_level": record.get("n_low_level"),
+            "n_high_level": record.get("n_high_level"),
+            "require_grounding": record.get("require_grounding"),
         },
         "created_at": started_at,
         "started_at": started_at,
@@ -167,6 +172,46 @@ def get_history_result_detail(history_id: str, question_id: int) -> dict[str, An
             if record.get("question_id") == question_id:
                 return record
     return None
+
+
+def delete_history_record(history_id: str) -> bool:
+    """Remove one record from its condition's run_history.jsonl (rewrite the
+    file without that line). Deliberately leaves the underlying results
+    .jsonl (output_path) untouched -- this deletes the "transaction log"
+    entry, which is what the History UI lists, not the raw experiment data
+    itself, so a delete here can never lose the actual per-question results
+    on disk. Returns False if the record/condition wasn't found."""
+    condition = history_id.split("-", 1)[0]
+    if condition not in HISTORY_PATHS:
+        return False
+    path = HISTORY_PATHS[condition]
+    if not path.exists():
+        return False
+
+    kept_lines = []
+    found = False
+    with open(path) as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                record = json.loads(stripped)
+            except json.JSONDecodeError:
+                kept_lines.append(line if line.endswith("\n") else line + "\n")
+                continue
+            record.setdefault("condition", condition)
+            if _history_id(condition, record) == history_id:
+                found = True
+                continue
+            kept_lines.append(line if line.endswith("\n") else line + "\n")
+
+    if not found:
+        return False
+
+    with open(path, "w") as f:
+        f.writelines(kept_lines)
+    return True
 
 
 def total_pages(total: int, page_size: int) -> int:

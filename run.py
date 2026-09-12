@@ -168,6 +168,18 @@ MENU = [
                 "densifikasi FAISS/embedding sudah dijalankan (lihat docstring c_graphrag.py).",
         "confirm_cost": True,
     },
+    {
+        "label": "Run Kondisi D -- Dual-Level Retrieval (adaptasi LightRAG, KG sama dgn Kondisi C)",
+        "desc": "Sama seperti Kondisi C tapi mekanisme retrieval BEDA (dual-level: low-level 1-hop + "
+                "high-level 2-hop tema/tag, TANPA trust-weighting) -- KG & FAISS cache DIBACA APA "
+                "ADANYA, TIDAK membangun graf baru.",
+        "script": "d_lightrag.py",
+        "cwd": "llm/d_lightrag",
+        "default_args": [],
+        "note": "Prasyarat: SAMA dgn Kondisi C -- KG sudah dibangun & densifikasi FAISS/embedding "
+                "sudah dijalankan (lihat docstring d_lightrag.py).",
+        "confirm_cost": True,
+    },
 ]
 
 
