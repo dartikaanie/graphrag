@@ -35,11 +35,17 @@ All four conditions share the exact same 4-turn prompt skeleton
 the grounding constraint specifically — is the only variable. That's the
 controlled comparison the thesis is built on. A full write-up of each
 condition's design, and a side-by-side comparison table, lives on the
-dashboard's **Methodology** page (`/methodology`) — see §6.
+dashboard's **Methodology** page (`/methodology`) — see §7.
+
+Beyond the four conditions' own cosine-similarity/NF2/NF3 metrics, a
+separate post-hoc evaluation layer (LLM-as-Judge for Faithfulness/Answer
+Relevance/Hallucination Rate, plus retrieval Precision@k/MRR@k) can be run
+on top of any already-completed result file without re-running the
+condition itself — see §6.
 
 A web dashboard (`backend/` + `frontend/`) has been built on top of this
 research engine so runs, results, history, and the knowledge graph can be
-demoed/driven from a browser instead of the terminal. See §6 below and
+demoed/driven from a browser instead of the terminal. See §7 below and
 `PLAN_UI_UX.md` for the full spec.
 
 ---
@@ -57,13 +63,15 @@ llm/                    The research engine (main project)
   b_rag/                   Condition B script + its results/logs/index_cache
   c_graphrag/              Condition C script + its results/logs
   d_lightrag/              Condition D script + its results/logs
+  evaluation/              Post-hoc LLM-as-Judge script + its own results/logs (see §6)
 backend/                FastAPI dashboard backend
 frontend/               React (Vite) dashboard frontend
 config/                 One-off diagnostic scripts (accepted-answer match, KG feasibility, LLM connection test)
 report/                 Generated EDA/integrity reports (markdown + charts)
 docs/                   This file + PLAN_UI_UX.md
 run.py                  Interactive CLI launcher (menu wrapper around the scripts above)
-compare_condition_c_runs.py   Compares run_history.jsonl across A/B/C/D side by side
+compare_condition_c_runs.py   Compares run_history.jsonl across A/B/C/D (+ judge_run_history.jsonl) side by side
+analyze_retrieval_quality.py  Precision@k/MRR@k (tag-overlap proxy) purely from existing B/C/D result files, no new LLM calls
 ```
 
 `llm/a_pure_llm`, `llm/b_rag`, `llm/c_graphrag` were originally named
@@ -84,7 +92,7 @@ Run in order (each is also wired into `run.py`'s menu):
 5. `4_test_infra.py` — validates Neo4j + FAISS connectivity before KG construction.
 6. `5_eda_trust_signals.py` — 19-chart EDA on data quality, content, trust signals, time, KG feasibility.
 7. `6_postlinks_to_sord.py` — enriches SORD with Question↔Question `Linked`/`Duplicate` edges from StackExchange `PostLinks.xml`.
-8. `7_build_knowledge_graph.py` — builds the base Neo4j KG (see schema in §5).
+8. `7_build_knowledge_graph.py` — builds the base Neo4j KG (see schema in §4).
 9. `8_convert_users.py`, `9_load_author_trust.py` — loads `User` nodes and `AUTHOR_TRUST` edges.
 10. `10_densify_tag_cooccurrence.py`, `11_densify_embedding_similarity.py` — adds `TAG_COOCCUR` and `EMBED_SIM` edges to densify the graph beyond the sparse base structure.
 11. `12_validate_densification.py` — sanity-checks the densification results.
@@ -123,11 +131,11 @@ argument in the thesis defense)
 Current live counts (from the dashboard's `/api/stats/summary`): **2,685,814**
 Questions, **725,795** Answers, **56,435** Tags, **32,100,676** edges total.
 
-Neo4j indexes added while building the dashboard (Phase 1, see §6): range
+Neo4j indexes added while building the dashboard (Phase 1, see §7): range
 indexes on `Question.score`, `Answer.score`, `Tag.questionCount`, plus
 full-text indexes `question_title_fts` and `answer_body_fts` — needed
 because unindexed `ORDER BY`/`CONTAINS` queries over a 2.7M-node graph would
-otherwise hang (see the "lessons learned" note in §7).
+otherwise hang (see the "lessons learned" note in §8).
 
 ---
 
@@ -186,7 +194,79 @@ cost — see the run.py/dashboard smoke-test notes in git history for detail).
 
 ---
 
-## 6. Dashboard (`backend/` + `frontend/`)
+## 6. Post-hoc evaluation: LLM-as-Judge & retrieval quality (`llm/evaluation/`)
+
+Two evaluation layers run entirely on top of ALREADY-COMPLETED result
+files — neither re-runs a condition's generator, and neither is required
+before a condition's own core metrics (cosine similarity, NF2, NF3) are
+usable.
+
+**LLM-as-Judge** (`llm/evaluation/llm_judge_hallucination.py`) scores an
+existing result file's answers for Faithfulness, Answer Relevance, and a
+3-class Hallucination Rate (`FAKTUAL` / `HALUSINASI_SEBAGIAN` /
+`HALUSINASI_PENUH`):
+
+- Two judging modes, chosen automatically from `--condition`: `no_context`
+  for Condition A (no retrieval exists, so faithfulness is `null` and the
+  judge falls back to its own general knowledge — methodologically
+  equivalent to a "Fabricated Claim Rate"), and `context_grounded` for
+  B/C/D (faithfulness is checked against the exact `retrieved_context`
+  the generator actually used, re-read from that file, never re-retrieved).
+- The judge prompt explicitly withholds which condition/provider/model
+  produced the answer, so a judge can never rate an answer higher just
+  because it "knows" it came from the graph-based condition.
+- Output is a **separate, new file** in `llm/evaluation/results/`, named
+  deterministically from (source file, judge provider, judge model,
+  temperature, majority rounds) — never merged back into a condition's own
+  result file. Re-running with an identical config detects
+  `already_complete` and makes zero LLM calls; a different config always
+  writes a different file, so ablation runs never collide.
+- `--majority-rounds N` (N > 1) re-judges each question N times at the
+  same temperature and takes the majority-vote label (median for the
+  numeric scores) — recommended only for a Cohen's Kappa validation
+  subsample, not a full batch, since cost scales linearly.
+- `--kappa-validation` re-judges a random subsample with a second
+  ("secondary") judge and computes Cohen's Kappa inter-rater agreement
+  between the two (Landis & Koch bands, collapsed to 4: <0.4 weak, 0.4–0.6
+  moderate, 0.6–0.8 substantial, >0.8 almost perfect) — prints an explicit
+  warning if the primary and secondary judge are configured identically,
+  since that measures self-consistency, not self-enhancement bias.
+- Every invocation (including a no-op `already_complete` check) appends one
+  line to `llm/evaluation/logs/judge_run_history.jsonl` — this manifest is
+  what the dashboard's backend joins against to surface judge results on
+  the existing History pages (see §7's Phase 6 note) without a second,
+  separate "judge results" page.
+
+**Retrieval quality** (`analyze_retrieval_quality.py`, repo root) computes
+Precision@k and MRR@k for Condition B/C/D's `retrieved_context` — purely
+from files already on disk, zero new LLM calls. Relevance is a **tag-
+overlap (Jaccard) proxy**, not human-labeled ground truth, and the
+script says so both in its docstring and in its printed output — this is
+an explicit, documented limitation for the thesis's Bab V, not a hidden
+assumption. Recall@k is deliberately **not** computed: it requires knowing
+the full candidate pool before the top-k cutoff, which existing pilot runs
+never recorded. An opt-in `--log-full-candidates` flag was added to
+`c_graphrag.py`/`b_condition_b_rag.py` for *future* runs to capture that
+list (`all_candidate_question_ids`), enabling real Recall@k in a later
+version of this script — it is not implemented yet.
+
+Both tools are wired into `run.py`'s menu and into the dashboard: Settings
+gains a "LLM-as-Judge Configuration" section (judge/secondary-judge
+provider+model+temperature, Kappa sample size, majority rounds — reusing
+the same API keys as the generator providers, not a separate secret), and
+`/evaluation/judge` triggers a judge run from the browser (condition → file
+picker narrowed by provider/model/n_sample/seed, config pre-filled from
+Settings and overridable per run, a `force` toggle, and — if the exact
+same source file + config was already judged — the page shows the cached
+result and offers "re-judge" instead of a plain Run button). Results
+appear automatically on the existing History Detail page for the judged
+run (a new "Hasil LLM-as-Judge" table) and on its per-question detail page
+(a "Penilaian Judge" section) — there is no separate results page to
+check.
+
+---
+
+## 7. Dashboard (`backend/` + `frontend/`)
 
 Full design spec: [`PLAN_UI_UX.md`](./PLAN_UI_UX.md). Built phase-by-phase,
 pausing for review after each phase.
@@ -194,7 +274,7 @@ pausing for review after each phase.
 **Phase 1 — Backend skeleton (done).** FastAPI + Neo4j + DuckDB. Endpoints for
 Questions/Answers/Tags (list, detail, search, pagination) and
 `/api/stats/summary`. Built and fixed against the *live* 2.7M-node graph, not
-just written and assumed correct — see the lessons-learned note in §7.
+just written and assumed correct — see the lessons-learned note in §8.
 
 **Phase 2 — Frontend skeleton (done).** Vite + React + TypeScript + Tailwind
 v4, design tokens from `PLAN_UI_UX.md` §2.1 (flat, blue-accent, no "AI
@@ -205,7 +285,7 @@ slop"). Sidebar layout, routing, Home (stats cards), Question/Answer/Tag list
 **Phase 3 — Graph visualization (done).** `/api/graph/partial` (top-N
 questions by score + their answers/tags) and
 `/api/graph/node/{question|answer|tag}/{id}?hops=1|2`, every query
-explicitly capped (no unbounded traversal — see §7). `GraphView`
+explicitly capped (no unbounded traversal — see §8). `GraphView`
 (react-force-graph-2d) + `EdgeLegend` wired into Home and all three detail
 pages: nodes show a short `Q#<id>`/`A#<id>` label on-canvas with full detail
 (title, score, trust, accepted status) on hover; the edge-type legend sits
@@ -243,12 +323,14 @@ entry only — the underlying results `.jsonl` on disk is never touched by a
 UI delete). A dedicated **Methodology page** (`/methodology`) documents each
 condition's design/retrieval mechanism/leakage-prevention approach and a
 full A/B/C/D comparison table, so the dashboard is self-documenting rather
-than requiring this file to be read alongside it.
+than requiring this file to be read alongside it. LLM-as-Judge results
+(§6) are joined onto this same History Detail page server-side by
+`output_path` — there is no separate "judge results" page to check.
 
 **Phase 7 — Settings (done).** Provider/model/API-key/Neo4j config lives in
 a Fernet-encrypted file *outside* the git repo
 (`~/.graphrag-dashboard/config.json`, chmod 600) rather than the repo-root
-`.env` — see §7 for why this pattern exists. A per-run UI override (e.g.
+`.env` — see §8 for why this pattern exists. A per-run UI override (e.g.
 Condition B's citation toggle) takes precedence over both Settings and
 `.env` without persisting the override anywhere.
 
@@ -259,7 +341,7 @@ every graph visualization, Duration/NF2/latency metrics shown generically
 
 ---
 
-## 7. Repo hygiene / lessons learned along the way
+## 8. Repo hygiene / lessons learned along the way
 
 A few things surfaced during an audit and while building the dashboard that
 are worth keeping visible rather than losing in chat history:
@@ -300,7 +382,7 @@ are worth keeping visible rather than losing in chat history:
 
 ---
 
-## 8. Local setup quick reference
+## 9. Local setup quick reference
 
 ```bash
 # Backend
@@ -318,6 +400,16 @@ python3 <script>.py --n-sample 1 --seed 42
 
 # Compare run_history.jsonl across all four conditions
 python3 compare_condition_c_runs.py --condition ABCD --group
+
+# LLM-as-Judge on an already-completed result file (no re-run of the condition)
+cd llm/evaluation
+python3 llm_judge_hallucination.py --input-path ../c_graphrag/results/<file>.jsonl --condition C
+python3 llm_judge_hallucination.py --input-path ../c_graphrag/results/<file>.jsonl --condition C \
+    --kappa-validation --secondary-judge-provider openai --secondary-judge-model gpt-4o --kappa-sample-size 5
+
+# Retrieval quality (Precision@k/MRR@k) -- zero new LLM calls
+cd ../..
+python3 analyze_retrieval_quality.py --input-path llm/c_graphrag/results/<file>.jsonl
 ```
 
 Requires: Neo4j Desktop running (`bolt://localhost:7687`, database

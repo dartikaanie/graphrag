@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { HomePage } from '@/pages/HomePage'
 import { MethodologyPage } from '@/pages/MethodologyPage'
+import { MetricsReferencePage } from '@/pages/MetricsReferencePage'
 import { QuestionListPage } from '@/pages/QuestionListPage'
 import { QuestionDetailPage } from '@/pages/QuestionDetailPage'
 import { AnswerListPage } from '@/pages/AnswerListPage'
@@ -18,6 +19,7 @@ import { HistoryComparePage } from '@/pages/HistoryComparePage'
 import { HistoryDetailPage } from '@/pages/HistoryDetailPage'
 import { HistoryResultDetailPage } from '@/pages/HistoryResultDetailPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { RunJudgePage } from '@/pages/RunJudgePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export default function App() {
@@ -26,6 +28,7 @@ export default function App() {
       <Route element={<DashboardLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/methodology" element={<MethodologyPage />} />
+        <Route path="/docs/metrics" element={<MetricsReferencePage />} />
         <Route path="/questions" element={<QuestionListPage />} />
         <Route path="/questions/:id" element={<QuestionDetailPage />} />
         <Route path="/answers" element={<AnswerListPage />} />
@@ -38,6 +41,8 @@ export default function App() {
         <Route path="/experiment/:condition" element={<RunConditionPage />} />
         <Route path="/experiment/:condition/runs/:run_id" element={<RunResultPage />} />
         <Route path="/experiment/:condition/runs/:run_id/q/:question_id" element={<RunResultDetailPage />} />
+
+        <Route path="/evaluation/judge" element={<RunJudgePage />} />
 
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/history/compare" element={<HistoryComparePage />} />

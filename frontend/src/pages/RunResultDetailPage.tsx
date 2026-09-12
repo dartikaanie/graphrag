@@ -6,6 +6,7 @@ import { PromptTranscript } from '@/components/PromptTranscript'
 import { GraphView } from '@/components/GraphView'
 import { EdgeLegend } from '@/components/EdgeLegend'
 import { Badge } from '@/components/Badge'
+import { MetricInfoLink } from '@/components/MetricInfoLink'
 import type { GraphNode } from '@/types/graph'
 
 export function RunResultDetailPage() {
@@ -44,12 +45,12 @@ export function RunResultDetailPage() {
 
       <div className="border border-border rounded-lg bg-surface p-4 mb-4 flex flex-wrap gap-6 text-sm">
         <div>
-          <span className="text-text-secondary">Cosine similarity (0–1): </span>
+          <span className="text-text-secondary">Cosine similarity (0–1): <MetricInfoLink metricId="cosine-similarity" /> </span>
           <span className="font-medium">{data.cosine_similarity.toFixed(4)}</span>
         </div>
         {data.has_valid_citation !== undefined && (
           <div>
-            <span className="text-text-secondary">Valid citation (NF2): </span>
+            <span className="text-text-secondary">Valid citation (NF2): <MetricInfoLink metricId="nf2-citation-validity" /> </span>
             {data.has_valid_citation ? <Badge tone="success">Yes</Badge> : <Badge tone="danger">No</Badge>}
           </div>
         )}
@@ -57,7 +58,7 @@ export function RunResultDetailPage() {
           <>
             {data.retrieval_latency_sec != null && (
               <div>
-                <span className="text-text-secondary">Retrieval latency: </span>
+                <span className="text-text-secondary">Retrieval latency: <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
                 <span className="font-medium">{data.retrieval_latency_sec.toFixed(2)}s</span>
               </div>
             )}
@@ -75,7 +76,7 @@ export function RunResultDetailPage() {
           <>
             {data.retrieval_latency_sec != null && (
               <div>
-                <span className="text-text-secondary">Retrieval latency: </span>
+                <span className="text-text-secondary">Retrieval latency: <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
                 <span className="font-medium">{data.retrieval_latency_sec.toFixed(2)}s</span>
               </div>
             )}

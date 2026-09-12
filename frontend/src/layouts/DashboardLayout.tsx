@@ -23,6 +23,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { to: '/', label: 'Home', icon: <LayoutDashboard className="h-4 w-4" />, end: true },
   { to: '/methodology', label: 'Methodology', icon: <BookOpen className="h-4 w-4" /> },
+  { to: '/docs/metrics', label: 'Metrik Evaluasi', icon: <BookOpen className="h-4 w-4" /> },
 ]
 
 const masterDataNav: NavItem[] = [
@@ -37,6 +38,7 @@ const experimentNav: NavItem[] = [
   { to: '/experiment/b', label: 'B — LLM + RAG', icon: <FlaskConical className="h-4 w-4" /> },
   { to: '/experiment/c', label: 'C — LLM + GraphRAG', icon: <FlaskConical className="h-4 w-4" /> },
   { to: '/experiment/d', label: 'D — Dual-Level Retrieval (LightRAG-adapted)', icon: <FlaskConical className="h-4 w-4" /> },
+  { to: '/evaluation/judge', label: 'LLM-as-Judge Evaluation', icon: <FlaskConical className="h-4 w-4" /> },
 ]
 
 const footerNav: NavItem[] = [

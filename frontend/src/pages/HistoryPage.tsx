@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDeleteHistory, useHistory } from '@/api/hooks'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/Badge'
@@ -22,8 +22,11 @@ function fmtTimestamp(iso: string): string {
 }
 
 export function HistoryPage() {
+  const [searchParams] = useSearchParams()
   const [page, setPage] = useState(1)
-  const [condition, setCondition] = useState<string | undefined>(undefined)
+  // Pre-filter from ?condition=X (e.g. the "View in History" link after a
+  // judge run completes) -- still overridable via the dropdown below.
+  const [condition, setCondition] = useState<string | undefined>(searchParams.get('condition') ?? undefined)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const navigate = useNavigate()
   const { data, isLoading, isError } = useHistory(condition, page, PAGE_SIZE)

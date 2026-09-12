@@ -32,4 +32,35 @@ export const PARAM_GLOSSARY = {
     'Whether the LLM is instructed to ground its answer ONLY in the retrieved context, in addition to citing sources. Turning this off keeps the citation instruction but drops the "don’t introduce facts outside the context" constraint — isolating the effect of the grounding constraint itself.',
   enable_semantic_expansion:
     'Whether the semantic expansion stage runs at all. When off, retrieval is limited to entity anchoring + graph traversal only (no second-round vector search from traversal results) — isolating the contribution of the semantic expansion stage itself.',
+  judge_condition:
+    'Which condition\'s (A/B/C/D) result file to evaluate. Determines the judging mode: Condition A has no retrieved context (faithfulness is not applicable), while B/C/D are judged against the exact context they retrieved.',
+  judge_input_file:
+    'The result .jsonl file (already-completed run) to evaluate. Narrow it down by provider, model, n_sample, and seed below — the picker resolves to a single file once those identify it uniquely.',
+  judge_input_provider: 'Filter available result files by which LLM provider generated them.',
+  judge_input_model: 'Filter available result files by which model generated them.',
+  judge_input_n_sample: 'Filter available result files by how many questions that run evaluated.',
+  judge_input_seed: 'Filter available result files by the sampling seed that run used.',
+  judge_provider: 'Which LLM API to send judging requests to. Independent of the provider/model that generated the answers being judged.',
+  judge_model: 'The specific LLM model used as the judge, e.g. gpt-4o-mini. Reuses the API key configured for this provider in Settings.',
+  judge_temperature:
+    'Sampling temperature for the judge\'s own calls (separate from the generator\'s config). Low values (e.g. 0.1) make judging more consistent/deterministic run to run.',
+  judge_majority_rounds:
+    'Number of independent judging rounds per question, taking the majority-vote label and median scores across rounds (variation comes from the LLM\'s own randomness at the same temperature, not from raising temperature). Recommended >1 ONLY for a Cohen\'s Kappa validation subsample, not the full batch — API cost scales linearly with it.',
+  kappa_validation:
+    'Re-judges a random subsample with a second ("secondary") judge and computes Cohen\'s Kappa agreement between the two — validates that the primary judge\'s labels are reliable rather than idiosyncratic to one model.',
+  secondary_judge_provider: 'Which LLM API the secondary (validation) judge uses. Should ideally differ from the primary judge to actually test for self-enhancement bias.',
+  secondary_judge_model: 'The specific model used as the secondary judge for Cohen\'s Kappa validation.',
+  judge_force:
+    'Re-evaluate every question from scratch for this exact source file + judge config, discarding any existing results for it. Without this, a run resumes from where a previous one left off (or does nothing at all if it already fully completed).',
+  kappa_sample_size:
+    'How many already-judged questions to re-judge with the secondary judge for the Kappa comparison. Kept small by default since this doubles (or more, with majority rounds) the API cost for just that subsample.',
+  api_key: 'Your OpenAI API key, used whenever provider is set to openai (generator runs and, separately, an openai judge).',
+  anthropic_api_key: 'Your Anthropic API key (from console.anthropic.com, not a Claude.ai subscription), used whenever provider is set to anthropic.',
+  ollama_host: 'The local Ollama server address (default http://localhost:11434) — dev/testing provider only, not used for final report results.',
+  neo4j_uri: 'Bolt connection URI for the Neo4j knowledge graph, e.g. bolt://localhost:7687.',
+  neo4j_user: 'Neo4j database username.',
+  neo4j_password: 'Neo4j database password. Stored encrypted outside the repo, never displayed again once set.',
+  neo4j_database: 'Name of the Neo4j database to connect to (Condition C/D and the master-data browsing pages all query this database).',
+  questions_parquet: 'Filesystem path to the merged Questions Parquet file (SORD dataset) that every condition samples its evaluation questions from.',
+  answers_parquet: 'Filesystem path to the merged Answers Parquet file (SORD dataset), used to look up accepted answers and retrieval corpora.',
 } as const

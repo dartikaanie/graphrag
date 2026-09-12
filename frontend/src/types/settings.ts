@@ -16,6 +16,13 @@ export interface SettingsState {
   neo4j_database: string
   questions_parquet: string
   answers_parquet: string
+  judge_provider: string
+  judge_model: string
+  judge_temperature: number
+  secondary_judge_provider: string
+  secondary_judge_model: string
+  kappa_sample_size: number
+  judge_majority_rounds: number
 }
 
 export interface TestConnectionResult {
