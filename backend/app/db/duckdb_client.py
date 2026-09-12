@@ -22,11 +22,22 @@ def get_connection() -> duckdb.DuckDBPyConnection:
 
 
 def questions_parquet() -> str:
-    return get_settings().resolved_questions_parquet()
+    # Settings-page override wins if set (same precedence as
+    # engine_service._questions_parquet()) -- otherwise this and the run
+    # engine can silently disagree about which Parquet file is "current"
+    # whenever the path changes, since app.config.Settings is a process-
+    # lifetime @lru_cache that never re-reads .env after backend startup.
+    from app.services import settings_service
+
+    override = settings_service.get_raw_settings().get("questions_parquet")
+    return override or get_settings().resolved_questions_parquet()
 
 
 def answers_parquet() -> str:
-    return get_settings().resolved_answers_parquet()
+    from app.services import settings_service
+
+    override = settings_service.get_raw_settings().get("answers_parquet")
+    return override or get_settings().resolved_answers_parquet()
 
 
 def dedup_questions_cte() -> str:
