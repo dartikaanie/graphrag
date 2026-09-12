@@ -476,8 +476,10 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             if qid in already_done:
                 continue
 
+            t_retrieval_start = time.time()
             query_text = f"{row['Title']}\n{row['Body']}"
             retrieved = retrieve_context(embed_model, index, meta_df, query_text, top_k)
+            retrieval_latency = time.time() - t_retrieval_start
 
             messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                            require_citation=require_citation)
@@ -510,6 +512,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 "accepted_answer_id": int(row["AcceptedAnswerId"]),
                 "ground_truth_answer": row["AcceptedAnswerBody"],
                 "retrieved_context": retrieved,  # utk RAGAS (context precision/recall) nanti
+                "retrieval_latency_sec": round(retrieval_latency, 3),
                 "prompt_messages": messages,
                 "llm_answer": llm_answer,
                 "llm_model": model,
@@ -538,7 +541,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             citation_note = f" citation={record['has_valid_citation']}" if require_citation else ""
             log(f"      [{i+1}/{total}] Id={qid} "
                   f"retrieved={len(retrieved)} similarity={similarity:.3f}{citation_note} "
-                  f"(tertulis {n_written} char)")
+                  f"retrieval={retrieval_latency:.2f}s (tertulis {n_written} char)")
             if on_progress:
                 on_progress({"question_id": qid, "index": i, "total": total,
                              "status": "done", "similarity": similarity, "record": record})
@@ -769,6 +772,12 @@ def main():
     log(f"Cosine similarity median   : {results_df['cosine_similarity'].median():.4f}")
     log(f"% similarity > 0.5         : {(results_df['cosine_similarity'] > 0.5).mean()*100:.1f}%")
 
+    latency_summary = {}
+    if "retrieval_latency_sec" in results_df.columns:
+        avg_latency = results_df["retrieval_latency_sec"].mean()
+        log(f"Retrieval latency rata-rata: {avg_latency:.3f}s")
+        latency_summary = {"avg_retrieval_latency_sec": round(float(avg_latency), 3)}
+
     citation_summary = {}
     if args.require_citation and "has_valid_citation" in results_df.columns:
         pct_citation = results_df["has_citation"].mean() * 100
@@ -798,6 +807,7 @@ def main():
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
+        **latency_summary,
         **citation_summary,
         "output_path": str(output_path),
         "log_path": str(log_path),
