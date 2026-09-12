@@ -39,6 +39,16 @@ DEFAULTS: dict[str, Any] = {
     "neo4j_database": "graphrag",
     "questions_parquet": "",
     "answers_parquet": "",
+    # LLM-as-Judge config (llm/evaluation/llm_judge_hallucination.py) --
+    # NOT secrets, the API key to actually call the judge model reuses
+    # api_key/anthropic_api_key above.
+    "judge_provider": "openai",
+    "judge_model": "gpt-4o-mini",
+    "judge_temperature": 0.1,
+    "secondary_judge_provider": "openai",
+    "secondary_judge_model": "gpt-4o",
+    "kappa_sample_size": 50,
+    "judge_majority_rounds": 1,
 }
 
 

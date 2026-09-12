@@ -64,6 +64,12 @@ DEFAULT_HISTORY_PATHS = {
     "D": "llm/d_lightrag/logs/run_history.jsonl",
 }
 
+# LLM-as-Judge run history (llm/evaluation/llm_judge_hallucination.py) --
+# terpisah dari run_history.jsonl generator, dibaca opsional untuk
+# menambahkan kolom pct_faktual/pct_sebagian/pct_penuh/kappa_value ke tabel
+# perbandingan KALAU tersedia untuk kondisi yang dibandingkan.
+DEFAULT_JUDGE_HISTORY_PATH = "llm/evaluation/logs/judge_run_history.jsonl"
+
 # Fallback tambahan per kondisi kalau default tidak ketemu (mis. script
 # dijalankan dari dalam salah satu subfolder, bukan dari root).
 FALLBACK_HISTORY_PATHS = {
@@ -109,6 +115,33 @@ def load_history(path: Path, condition: str) -> list[dict]:
     return records
 
 
+def load_judge_history(path: Path) -> dict[str, dict]:
+    """Load judge_run_history.jsonl (llm_judge_hallucination.py), return
+    dict condition -> record judge TERBARU (by run_started_at) untuk kondisi
+    itu. Best-effort join, BUKAN per-run-spesifik -- kalau ada beberapa file
+    hasil per kondisi yang sudah di-judge, hanya yang PALING BARU yang
+    ditampilkan di tabel perbandingan. Return {} kalau file tidak ada
+    (opsional, tidak fatal)."""
+    if not path.exists():
+        return {}
+    latest: dict[str, dict] = {}
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            cond = r.get("condition")
+            if not cond:
+                continue
+            if cond not in latest or r.get("run_started_at", "") > latest[cond].get("run_started_at", ""):
+                latest[cond] = r
+    return latest
+
+
 def fmt(value, spec=None, na=NA):
     """Format a value, or return `na` placeholder if the field is missing (None)."""
     if value is None:
@@ -151,8 +184,10 @@ def _fmt_grounding(r: dict) -> str:
     return NA if rg is None else ("Yes" if rg else "No")
 
 
-def print_table(runs: list[dict], sort_label: str, extra_note: str = "") -> None:
+def print_table(runs: list[dict], sort_label: str, extra_note: str = "", judge_by_condition: dict | None = None) -> None:
     has_grounding_col = any(r.get("require_grounding") is not None for r in runs)
+    judge_by_condition = judge_by_condition or {}
+    has_judge_col = bool(judge_by_condition) and any(r.get("condition") in judge_by_condition for r in runs)
     cols = [
         ("Kondisi", 8), ("Provider", 10), ("Model", 22), ("n", 4),
         ("Sim.Mean", 10), ("Sim.Med", 8), ("%>0.5", 7), ("NF2%", 7),
@@ -160,6 +195,8 @@ def print_table(runs: list[dict], sort_label: str, extra_note: str = "") -> None
     ]
     if has_grounding_col:
         cols.append(("Ground(D)", 9))
+    if has_judge_col:
+        cols += [("%Faktual", 9), ("%Sebagian", 10), ("%Penuh", 8), ("Kappa", 7)]
     header = "".join(f"{name:<{w}}" for name, w in cols)
     print(header)
     print("-" * len(header))
@@ -184,6 +221,14 @@ def print_table(runs: list[dict], sort_label: str, extra_note: str = "") -> None
         ]
         if has_grounding_col:
             row.append(_fmt_grounding(r))
+        if has_judge_col:
+            jr = judge_by_condition.get(r.get("condition"))
+            row += [
+                fmt(jr.get("pct_faktual") if jr else None, ".1f") + ("%" if jr and jr.get("pct_faktual") is not None else ""),
+                fmt(jr.get("pct_halusinasi_sebagian") if jr else None, ".1f") + ("%" if jr and jr.get("pct_halusinasi_sebagian") is not None else ""),
+                fmt(jr.get("pct_halusinasi_penuh") if jr else None, ".1f") + ("%" if jr and jr.get("pct_halusinasi_penuh") is not None else ""),
+                fmt(jr.get("kappa_value") if jr else None, ".3f"),
+            ]
         line = "".join(f"{val:<{w}}" for val, (_, w) in zip(row, cols))
         print(line)
 
@@ -199,6 +244,10 @@ def print_table(runs: list[dict], sort_label: str, extra_note: str = "") -> None
               f"{int(OUTLIER_RATIO * 100)}% dari nilai terbaik run sejenis (kondisi+model+n sama) — "
               "kemungkinan gejala truncation/timeout/error, cek log run tsb sebelum dipakai "
               "untuk kesimpulan.")
+    if has_judge_col:
+        print("Catatan: kolom %Faktual/%Sebagian/%Penuh/Kappa dari judge_run_history.jsonl -- "
+              "diambil dari run judge TERBARU per kondisi (bukan per-file/per-run spesifik), "
+              "hanya ditampilkan kalau tersedia untuk kondisi itu.")
 
 
 def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> None:
@@ -299,6 +348,10 @@ def main():
     parser.add_argument("--history-path-d", default=DEFAULT_HISTORY_PATHS["D"],
                          help="Path ke run_history.jsonl Kondisi D "
                               f"(default: {DEFAULT_HISTORY_PATHS['D']})")
+    parser.add_argument("--judge-history-path", default=DEFAULT_JUDGE_HISTORY_PATH,
+                         help="Path ke judge_run_history.jsonl (llm_judge_hallucination.py) -- opsional, "
+                              f"kalau ditemukan menambah kolom %%Faktual/%%Sebagian/%%Penuh/Kappa "
+                              f"(default: {DEFAULT_JUDGE_HISTORY_PATH})")
     parser.add_argument("--condition", default="ABCD",
                          help="Kondisi mana yang ditampilkan, gabungan huruf A/B/C/D "
                               "(mis. 'ABCD' untuk semua, 'CD' untuk C vs D saja). Default: ABCD")
@@ -350,6 +403,7 @@ def main():
     }
 
     flag_outliers(runs)  # tandai run yang anomali dibanding run sejenisnya (sebelum sort/filter tampilan)
+    judge_by_condition = load_judge_history(Path(args.judge_history_path))
 
     if args.group:
         print_grouped(runs, sort_key_map, args.sort)
@@ -372,7 +426,7 @@ def main():
         runs.sort(key=lambda r: order.get(r.get("condition"), 99))
 
     label = "terbaik per kondisi" if args.best_per_condition else f"diurutkan berdasarkan '{args.sort}'"
-    print_table(runs, label)
+    print_table(runs, label, judge_by_condition=judge_by_condition)
 
 
 if __name__ == "__main__":

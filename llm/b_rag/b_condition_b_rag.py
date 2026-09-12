@@ -422,6 +422,24 @@ def retrieve_context(embed_model, index, meta_df: pd.DataFrame, query_text: str,
     return results
 
 
+def retrieve_full_candidate_ids(embed_model, index, meta_df: pd.DataFrame, query_text: str, pool_k: int) -> list:
+    """Opt-in (--log-full-candidates), TIDAK dipanggil sama sekali kecuali
+    flag itu aktif: cari pool LEBIH BESAR dari top_k hanya untuk mencatat
+    daftar LENGKAP question_id kandidat SEBELUM top-k cutoff -- dipakai
+    versi lanjutan analyze_retrieval_quality.py untuk menghitung Recall@k
+    yang sesungguhnya (recall butuh tahu total item relevan yang tersedia,
+    bukan cuma yang lolos ke top-k). TIDAK mempengaruhi retrieved_context
+    yang benar-benar dikirim ke prompt -- itu tetap murni dari
+    retrieve_context()/top_k, fungsi ini query TERPISAH yang hasilnya
+    hanya ditulis sbg metadata tambahan di record."""
+    import faiss
+
+    q_emb = embed_model.encode([query_text], convert_to_numpy=True).astype("float32")
+    faiss.normalize_L2(q_emb)
+    scores, indices = index.search(q_emb, pool_k)
+    return [int(meta_df.iloc[idx]["question_id"]) for idx in indices[0] if idx != -1]
+
+
 # ---------------------------------------------------------------------
 # 7. Prompt retrieval-augmented & pemanggilan model -- lihat
 #    llm/prompts.py (build_rag_messages) dan llm/client_factory.py
@@ -446,7 +464,8 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 
 def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, index, meta_df: pd.DataFrame,
                     top_k: int, model: str, output_path: Path, already_done: set | None = None,
-                    on_progress=None, check_cancel=None, require_citation: bool = True) -> list[dict]:
+                    on_progress=None, check_cancel=None, require_citation: bool = True,
+                    log_full_candidates: bool = False) -> list[dict]:
     """Proses satu-per-satu sample_df: retrieval top-k + prompt RAG + hitung
     cosine similarity, tulis ke output_path (append, resumable). Diekstrak
     dari main() dengan pola SAMA PERSIS dengan process_sample() Kondisi A
@@ -480,6 +499,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             query_text = f"{row['Title']}\n{row['Body']}"
             retrieved = retrieve_context(embed_model, index, meta_df, query_text, top_k)
             retrieval_latency = time.time() - t_retrieval_start
+
+            all_candidate_question_ids = None
+            if log_full_candidates:
+                all_candidate_question_ids = retrieve_full_candidate_ids(
+                    embed_model, index, meta_df, query_text, max(50, top_k * 5),
+                )
 
             messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                            require_citation=require_citation)
@@ -523,6 +548,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "has_valid_citation": has_valid_citation,
                     "valid_cited_source_ids": valid_ids,
                 } if require_citation else {}),
+                **({"all_candidate_question_ids": all_candidate_question_ids} if log_full_candidates else {}),
             }
             try:
                 line = json.dumps(record, default=str)
@@ -615,6 +641,12 @@ def main():
                               "CONDITION_B_REQUIRE_CITATION di .env. Nonaktifkan dgn "
                               "--no-require-citation utk RAG konvensional tanpa instruksi sitasi "
                               "(perilaku Kondisi B sebelum fitur ini ada).")
+    parser.add_argument("--log-full-candidates", action="store_true", default=False,
+                         help="Opt-in: simpan field tambahan all_candidate_question_ids (daftar LENGKAP "
+                              "question_id kandidat SEBELUM top-k cutoff) di setiap record -- TIDAK "
+                              "mempengaruhi retrieved_context yang dipakai prompt. Dipakai supaya run "
+                              "BERIKUTNYA bisa dihitung Recall@k sesungguhnya di analyze_retrieval_quality.py "
+                              "(versi saat ini belum menghitungnya). Default: nonaktif.")
     args = parser.parse_args()
 
     global log
@@ -716,7 +748,8 @@ def main():
           f"{len(sample_df)} pertanyaan...")
 
     process_sample(sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, args.top_k,
-                    args.model, output_path, already_done, require_citation=args.require_citation)
+                    args.model, output_path, already_done, require_citation=args.require_citation,
+                    log_full_candidates=args.log_full_candidates)
 
     log("[8/8] Selesai memproses seluruh sample.")
 

@@ -620,6 +620,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     fusion_w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST,
                     semantic_expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP,
                     require_grounding: bool = True, enable_semantic_expansion: bool = True,
+                    log_full_candidates: bool = False,
                     ) -> tuple[list[dict], dict]:
     """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
@@ -717,6 +718,21 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 if not retrieved:
                     n_no_context += 1
 
+                all_candidate_question_ids = None
+                if log_full_candidates:
+                    # Opt-in: daftar LENGKAP via_question_id dari SELURUH kandidat
+                    # sebelum fuse_and_rank()/top_k cutoff (graph traversal +
+                    # semantic expansion digabung, deduped) -- TIDAK mempengaruhi
+                    # `retrieved` yang dipakai prompt, murni metadata tambahan utk
+                    # menghitung Recall@k sesungguhnya di run berikutnya (lihat
+                    # analyze_retrieval_quality.py).
+                    seen = []
+                    for c in graph_candidates + expansion_candidates:
+                        vqid = c.get("via_question_id")
+                        if vqid is not None and vqid not in seen:
+                            seen.append(int(vqid))
+                    all_candidate_question_ids = seen
+
                 messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                                     require_grounding=require_grounding)
                 try:
@@ -757,6 +773,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "n_expansion_candidates": len(expansion_candidates),
                     "require_grounding": require_grounding,
                     "enable_semantic_expansion": enable_semantic_expansion,
+                    **({"all_candidate_question_ids": all_candidate_question_ids} if log_full_candidates else {}),
                     "retrieval_latency_sec": round(retrieval_latency, 3),
                     "llm_answer": llm_answer,
                     "llm_model": model,
@@ -913,6 +930,13 @@ def main():
                          help="True (default): tahap semantic expansion (c) aktif seperti biasa. "
                               "False: tahap ini di-skip sepenuhnya (retrieval hanya anchor+traversal) "
                               "-- ablasi utk mengisolasi kontribusi tahap semantic expansion.")
+    parser.add_argument("--log-full-candidates", action="store_true", default=False,
+                         help="Opt-in: simpan field tambahan all_candidate_question_ids (daftar LENGKAP "
+                              "via_question_id dari SELURUH kandidat graph traversal + semantic expansion "
+                              "SEBELUM top-k cutoff) di setiap record -- TIDAK mempengaruhi retrieved_context "
+                              "yang dipakai prompt. Dipakai supaya run BERIKUTNYA bisa dihitung Recall@k "
+                              "sesungguhnya di analyze_retrieval_quality.py (versi saat ini belum "
+                              "menghitungnya). Default: nonaktif.")
     args = parser.parse_args()
 
     global log
@@ -1016,6 +1040,7 @@ def main():
         semantic_expansion_trust_cap=args.semantic_expansion_trust_cap,
         require_grounding=args.require_grounding,
         enable_semantic_expansion=args.enable_semantic_expansion,
+        log_full_candidates=args.log_full_candidates,
     )
     interrupted = stats["interrupted"]
 

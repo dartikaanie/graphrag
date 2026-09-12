@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from app.services import judge_lookup_service
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 HISTORY_PATHS: dict[str, Path] = {
@@ -153,6 +155,7 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
         "summary": summary,
         "error": None if record.get("status") != "failed" else "See condition logs for details.",
         "output_path": output_path,
+        "judge_evaluations": judge_lookup_service.get_judge_evaluations_for_input(output_path) if output_path else [],
     }
 
 
@@ -170,6 +173,9 @@ def get_history_result_detail(history_id: str, question_id: int) -> dict[str, An
             except json.JSONDecodeError:
                 continue
             if record.get("question_id") == question_id:
+                record["judge_results"] = judge_lookup_service.get_judge_results_for_question(
+                    detail["output_path"], question_id,
+                )
                 return record
     return None
 

@@ -76,6 +76,14 @@ def _condition_d_module():
 
 
 @lru_cache
+def _judge_module():
+    mod = importlib.import_module("llm.evaluation.llm_judge_hallucination")
+    mod.LOG_DIR = REPO_ROOT / "llm" / "evaluation" / "logs"
+    mod.RESULTS_DIR = REPO_ROOT / "llm" / "evaluation" / "results"
+    return mod
+
+
+@lru_cache
 def _embed_model():
     from sentence_transformers import SentenceTransformer
 
@@ -118,6 +126,25 @@ def _make_on_progress(run_id: str):
             "total": event["total"],
             "status": event["status"],
             "similarity": event.get("similarity"),
+            "error": event.get("error"),
+        })
+    return on_progress
+
+
+def _make_judge_on_progress(run_id: str):
+    """run_judge_batch()'s on_progress events carry {question_id, status,
+    ...} -- no index/total (it streams straight off the input file, it
+    doesn't know the total up front the way process_sample() does). The
+    "already_complete" event (question_id=None) is a one-off signal, not a
+    per-question result, so it updates status directly instead of being
+    appended to the results list."""
+    def on_progress(event: dict[str, Any]):
+        if event["status"] == "already_complete":
+            return
+        run_registry.append_result(run_id, {
+            "question_id": event["question_id"],
+            "status": event["status"],
+            "hallucination_label": event.get("hallucination_label"),
             "error": event.get("error"),
         })
     return on_progress
@@ -607,6 +634,98 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
     finally:
         if driver is not None:
             driver.close()
+
+
+CONDITION_RESULTS_DIR = {
+    "A": REPO_ROOT / "llm" / "a_pure_llm" / "results",
+    "B": REPO_ROOT / "llm" / "b_rag" / "results",
+    "C": REPO_ROOT / "llm" / "c_graphrag" / "results",
+    "D": REPO_ROOT / "llm" / "d_lightrag" / "results",
+}
+
+
+def run_judge_batch_dashboard(run_id: str, params: dict[str, Any]) -> None:
+    """LLM-as-judge batch run triggered from the dashboard
+    (backend/app/routers/judge.py). Pola struktur SAMA seperti
+    run_condition_c(): resolve config dari params dengan fallback ke
+    settings_service (pola sama _questions_parquet()/_answers_parquet()),
+    import llm.evaluation.llm_judge_hallucination via importlib
+    (_judge_module(), LOG_DIR/RESULTS_DIR di-set ke path absolut sama
+    seperti _condition_c_module() dst.), panggil run_judge_batch() atau
+    run_kappa_validation() dari modul itu sesuai params.kappa_validation.
+    Output path SELALU dihitung otomatis oleh modul itu sendiri
+    (build_judge_output_path) -- backend tidak pernah menentukannya.
+    """
+    cond = _judge_module()
+    run_started_at = datetime.now(timezone.utc)
+    run_registry.update_run(run_id, status="running", started_at=run_started_at.isoformat())
+
+    settings_service.apply_to_environment()
+    settings = settings_service.get_raw_settings()
+
+    condition = params["condition"].upper()
+    input_path = Path(params["input_path"])
+    if not input_path.is_absolute():
+        input_path = REPO_ROOT / input_path
+
+    judge_provider = params.get("judge_provider") or settings["judge_provider"]
+    judge_model = params.get("judge_model") or settings["judge_model"]
+    judge_temperature = params.get("judge_temperature")
+    judge_temperature = float(judge_temperature) if judge_temperature is not None else float(settings["judge_temperature"])
+    majority_rounds = params.get("majority_rounds")
+    majority_rounds = int(majority_rounds) if majority_rounds is not None else int(settings["judge_majority_rounds"])
+    force = bool(params.get("force"))
+    kappa_validation = bool(params.get("kappa_validation"))
+    secondary_judge_provider = params.get("secondary_judge_provider") or settings["secondary_judge_provider"]
+    secondary_judge_model = params.get("secondary_judge_model") or settings["secondary_judge_model"]
+    kappa_sample_size = params.get("kappa_sample_size")
+    kappa_sample_size = int(kappa_sample_size) if kappa_sample_size is not None else int(settings["kappa_sample_size"])
+
+    try:
+        if not input_path.exists():
+            raise FileNotFoundError(f"input_path tidak ditemukan: {input_path}")
+
+        with open(input_path) as f:
+            n_lines = sum(1 for line in f if line.strip())
+        run_registry.update_run(run_id, progress={"current": 0, "total": n_lines})
+
+        if kappa_validation:
+            kappa_result = cond.run_kappa_validation(
+                input_path, judge_provider, judge_model, judge_temperature,
+                secondary_judge_provider, secondary_judge_model, judge_temperature,
+                majority_rounds, condition, kappa_sample_size, params.get("seed") or 42,
+                force=force,
+            )
+            summary = dict(kappa_result["primary_summary"])
+            summary["kappa_value"] = kappa_result["kappa_value"]
+            summary["kappa_interpretation"] = kappa_result["interpretation"]
+            summary["judge_models_identical"] = kappa_result["judge_models_identical"]
+        else:
+            kappa_result = None
+            summary = cond.run_judge_batch(
+                input_path, judge_provider, judge_model, judge_temperature, majority_rounds, condition,
+                force=force, on_progress=_make_judge_on_progress(run_id),
+                check_cancel=lambda: run_registry.is_cancelled(run_id),
+            )
+
+        output_path = summary["output_path"]
+        cancelled = run_registry.is_cancelled(run_id)
+        duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
+        summary["duration_sec"] = duration
+        run_registry.update_run(run_id, output_path=output_path)
+
+        cond.append_judge_run_history(
+            condition, str(input_path), output_path, judge_provider, judge_model, judge_temperature,
+            majority_rounds, summary, kappa_result=kappa_result,
+        )
+        run_registry.update_run(
+            run_id, status="cancelled" if cancelled else "completed",
+            finished_at=datetime.now(timezone.utc).isoformat(), summary=summary,
+        )
+    except Exception as e:
+        run_registry.update_run(
+            run_id, status="failed", finished_at=datetime.now(timezone.utc).isoformat(), error=str(e),
+        )
 
 
 RUNNERS: dict[str, Callable[[str, dict[str, Any]], None]] = {

@@ -120,6 +120,27 @@ class RunCreateResponse(BaseModel):
     run_id: str
 
 
+class JudgeRunCreateRequest(BaseModel):
+    input_path: str
+    condition: str  # "A" | "B" | "C" | "D"
+    # All optional -- fall back to settings_service.get_raw_settings()
+    # (judge_provider/judge_model/judge_temperature/...) when omitted, same
+    # precedence pattern as the generator conditions' provider/model.
+    judge_provider: str | None = None
+    judge_model: str | None = None
+    judge_temperature: float | None = None
+    majority_rounds: int | None = None
+    force: bool = False
+    kappa_validation: bool = False
+    secondary_judge_provider: str | None = None
+    secondary_judge_model: str | None = None
+    kappa_sample_size: int | None = None
+
+
+class JudgeRunCreateResponse(BaseModel):
+    run_id: str
+
+
 class RunStatus(BaseModel):
     run_id: str
     condition: str
@@ -155,6 +176,14 @@ class SettingsUpdate(BaseModel):
     neo4j_database: str | None = None
     questions_parquet: str | None = None
     answers_parquet: str | None = None
+    # LLM-as-Judge config -- see settings_service.DEFAULTS.
+    judge_provider: str | None = None
+    judge_model: str | None = None
+    judge_temperature: float | None = None
+    secondary_judge_provider: str | None = None
+    secondary_judge_model: str | None = None
+    kappa_sample_size: int | None = None
+    judge_majority_rounds: int | None = None
 
 
 class TestConnectionRequest(BaseModel):

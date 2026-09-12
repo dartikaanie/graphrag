@@ -180,6 +180,30 @@ MENU = [
                 "sudah dijalankan (lihat docstring d_lightrag.py).",
         "confirm_cost": True,
     },
+    {
+        "label": "Jalankan LLM-as-Judge (Faithfulness/Hallucination)",
+        "desc": "Nilai file JSONL hasil Kondisi A/B/C/D yang SUDAH ADA dengan LLM-as-judge -- "
+                "Faithfulness, Answer Relevance, Hallucination Rate 3-kelas -- TANPA re-run kondisi aslinya.",
+        "script": "llm_judge_hallucination.py",
+        "cwd": "llm/evaluation",
+        "default_args": [],
+        "note": "--input-path dan --condition WAJIB diisi manual (pilih 'tidak' pakai argumen default), "
+                "contoh: --input-path ../c_graphrag/results/condition_c_....jsonl --condition C "
+                "[--kappa-validation --secondary-judge-provider openai --secondary-judge-model gpt-4o "
+                "--kappa-sample-size 5].",
+        "confirm_cost": True,
+    },
+    {
+        "label": "Analisis Kualitas Retrieval (Precision@k/MRR@k)",
+        "desc": "Hitung Precision@k dan MRR@k (proxy tag-overlap) MURNI dari file JSONL hasil Kondisi "
+                "B/C/D yang sudah ada -- TIDAK ADA panggilan LLM, TIDAK ADA biaya API.",
+        "script": "analyze_retrieval_quality.py",
+        "cwd": ".",
+        "default_args": [],
+        "note": "--input-path atau --input-glob WAJIB diisi manual (pilih 'tidak' pakai argumen default), "
+                "contoh: --input-path llm/c_graphrag/results/condition_c_....jsonl",
+        "confirm_cost": False,
+    },
 ]
 
 
