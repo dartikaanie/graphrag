@@ -1,12 +1,25 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCreateRun } from '@/api/hooks'
+import { InfoTooltip } from '@/components/InfoTooltip'
+import { PARAM_GLOSSARY } from '@/lib/paramGlossary'
 import type { RunCreateParams } from '@/types/run'
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  glossaryKey,
+  children,
+}: {
+  label: string
+  glossaryKey?: keyof typeof PARAM_GLOSSARY
+  children: ReactNode
+}) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="text-text-secondary">{label}</span>
+      <span className="text-text-secondary inline-flex items-center gap-1">
+        {label}
+        {glossaryKey && <InfoTooltip text={PARAM_GLOSSARY[glossaryKey]} />}
+      </span>
       {children}
     </label>
   )
@@ -114,13 +127,13 @@ export function RunAllConditionsPage() {
 
         {mode === 'batch' ? (
           <div className="grid grid-cols-4 gap-4 mb-2">
-            <Field label="n_sample">
+            <Field label="n_sample" glossaryKey="n_sample">
               <input type="number" className={inputClass} value={nSample} onChange={(e) => setNSample(Number(e.target.value))} />
             </Field>
-            <Field label="seed">
+            <Field label="seed" glossaryKey="seed">
               <input type="number" className={inputClass} value={seed} onChange={(e) => setSeed(Number(e.target.value))} />
             </Field>
-            <Field label="oversample_pool (shared across A/B/C)">
+            <Field label="oversample_pool (shared across A/B/C)" glossaryKey="oversample_pool">
               <input
                 className={inputClass}
                 placeholder={`auto (${nSample * 4})`}
@@ -128,48 +141,48 @@ export function RunAllConditionsPage() {
                 onChange={(e) => setOversamplePool(e.target.value)}
               />
             </Field>
-            <Field label="provider">
+            <Field label="provider" glossaryKey="provider">
               <select className={inputClass} value={provider} onChange={(e) => setProvider(e.target.value)}>
                 <option value="openai">openai</option>
                 <option value="anthropic">anthropic</option>
                 <option value="ollama">ollama (dev/testing only)</option>
               </select>
             </Field>
-            <Field label="model">
+            <Field label="model" glossaryKey="model">
               <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} />
             </Field>
-            <Field label="top_k (B/C)">
+            <Field label="top_k (B/C)" glossaryKey="top_k">
               <input type="number" className={inputClass} value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
             </Field>
-            <Field label="n_anchor (C)">
+            <Field label="n_anchor (C)" glossaryKey="n_anchor">
               <input type="number" className={inputClass} value={nAnchor} onChange={(e) => setNAnchor(Number(e.target.value))} />
             </Field>
-            <Field label="n_semantic_expansion (C)">
+            <Field label="n_semantic_expansion (C)" glossaryKey="n_semantic_expansion">
               <input type="number" className={inputClass} value={nSemanticExpansion} onChange={(e) => setNSemanticExpansion(Number(e.target.value))} />
             </Field>
           </div>
         ) : (
           <div className="grid grid-cols-4 gap-4 mb-2">
-            <Field label="question_id">
+            <Field label="question_id" glossaryKey="question_id">
               <input className={inputClass} placeholder="e.g. 477816" value={questionId} onChange={(e) => setQuestionId(e.target.value)} />
             </Field>
-            <Field label="provider">
+            <Field label="provider" glossaryKey="provider">
               <select className={inputClass} value={provider} onChange={(e) => setProvider(e.target.value)}>
                 <option value="openai">openai</option>
                 <option value="anthropic">anthropic</option>
                 <option value="ollama">ollama (dev/testing only)</option>
               </select>
             </Field>
-            <Field label="model">
+            <Field label="model" glossaryKey="model">
               <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} />
             </Field>
-            <Field label="top_k (B/C)">
+            <Field label="top_k (B/C)" glossaryKey="top_k">
               <input type="number" className={inputClass} value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
             </Field>
-            <Field label="n_anchor (C)">
+            <Field label="n_anchor (C)" glossaryKey="n_anchor">
               <input type="number" className={inputClass} value={nAnchor} onChange={(e) => setNAnchor(Number(e.target.value))} />
             </Field>
-            <Field label="n_semantic_expansion (C)">
+            <Field label="n_semantic_expansion (C)" glossaryKey="n_semantic_expansion">
               <input type="number" className={inputClass} value={nSemanticExpansion} onChange={(e) => setNSemanticExpansion(Number(e.target.value))} />
             </Field>
           </div>
@@ -177,15 +190,16 @@ export function RunAllConditionsPage() {
 
         <label className="flex items-center gap-2 text-sm mt-3">
           <input type="checkbox" checked={requireCitation} onChange={(e) => setRequireCitation(e.target.checked)} />
-          <span className="text-text-secondary">
-            Condition B: require [SO-&lt;id&gt;] citations (same format as Condition C, for NF2 comparison)
+          <span className="text-text-secondary inline-flex items-center gap-1">
+            Condition B: require_citation
+            <InfoTooltip text={PARAM_GLOSSARY.require_citation} />
           </span>
         </label>
 
         <div className="mt-3 border-t border-border pt-3">
           <div className="text-sm font-medium text-text-primary mb-2">Condition C fusion mode (ablation study)</div>
           <div className="grid grid-cols-4 gap-4">
-            <Field label="fusion_mode">
+            <Field label="fusion_mode" glossaryKey="fusion_mode">
               <select
                 className={inputClass}
                 value={fusionMode}
@@ -195,21 +209,21 @@ export function RunAllConditionsPage() {
                 <option value="uniform">uniform (ablation)</option>
               </select>
             </Field>
-            <Field label="fusion_w_path_trust">
+            <Field label="fusion_w_path_trust" glossaryKey="fusion_w_path_trust">
               <input
                 type="number" step="0.1" min="0" max="1" className={inputClass}
                 value={fusionWPathTrust} disabled={fusionMode === 'uniform'}
                 onChange={(e) => setFusionWPathTrust(Number(e.target.value))}
               />
             </Field>
-            <Field label="fusion_w_intrinsic">
+            <Field label="fusion_w_intrinsic" glossaryKey="fusion_w_intrinsic">
               <input
                 type="number" step="0.1" min="0" max="1" className={inputClass}
                 value={fusionWIntrinsic} disabled={fusionMode === 'uniform'}
                 onChange={(e) => setFusionWIntrinsic(Number(e.target.value))}
               />
             </Field>
-            <Field label="semantic_expansion_trust_cap">
+            <Field label="semantic_expansion_trust_cap" glossaryKey="semantic_expansion_trust_cap">
               <input
                 type="number" step="0.1" min="0" max="1" className={inputClass}
                 value={semanticExpansionTrustCap} disabled={fusionMode === 'uniform'}
