@@ -327,6 +327,10 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             n_valid_citation = sum(1 for r in results if r.get("has_valid_citation"))
             summary["pct_with_citation"] = round(n_citation / len(results) * 100, 1)
             summary["pct_with_valid_citation"] = round(n_valid_citation / len(results) * 100, 1)
+        if results:
+            latencies = [r["retrieval_latency_sec"] for r in results if r.get("retrieval_latency_sec") is not None]
+            if latencies:
+                summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         cond.append_run_history({
             "run_started_at": run_started_at.isoformat(),
