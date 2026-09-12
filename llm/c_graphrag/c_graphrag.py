@@ -44,6 +44,14 @@ Yang BARU dibanding Kondisi B (hybrid retrieval + grounded generation):
      di llm/prompts.py). Pasca-generation, jawaban di-scan (regex) utk
      menghitung has_citation & cited_source_ids -- inilah cara NF2 (100%
      jawaban dgn >=1 kutipan sumber) diukur.
+  4. ABLATION STUDY -- fusion mode: --fusion-mode {trust_weighted,uniform}
+     mengisolasi kontribusi trust-weighting itu sendiri. "uniform" memakai
+     STRUKTUR retrieval yang PERSIS SAMA (anchoring/traversal/expansion/
+     leakage exclusion tidak berubah sama sekali) tapi ranking akhir tidak
+     memprioritaskan trust score -- lihat fuse_and_rank(). Bobot fusi
+     (--fusion-w-path-trust, --fusion-w-intrinsic,
+     --semantic-expansion-trust-cap) juga bisa diubah lewat CLI/.env utk
+     ablasi bobot, bukan cuma on/off.
 
 PENCEGAHAN LEAKAGE -- BEDA DARI KONDISI B, WAJIB DIBACA
 ------------------------------------------------------------
@@ -82,10 +90,24 @@ SETUP .env (WAJIB, tambahan dari Kondisi A/B)
     N_SEMANTIC_EXPANSION=3
     MAX_HOPS=2   # informational -- traversal saat ini fixed 1-2 hop, lihat catatan di traverse_graph()
 
+    # Ablation study (opsional -- default di bawah = perilaku asli, sebelum
+    # fitur ablasi ada). Override sesaat via CLI: --fusion-mode dst.
+    FUSION_MODE=trust_weighted   # atau "uniform"
+    FUSION_W_PATH_TRUST=0.7
+    FUSION_W_ANSWER_INTRINSIC_TRUST=0.3
+    SEMANTIC_EXPANSION_TRUST_CAP=0.4
+
 CARA PAKAI
 ----------
     python c_condition_c_graphrag.py
     python c_condition_c_graphrag.py --provider ollama --model qwen2.5:1.5b --n-sample 10
+
+    # Ablation study -- isolasi kontribusi trust-weighting (struktur retrieval
+    # SAMA PERSIS di kedua run, hanya fusi/ranking yang beda; SAMAKAN --seed
+    # dan --n-sample di kedua run supaya sample evaluasi identik):
+    python c_condition_c_graphrag.py --fusion-mode uniform --n-sample 30
+    python c_condition_c_graphrag.py --fusion-mode trust_weighted \
+        --fusion-w-path-trust 0.3 --fusion-w-intrinsic 0.7 --n-sample 30
 
 Prasyarat WAJIB sebelum run: 11_densify_embedding_similarity.py --stage all
 sudah pernah dijalankan sukses (index FAISS + embedding harus ada di
@@ -130,13 +152,19 @@ EMBED_DIM = 384  # all-MiniLM-L6-v2, HARUS sama dgn 11_densify_embedding_similar
 # (edge_weight / proxy), 0.3 dari trustScore intrinsik node Answer (Tabel
 # II.2 -- fungsi dari score/isAccepted/reputation). Konstanta ini KEPUTUSAN
 # METODOLOGIS yang bisa didokumentasikan/disesuaikan di Bab III/IV.
-FUSION_W_PATH_TRUST = 0.7
-FUSION_W_ANSWER_INTRINSIC_TRUST = 0.3
+#
+# Dijadikan DEFAULT (bukan hardcoded) sejak fitur ablation study fusion-mode
+# ditambahkan -- lihat --fusion-w-path-trust/--fusion-w-intrinsic/
+# --semantic-expansion-trust-cap di main() dan parameter fuse_and_rank().
+# Nilai default TIDAK berubah, supaya run tanpa override tetap identik
+# dengan perilaku sebelum fitur ini ada.
+DEFAULT_FUSION_W_PATH_TRUST = 0.7
+DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST = 0.3
 # Proxy trust utk kandidat yang HANYA ditemukan lewat semantic expansion
 # (tidak lewat edge graf eksplisit) -- disamakan dgn tier EMBED_SIM
 # (trust "terendah" di antara 3 sumber densifikasi, lihat
 # 11_densify_embedding_similarity.py), diskalakan oleh cosine score-nya.
-SEMANTIC_EXPANSION_TRUST_CAP = 0.4
+DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP = 0.4
 
 log = print
 LOG_DIR = Path("logs")
@@ -463,15 +491,35 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
 # ---------------------------------------------------------------------
 
 def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int,
-                   token_chunk_limit: int) -> list:
+                   token_chunk_limit: int, fusion_mode: str = "trust_weighted",
+                   w_path_trust: float = DEFAULT_FUSION_W_PATH_TRUST,
+                   w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST,
+                   expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP) -> list:
+    """Fusi graph_candidates + expansion_candidates -> top-K unified context.
+
+    `fusion_mode`:
+      - "trust_weighted" (default): PERSIS perilaku asli -- combined_score
+        dari w_path_trust*edge_weight + w_intrinsic*answer_trust_score
+        (proxy expansion_trust_cap utk kandidat expansion-only), dedup by
+        answer_id keep HIGHEST score, ranked by combined_score desc.
+      - "uniform": ablasi utk mengisolasi kontribusi trust-weighting --
+        combined_score TIDAK dipakai utk ranking. Urutan final murni dari
+        urutan penemuan (graph_traversal dulu baru semantic_expansion, hop 1
+        sebelum hop 2 dalam tiap grup, urutan asli traverse_graph()/
+        semantic_expansion() dipertahankan di dalam grup itu). Dedup by
+        answer_id keep kemunculan PERTAMA (bukan skor tertinggi -- tidak ada
+        skor yang relevan dibandingkan pada mode ini). combined_score tetap
+        dihitung & diisi di record (skema JSONL tetap konsisten dgn mode
+        trust_weighted) tapi diabaikan untuk urutan/seleksi top-K.
+    """
     import tiktoken
     enc = tiktoken.get_encoding("cl100k_base")
 
     all_candidates = []
     for c in graph_candidates:
         intrinsic = c.get("answer_trust_score") or 0.0
-        score = (FUSION_W_PATH_TRUST * min(c["edge_weight"] or 0.0, 1.0)
-                 + FUSION_W_ANSWER_INTRINSIC_TRUST * intrinsic)
+        score = (w_path_trust * min(c["edge_weight"] or 0.0, 1.0)
+                 + w_intrinsic * intrinsic)
         c = dict(c)
         c["combined_score"] = score
         c["source_stage"] = "graph_traversal"
@@ -479,23 +527,34 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
 
     for c in expansion_candidates:
         intrinsic = c.get("answer_trust_score") or 0.0
-        proxy_weight = min(c["edge_weight"] or 0.0, 1.0) * SEMANTIC_EXPANSION_TRUST_CAP
+        proxy_weight = min(c["edge_weight"] or 0.0, 1.0) * expansion_trust_cap
         c = dict(c)
         c["edge_weight"] = proxy_weight
-        c["combined_score"] = (FUSION_W_PATH_TRUST * proxy_weight
-                                + FUSION_W_ANSWER_INTRINSIC_TRUST * intrinsic)
+        c["combined_score"] = (w_path_trust * proxy_weight
+                                + w_intrinsic * intrinsic)
         c["source_stage"] = "semantic_expansion"
         all_candidates.append(c)
 
-    # Dedup by answer_id, keep highest combined_score occurrence
-    best_by_answer = {}
-    for c in all_candidates:
-        aid = c["answer_id"]
-        if aid not in best_by_answer or c["combined_score"] > best_by_answer[aid]["combined_score"]:
-            best_by_answer[aid] = c
+    if fusion_mode == "uniform":
+        # Ablasi: ranking TIDAK memprioritaskan trust. Dedup keep FIRST
+        # occurrence (urutan penemuan asli, bukan skor tertinggi), lalu
+        # potong ke top_k tanpa sort by combined_score.
+        best_by_answer = {}
+        for c in all_candidates:
+            aid = c["answer_id"]
+            if aid not in best_by_answer:
+                best_by_answer[aid] = c
+        top = list(best_by_answer.values())[:top_k]
+    else:
+        # Dedup by answer_id, keep highest combined_score occurrence
+        best_by_answer = {}
+        for c in all_candidates:
+            aid = c["answer_id"]
+            if aid not in best_by_answer or c["combined_score"] > best_by_answer[aid]["combined_score"]:
+                best_by_answer[aid] = c
 
-    ranked = sorted(best_by_answer.values(), key=lambda c: c["combined_score"], reverse=True)
-    top = ranked[:top_k]
+        ranked = sorted(best_by_answer.values(), key=lambda c: c["combined_score"], reverse=True)
+        top = ranked[:top_k]
 
     final = []
     for c in top:
@@ -550,7 +609,11 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     faiss_index, faiss_ids, faiss_embeddings, id_to_row: dict, all_answer_ids_map: dict,
                     top_k: int, n_anchor: int, n_semantic_expansion: int, token_chunk_limit: int,
                     model: str, output_path: Path, already_done: set | None = None,
-                    on_progress=None, check_cancel=None) -> tuple[list[dict], dict]:
+                    on_progress=None, check_cancel=None, fusion_mode: str = "trust_weighted",
+                    fusion_w_path_trust: float = DEFAULT_FUSION_W_PATH_TRUST,
+                    fusion_w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST,
+                    semantic_expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP,
+                    ) -> tuple[list[dict], dict]:
     """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
     + validasi sitasi, tulis ke output_path (append, resumable). Diekstrak
@@ -561,6 +624,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     n_no_valid_citation/interrupted, dipakai main() untuk ringkasan run.
     `on_progress(dict)` / `check_cancel()` -> lihat docstring Kondisi A;
     keduanya opsional supaya CLI (main()) tidak berubah perilaku.
+
+    `fusion_mode`/`fusion_w_path_trust`/`fusion_w_intrinsic`/
+    `semantic_expansion_trust_cap` -> diteruskan apa adanya ke
+    fuse_and_rank() (lihat docstring-nya utk arti fusion_mode="uniform" vs
+    "trust_weighted"); default-nya PERSIS nilai lama, jadi CLI tanpa
+    override tetap berperilaku identik dengan sebelum fitur ablasi ini ada.
     """
     already_done = already_done or set()
     total = len(sample_df)
@@ -624,7 +693,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
                 # --- Fusi + rerank + chunking + cap top-K ---
                 retrieved = fuse_and_rank(graph_candidates, expansion_candidates,
-                                           top_k, token_chunk_limit)
+                                           top_k, token_chunk_limit, fusion_mode=fusion_mode,
+                                           w_path_trust=fusion_w_path_trust, w_intrinsic=fusion_w_intrinsic,
+                                           expansion_trust_cap=semantic_expansion_trust_cap)
                 retrieval_latency = time.time() - t_query_start
                 if not retrieved:
                     n_no_context += 1
@@ -730,9 +801,27 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 # Main
 # ---------------------------------------------------------------------
 
-def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int) -> Path:
+def _fmt_weight_for_filename(w: float) -> str:
+    """0.7 -> "0-7" (dot isn't valid in a filename component here since the
+    rest of the naming scheme already uses "-" as a field separator)."""
+    return f"{w}".replace(".", "-")
+
+
+def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
+                       fusion_mode: str = "trust_weighted",
+                       fusion_w_path_trust: float = DEFAULT_FUSION_W_PATH_TRUST,
+                       fusion_w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST) -> Path:
+    """Nama file menyertakan fusion mode/bobot supaya run ablasi (mis.
+    --fusion-mode uniform vs --fusion-mode trust_weighted dgn bobot
+    berbeda) tidak saling menimpa file .jsonl satu sama lain -- pola sama
+    dengan alasan n_sample/seed sudah ada di nama file sejak awal."""
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
-    return Path(output_dir) / f"condition_c_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl"
+    base = f"condition_c_{provider}_{safe_model}_n{n_sample}_seed{seed}"
+    if fusion_mode == "uniform":
+        suffix = "uniform"
+    else:
+        suffix = f"fw{_fmt_weight_for_filename(fusion_w_path_trust)}-{_fmt_weight_for_filename(fusion_w_intrinsic)}"
+    return Path(output_dir) / f"{base}_{suffix}.jsonl"
 
 
 def main():
@@ -757,6 +846,33 @@ def main():
     parser.add_argument("--embed-model", default=os.getenv("EMBED_MODEL", "all-MiniLM-L6-v2"))
     parser.add_argument("--kg-workspace-dir", default=os.getenv("KG_WORKSPACE_DIR",
                          "../../01_data_cleaning/_kg_workspace"))
+    parser.add_argument("--fusion-mode", choices=["trust_weighted", "uniform"],
+                         default=os.getenv("FUSION_MODE", "trust_weighted"),
+                         help="Ablasi: 'trust_weighted' (default, perilaku asli) rerank kandidat "
+                              "by combined trust score; 'uniform' MENGABAIKAN combined_score untuk "
+                              "ranking (urutan final murni urutan penemuan) -- struktur retrieval "
+                              "(anchoring/traversal/expansion/leakage exclusion) TETAP SAMA, hanya "
+                              "fusi/ranking yang berubah, supaya isolasi kontribusi trust-weighting "
+                              "tetap apples-to-apples terhadap mode trust_weighted.")
+    parser.add_argument("--fusion-w-path-trust", type=float,
+                         default=float(os.getenv("FUSION_W_PATH_TRUST", DEFAULT_FUSION_W_PATH_TRUST)),
+                         help=f"Bobot trust struktural graf dalam combined_score (default "
+                              f"{DEFAULT_FUSION_W_PATH_TRUST}, dari FUSION_W_PATH_TRUST di .env). "
+                              f"Tidak dipakai kalau --fusion-mode uniform.")
+    parser.add_argument("--fusion-w-intrinsic", type=float,
+                         default=float(os.getenv("FUSION_W_ANSWER_INTRINSIC_TRUST",
+                                                  DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST)),
+                         help=f"Bobot trustScore intrinsik Answer dalam combined_score (default "
+                              f"{DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST}, dari "
+                              f"FUSION_W_ANSWER_INTRINSIC_TRUST di .env). Tidak dipakai kalau "
+                              f"--fusion-mode uniform.")
+    parser.add_argument("--semantic-expansion-trust-cap", type=float,
+                         default=float(os.getenv("SEMANTIC_EXPANSION_TRUST_CAP",
+                                                  DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP)),
+                         help=f"Cap proxy trust utk kandidat semantic-expansion-only (default "
+                              f"{DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP}, dari "
+                              f"SEMANTIC_EXPANSION_TRUST_CAP di .env). Tidak dipakai kalau "
+                              f"--fusion-mode uniform.")
     args = parser.parse_args()
 
     global log
@@ -781,7 +897,8 @@ def main():
         log("[config] --output diisi manual -- auto-naming diabaikan.")
     else:
         args.output = str(build_output_path(args.output_dir, args.provider, args.model,
-                                             args.n_sample, args.seed))
+                                             args.n_sample, args.seed, args.fusion_mode,
+                                             args.fusion_w_path_trust, args.fusion_w_intrinsic))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -791,6 +908,9 @@ def main():
     log(f"[config] n_sample={args.n_sample} seed={args.seed} provider={args.provider} model={args.model}")
     log(f"[config] top_k={args.top_k} n_anchor={args.n_anchor} "
         f"n_semantic_expansion={args.n_semantic_expansion} token_chunk_limit={args.token_chunk_limit}")
+    log(f"[config] fusion_mode={args.fusion_mode} fusion_w_path_trust={args.fusion_w_path_trust} "
+        f"fusion_w_intrinsic={args.fusion_w_intrinsic} "
+        f"semantic_expansion_trust_cap={args.semantic_expansion_trust_cap}")
 
     llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
 
@@ -848,6 +968,9 @@ def main():
         faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
         args.top_k, args.n_anchor, args.n_semantic_expansion, args.token_chunk_limit,
         args.model, output_path, already_done,
+        fusion_mode=args.fusion_mode, fusion_w_path_trust=args.fusion_w_path_trust,
+        fusion_w_intrinsic=args.fusion_w_intrinsic,
+        semantic_expansion_trust_cap=args.semantic_expansion_trust_cap,
     )
     interrupted = stats["interrupted"]
 
@@ -866,6 +989,10 @@ def main():
             "run_started_at": run_started_at.isoformat(), "condition": "C", "status": "no_results",
             "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
             "seed": args.seed, "output_path": str(output_path), "log_path": str(log_path),
+            "fusion_mode": args.fusion_mode,
+            "fusion_w_path_trust": args.fusion_w_path_trust,
+            "fusion_w_answer_intrinsic_trust": args.fusion_w_intrinsic,
+            "semantic_expansion_trust_cap": args.semantic_expansion_trust_cap,
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
@@ -900,6 +1027,10 @@ def main():
         "n_processed": len(results_df), "seed": args.seed,
         "top_k": args.top_k, "n_anchor": args.n_anchor,
         "n_semantic_expansion": args.n_semantic_expansion,
+        "fusion_mode": args.fusion_mode,
+        "fusion_w_path_trust": args.fusion_w_path_trust,
+        "fusion_w_answer_intrinsic_trust": args.fusion_w_intrinsic,
+        "semantic_expansion_trust_cap": args.semantic_expansion_trust_cap,
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),

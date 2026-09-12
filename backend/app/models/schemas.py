@@ -88,6 +88,14 @@ class RunCreateRequest(BaseModel):
     # Condition B only -- default True to match CONDITION_B_REQUIRE_CITATION
     # in .env; lets NF2 (citation compliance) be compared B vs C.
     require_citation: bool = True
+    # Condition C only -- ablation study fusion mode, see
+    # llm/c_graphrag/c_graphrag.py fuse_and_rank(). Defaults match
+    # FUSION_MODE/FUSION_W_PATH_TRUST/FUSION_W_ANSWER_INTRINSIC_TRUST/
+    # SEMANTIC_EXPANSION_TRUST_CAP in .env (the CLI's own defaults).
+    fusion_mode: str = "trust_weighted"  # "trust_weighted" | "uniform"
+    fusion_w_path_trust: float = 0.7
+    fusion_w_intrinsic: float = 0.3
+    semantic_expansion_trust_cap: float = 0.4
     # single mode
     question_id: int | None = None
     # shared

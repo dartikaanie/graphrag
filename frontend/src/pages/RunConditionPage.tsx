@@ -37,6 +37,10 @@ export function RunConditionPage() {
   const [nAnchor, setNAnchor] = useState(3)
   const [nSemanticExpansion, setNSemanticExpansion] = useState(3)
   const [requireCitation, setRequireCitation] = useState(true)
+  const [fusionMode, setFusionMode] = useState<'trust_weighted' | 'uniform'>('trust_weighted')
+  const [fusionWPathTrust, setFusionWPathTrust] = useState(0.7)
+  const [fusionWIntrinsic, setFusionWIntrinsic] = useState(0.3)
+  const [semanticExpansionTrustCap, setSemanticExpansionTrustCap] = useState(0.4)
   const [questionId, setQuestionId] = useState('')
 
   const isRag = condition === 'B' || condition === 'C'
@@ -50,6 +54,14 @@ export function RunConditionPage() {
       provider,
       model,
       ...(isConditionB ? { require_citation: requireCitation } : {}),
+      ...(isGraph
+        ? {
+            fusion_mode: fusionMode,
+            fusion_w_path_trust: fusionWPathTrust,
+            fusion_w_intrinsic: fusionWIntrinsic,
+            semantic_expansion_trust_cap: semanticExpansionTrustCap,
+          }
+        : {}),
       ...(mode === 'batch'
         ? {
             n_sample: nSample,
@@ -138,6 +150,50 @@ export function RunConditionPage() {
             <Field label="model">
               <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} />
             </Field>
+          </div>
+        )}
+
+        {isGraph && (
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="text-sm font-medium text-text-primary mb-2">Fusion mode (ablation study)</div>
+            <div className="grid grid-cols-4 gap-4">
+              <Field label="fusion_mode">
+                <select
+                  className={inputClass}
+                  value={fusionMode}
+                  onChange={(e) => setFusionMode(e.target.value as 'trust_weighted' | 'uniform')}
+                >
+                  <option value="trust_weighted">trust_weighted (default)</option>
+                  <option value="uniform">uniform (ablation)</option>
+                </select>
+              </Field>
+              <Field label="fusion_w_path_trust">
+                <input
+                  type="number" step="0.1" min="0" max="1" className={inputClass}
+                  value={fusionWPathTrust} disabled={fusionMode === 'uniform'}
+                  onChange={(e) => setFusionWPathTrust(Number(e.target.value))}
+                />
+              </Field>
+              <Field label="fusion_w_intrinsic">
+                <input
+                  type="number" step="0.1" min="0" max="1" className={inputClass}
+                  value={fusionWIntrinsic} disabled={fusionMode === 'uniform'}
+                  onChange={(e) => setFusionWIntrinsic(Number(e.target.value))}
+                />
+              </Field>
+              <Field label="semantic_expansion_trust_cap">
+                <input
+                  type="number" step="0.1" min="0" max="1" className={inputClass}
+                  value={semanticExpansionTrustCap} disabled={fusionMode === 'uniform'}
+                  onChange={(e) => setSemanticExpansionTrustCap(Number(e.target.value))}
+                />
+              </Field>
+            </div>
+            {fusionMode === 'uniform' && (
+              <div className="mt-2 text-xs text-text-secondary">
+                Uniform mode ignores trust weights entirely — ranking is determined purely by retrieval discovery order (graph traversal before semantic expansion, hop 1 before hop 2).
+              </div>
+            )}
           </div>
         )}
 

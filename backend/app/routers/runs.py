@@ -37,6 +37,8 @@ def create_run(body: RunCreateRequest):
         raise HTTPException(status_code=400, detail="mode must be 'batch' or 'single'")
     if body.mode == "single" and not body.question_id:
         raise HTTPException(status_code=400, detail="question_id is required for single mode")
+    if body.fusion_mode not in ("trust_weighted", "uniform"):
+        raise HTTPException(status_code=400, detail="fusion_mode must be 'trust_weighted' or 'uniform'")
 
     params = body.model_dump()
     run_id = run_registry.create_run(condition, body.mode, params)

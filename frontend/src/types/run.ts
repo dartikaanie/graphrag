@@ -17,6 +17,10 @@ export interface RunCreateParams {
   n_anchor?: number
   n_semantic_expansion?: number
   require_citation?: boolean
+  fusion_mode?: 'trust_weighted' | 'uniform'
+  fusion_w_path_trust?: number
+  fusion_w_intrinsic?: number
+  semantic_expansion_trust_cap?: number
   question_id?: number | null
   provider: string
   model: string
