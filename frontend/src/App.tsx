@@ -8,6 +8,8 @@ import { AnswerDetailPage } from '@/pages/AnswerDetailPage'
 import { TagListPage } from '@/pages/TagListPage'
 import { TagDetailPage } from '@/pages/TagDetailPage'
 import { RunConditionPage } from '@/pages/RunConditionPage'
+import { RunAllConditionsPage } from '@/pages/RunAllConditionsPage'
+import { RunAllResultsPage } from '@/pages/RunAllResultsPage'
 import { RunResultPage } from '@/pages/RunResultPage'
 import { RunResultDetailPage } from '@/pages/RunResultDetailPage'
 import { HistoryPage } from '@/pages/HistoryPage'
@@ -29,6 +31,8 @@ export default function App() {
         <Route path="/tags" element={<TagListPage />} />
         <Route path="/tags/:name" element={<TagDetailPage />} />
 
+        <Route path="/experiment/all" element={<RunAllConditionsPage />} />
+        <Route path="/experiment/all/runs" element={<RunAllResultsPage />} />
         <Route path="/experiment/:condition" element={<RunConditionPage />} />
         <Route path="/experiment/:condition/runs/:run_id" element={<RunResultPage />} />
         <Route path="/experiment/:condition/runs/:run_id/q/:question_id" element={<RunResultDetailPage />} />

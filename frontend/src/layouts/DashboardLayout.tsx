@@ -5,6 +5,7 @@ import {
   MessageSquareText,
   Tag,
   FlaskConical,
+  Layers,
   History,
   Settings,
 } from 'lucide-react'
@@ -27,6 +28,7 @@ const masterDataNav: NavItem[] = [
 ]
 
 const experimentNav: NavItem[] = [
+  { to: '/experiment/all', label: 'Run All (A + B + C)', icon: <Layers className="h-4 w-4" /> },
   { to: '/experiment/a', label: 'Condition A — Pure LLM', icon: <FlaskConical className="h-4 w-4" /> },
   { to: '/experiment/b', label: 'Condition B — LLM + RAG', icon: <FlaskConical className="h-4 w-4" /> },
   { to: '/experiment/c', label: 'Condition C — LLM + GraphRAG', icon: <FlaskConical className="h-4 w-4" /> },
