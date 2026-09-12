@@ -189,7 +189,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
 
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), cond)
-            output_path = Path("results") / f"condition_a_{provider}_{_safe_model_name(model)}_single_{params['question_id']}.jsonl"
+            output_path = Path("results") / f"condition_a_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -278,7 +278,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
-            output_path = Path("results") / f"condition_b_{provider}_{_safe_model_name(model)}_single_{params['question_id']}.jsonl"
+            output_path = Path("results") / f"condition_b_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
             seed = 42
         else:
             n_sample = int(params["n_sample"])
@@ -379,7 +379,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
 
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
-            output_path = Path("results") / f"condition_c_{provider}_{_safe_model_name(model)}_single_{params['question_id']}.jsonl"
+            output_path = Path("results") / f"condition_c_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
