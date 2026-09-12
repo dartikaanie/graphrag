@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useHistory } from '@/api/hooks'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/Badge'
+import { fmtDuration } from '@/lib/format'
 import type { HistoryItem } from '@/types/history'
 
 const PAGE_SIZE = 20
@@ -80,13 +81,14 @@ export function HistoryPage() {
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Model</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Avg Similarity</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">NF2%</th>
+              <th className="text-left font-medium text-text-secondary px-3 py-2.5">Duration</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Status</th>
             </tr>
           </thead>
           <tbody>
             {!isLoading && data?.items.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-text-muted">
+                <td colSpan={9} className="px-3 py-8 text-center text-text-muted">
                   No runs yet.
                 </td>
               </tr>
@@ -113,6 +115,9 @@ export function HistoryPage() {
                 </td>
                 <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
                   {item.pct_with_valid_citation != null ? `${item.pct_with_valid_citation.toFixed(1)}%` : '—'}
+                </td>
+                <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
+                  {fmtDuration(item.duration_sec)}
                 </td>
                 <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
                   <Badge tone={STATUS_TONE[item.status] ?? 'neutral'}>{item.status}</Badge>

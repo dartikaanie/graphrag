@@ -226,6 +226,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
         cancelled = run_registry.is_cancelled(run_id)
         summary = _summarize(results)
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
+        summary["duration_sec"] = duration
         cond.append_run_history({
             "run_started_at": run_started_at.isoformat(),
             "status": "cancelled" if cancelled else ("success" if results else "no_results"),
@@ -332,6 +333,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             if latencies:
                 summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
+        summary["duration_sec"] = duration
         cond.append_run_history({
             "run_started_at": run_started_at.isoformat(),
             "condition": "B",
@@ -432,6 +434,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
                 summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
 
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
+        summary["duration_sec"] = duration
         cond.append_run_history({
             "run_started_at": run_started_at.isoformat(),
             "condition": "C",
