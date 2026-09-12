@@ -13,6 +13,7 @@ import type {
 import type { GraphData } from '@/types/graph'
 import type { RunCreateParams, RunResultDetail, RunState } from '@/types/run'
 import type { HistoryListResponse } from '@/types/history'
+import type { JudgeAvailableInput, JudgeEvaluationSummary, JudgeRun, JudgeRunCreateParams } from '@/types/judge'
 import type { SettingsState, TestConnectionResult } from '@/types/settings'
 
 export function useStatsSummary() {
@@ -217,6 +218,71 @@ export function useDeleteHistory() {
     mutationFn: (historyId: string) => apiDelete<{ status: string; history_id: string }>(`/api/history/${historyId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['history'] }),
   })
+}
+
+export function useJudgeAvailableInputs(condition: string | undefined) {
+  return useQuery({
+    queryKey: ['judge-available-inputs', condition],
+    queryFn: () => apiGet<{ items: JudgeAvailableInput[] }>('/api/judge-runs/available-inputs', { condition }),
+    enabled: !!condition,
+  })
+}
+
+export function useCreateJudgeRun() {
+  return useMutation({
+    mutationFn: (params: JudgeRunCreateParams) => apiPost<{ run_id: string }>('/api/judge-runs', params),
+  })
+}
+
+/** Has this exact result file already been judged, and with what
+ * config(s)? Used to show cached results + a "re-judge (force)" option
+ * instead of a plain Run button once a file is selected. */
+export function useJudgeRunsForInput(inputPath: string | undefined) {
+  return useQuery({
+    queryKey: ['judge-runs-for-input', inputPath],
+    queryFn: () => apiGet<{ items: JudgeEvaluationSummary[] }>('/api/judge-runs/for-input', { input_path: inputPath }),
+    enabled: !!inputPath,
+  })
+}
+
+/**
+ * Judge runs are polled (not SSE) -- simpler for a run shape that only
+ * needs to refresh every couple seconds until it reaches a terminal status,
+ * matching the polling approach the spec calls for rather than duplicating
+ * the SSE machinery useRunStream uses for the higher-frequency condition runs.
+ */
+export function useJudgeRunPoll(runId: string | undefined) {
+  const [run, setRun] = useState<JudgeRun | null>(null)
+  const [connectionError, setConnectionError] = useState(false)
+
+  useEffect(() => {
+    if (!runId) return
+    let cancelled = false
+    setRun(null)
+    setConnectionError(false)
+
+    const poll = async () => {
+      try {
+        const data = await apiGet<JudgeRun>(`/api/judge-runs/${runId}`)
+        if (cancelled) return
+        setRun(data)
+        if (!['completed', 'failed', 'cancelled'].includes(data.status)) {
+          timer = setTimeout(poll, 1500)
+        }
+      } catch {
+        if (!cancelled) setConnectionError(true)
+      }
+    }
+    let timer: ReturnType<typeof setTimeout>
+    poll()
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [runId])
+
+  return { run, connectionError }
 }
 
 export function useHistoryResultGraph(historyId: string, questionId: number | string) {

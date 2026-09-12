@@ -6,7 +6,14 @@ import { PromptTranscript } from '@/components/PromptTranscript'
 import { GraphView } from '@/components/GraphView'
 import { EdgeLegend } from '@/components/EdgeLegend'
 import { Badge } from '@/components/Badge'
+import { MetricInfoLink } from '@/components/MetricInfoLink'
 import type { GraphNode } from '@/types/graph'
+
+const LABEL_TONE: Record<string, 'success' | 'warning' | 'danger'> = {
+  FAKTUAL: 'success',
+  HALUSINASI_SEBAGIAN: 'warning',
+  HALUSINASI_PENUH: 'danger',
+}
 
 export function HistoryResultDetailPage() {
   const { history_id = '', question_id = '' } = useParams()
@@ -43,12 +50,12 @@ export function HistoryResultDetailPage() {
 
       <div className="border border-border rounded-lg bg-surface p-4 mb-4 flex flex-wrap gap-6 text-sm">
         <div>
-          <span className="text-text-secondary">Cosine similarity (0–1): </span>
+          <span className="text-text-secondary">Cosine similarity (0–1): <MetricInfoLink metricId="cosine-similarity" /> </span>
           <span className="font-medium">{data.cosine_similarity.toFixed(4)}</span>
         </div>
         {data.has_valid_citation !== undefined && (
           <div>
-            <span className="text-text-secondary">Valid citation (NF2): </span>
+            <span className="text-text-secondary">Valid citation (NF2): <MetricInfoLink metricId="nf2-citation-validity" /> </span>
             {data.has_valid_citation ? <Badge tone="success">Yes</Badge> : <Badge tone="danger">No</Badge>}
           </div>
         )}
@@ -56,7 +63,7 @@ export function HistoryResultDetailPage() {
           <>
             {data.retrieval_latency_sec != null && (
               <div>
-                <span className="text-text-secondary">Retrieval latency: </span>
+                <span className="text-text-secondary">Retrieval latency: <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
                 <span className="font-medium">{data.retrieval_latency_sec.toFixed(2)}s</span>
               </div>
             )}
@@ -66,7 +73,7 @@ export function HistoryResultDetailPage() {
           <>
             {data.retrieval_latency_sec != null && (
               <div>
-                <span className="text-text-secondary">Retrieval latency: </span>
+                <span className="text-text-secondary">Retrieval latency: <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
                 <span className="font-medium">{data.retrieval_latency_sec.toFixed(2)}s</span>
               </div>
             )}
@@ -127,6 +134,39 @@ export function HistoryResultDetailPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {data.judge_results && data.judge_results.length > 0 && (
+        <div className="mt-4">
+          <h2 className="text-sm font-medium text-text-secondary mb-2 inline-flex items-center gap-1">
+            Penilaian Judge
+            <MetricInfoLink metricId="hallucination-rate" label="LLM-as-Judge" />
+          </h2>
+          <div className="flex flex-col gap-3">
+            {data.judge_results.map((jr, i) => (
+              <div key={i} className="border border-border rounded-lg bg-surface p-4">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Badge tone={LABEL_TONE[jr.hallucination_label] ?? 'neutral'}>{jr.hallucination_label}</Badge>
+                  <span className="text-xs text-text-muted">{jr.judge_provider}/{jr.judge_model}</span>
+                  {jr.majority_rounds != null && jr.majority_rounds > 1 && (
+                    <span className="text-xs text-text-muted">({jr.majority_rounds} rounds)</span>
+                  )}
+                </div>
+                <div className="flex gap-6 text-sm mb-2">
+                  <div>
+                    <span className="text-text-secondary">Faithfulness: </span>
+                    <span className="font-medium">{jr.faithfulness_score != null ? jr.faithfulness_score.toFixed(2) : 'n/a'}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">Answer Relevance: </span>
+                    <span className="font-medium">{jr.answer_relevance_score.toFixed(2)}</span>
+                  </div>
+                </div>
+                <p className="text-sm text-text-secondary italic">{jr.justification}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

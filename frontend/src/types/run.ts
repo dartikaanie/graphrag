@@ -1,3 +1,5 @@
+import type { JudgeEvaluationSummary, JudgeQuestionResult } from './judge'
+
 export type RunCondition = 'A' | 'B' | 'C' | 'D'
 export type RunMode = 'batch' | 'single'
 // Live runs use pending/running/completed/failed/cancelled; history entries
@@ -67,6 +69,7 @@ export interface RunState {
   error: string | null
   output_path: string | null
   cancel_requested?: boolean
+  judge_evaluations?: JudgeEvaluationSummary[]
 }
 
 export interface RetrievedContextItem {
@@ -119,4 +122,5 @@ export interface RunResultDetail {
   cited_source_ids?: string[]
   has_valid_citation?: boolean
   valid_cited_source_ids?: string[]
+  judge_results?: JudgeQuestionResult[]
 }

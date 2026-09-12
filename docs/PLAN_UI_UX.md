@@ -618,6 +618,47 @@ Single-column form, grouped into sections with a thin divider (not separate floa
 - "Test Connection" button per section — result shown as small text under the field (`✓ Connected` green / `✗ Failed: <error message>` red), not an auto-dismissing toast, so it can be read calmly during a demo.
 - **Security note (from the repo audit, §1.5):** since this repo previously had an `.env` with a live API key committed to git, the API key field **must** (a) never be sent back raw from `GET /api/settings` — only masked (`sk-...abcd`) or as `is_set: true`, (b) be stored by the backend in a file **outside** the git repo folder (e.g. an encrypted `~/.graphrag-dashboard/config.json`), never in an `.env` at any repo root, so the same leak path can't reopen. Add a small line under this section: *"Keys are never displayed again or written to logs."*
 
+### 7.10 Methodology (`/methodology`)
+
+Read-only reference page — documents each condition's (A/B/C/D) design and
+retrieval mechanism, not something interactive. Tabbed by condition
+(A/B/C/D), each tab showing overview, retrieval design, prompting,
+leakage-prevention approach, and metrics measured, plus a single
+always-visible comparison table summarizing all four conditions
+side by side. Content is defined in-component (`MethodologyPage.tsx`)
+rather than a separate data file, since it changes only when a
+condition's actual design changes.
+
+### 7.11 Metrik Evaluasi (`/docs/metrics`)
+
+Also read-only/reference, not interactive — the counterpart to §7.10 but
+for evaluation metrics rather than condition design: what each metric
+measures, how it's computed, which condition(s) produce it, how to
+interpret it, and its limitations (mandatory on every entry, never left
+blank). Content lives in `frontend/src/content/evaluationMetrics.ts` as
+typed data (not hardcoded JSX), so metric definitions can be
+reviewed/edited independently of the page's rendering logic — and so the
+same content can be linked to by id from other pages (see below) without
+duplicating the explanation.
+
+Layout: tabs by category (Semantic Quality / Citation & Grounding /
+Hallucination & Faithfulness / Retrieval Quality / Efficiency, plus an
+"All" tab), a checkbox filter by condition (A/B/C/D) alongside it, and
+each metric rendered as a collapsed-by-default card — name + per-condition
+badges + a one-line summary always visible, full detail (formula,
+interpretation guide, limitations, source file paths, "see also"
+cross-links to related metrics) behind expand. Anchored by metric id
+(`#cosine-similarity`, `#hallucination-rate`, etc.) so other pages can
+deep-link straight to one metric's definition.
+
+**Cross-linking convention**: any page that displays a metric's value
+(`MetricSummaryCards`, `RunResultDetailPage`, `HistoryResultDetailPage`,
+the "Hasil LLM-as-Judge"/"Penilaian Judge" sections) shows a small inline
+info icon (`MetricInfoLink` component) next to that metric's label,
+linking to `/docs/metrics#<metric-id>` — never a second copy of the
+explanation. This keeps metric definitions in exactly one place so they
+can't drift out of sync between pages.
+
 ---
 
 ## 8. Things Not to Miss
