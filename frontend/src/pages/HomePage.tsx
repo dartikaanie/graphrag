@@ -8,9 +8,10 @@ import type { GraphNode } from '@/types/graph'
 import type { RunCondition } from '@/types/run'
 
 const CONDITIONS: { key: RunCondition; label: string }[] = [
-  { key: 'A', label: 'Condition A — Pure LLM' },
-  { key: 'B', label: 'Condition B — LLM + RAG' },
-  { key: 'C', label: 'Condition C — LLM + GraphRAG' },
+  { key: 'A', label: 'A — Pure LLM' },
+  { key: 'B', label: 'B — LLM + RAG' },
+  { key: 'C', label: 'C — LLM + GraphRAG' },
+  { key: 'D', label: 'D — Dual-Level Retrieval (LightRAG-adapted)' },
 ]
 
 function LatestRunCard({ condition, label }: { condition: RunCondition; label: string }) {
@@ -95,7 +96,7 @@ export function HomePage() {
       )}
 
       <h2 className="text-sm font-medium text-text-secondary mt-8 mb-2">Latest Runs</h2>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {CONDITIONS.map((c) => (
           <LatestRunCard key={c.key} condition={c.key} label={c.label} />
         ))}

@@ -14,12 +14,13 @@ export function RunResultDetailPage() {
   const { data, isLoading, isError } = useRunResultDetail(run_id, question_id)
   const conditionUpper = condition.toUpperCase()
   const isGraphRag = conditionUpper === 'C'
+  const isDualLevel = conditionUpper === 'D'
   const { data: graph, isLoading: graphLoading } = useRunResultGraph(run_id, question_id)
 
   if (isLoading) return <div className="text-sm text-text-muted">Loading...</div>
   if (isError || !data) return <div className="text-sm text-danger">Result not found.</div>
 
-  const isRag = conditionUpper === 'B' || conditionUpper === 'C'
+  const isRag = conditionUpper === 'B' || conditionUpper === 'C' || conditionUpper === 'D'
 
   const handleNodeClick = (node: GraphNode) => {
     if (node.type === 'Question') navigate(`/questions/${node.properties.id}`)
@@ -70,6 +71,32 @@ export function RunResultDetailPage() {
             )}
           </>
         )}
+        {isDualLevel && (
+          <>
+            {data.retrieval_latency_sec != null && (
+              <div>
+                <span className="text-text-secondary">Retrieval latency: </span>
+                <span className="font-medium">{data.retrieval_latency_sec.toFixed(2)}s</span>
+              </div>
+            )}
+            {data.n_low_level_candidates != null && (
+              <div>
+                <span className="text-text-secondary">Low-Level → High-Level candidates: </span>
+                <span className="font-medium">
+                  {data.n_low_level_candidates} → {data.n_high_level_candidates ?? 0}
+                </span>
+              </div>
+            )}
+            {data.require_grounding !== undefined && (
+              <div>
+                <span className="text-text-secondary">Grounding constraint: </span>
+                <Badge tone={data.require_grounding ? 'success' : 'neutral'}>
+                  {data.require_grounding ? 'On' : 'Off'}
+                </Badge>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <AnswerComparisonPanel
@@ -89,10 +116,12 @@ export function RunResultDetailPage() {
         </div>
       )}
 
-      {isGraphRag && (
+      {(isGraphRag || isDualLevel) && (
         <div>
           <h2 className="text-sm font-medium text-text-secondary mb-2">
-            Retrieval Path — Entity Anchoring → Graph Traversal → Semantic Expansion
+            {isGraphRag
+              ? 'Retrieval Path — Entity Anchoring → Graph Traversal → Semantic Expansion'
+              : 'Retrieval Path — Entity Anchoring → Low-Level → High-Level Retrieval'}
           </h2>
           {graphLoading && (
             <div className="border border-border rounded-lg bg-surface p-4 text-sm text-text-muted h-[320px] flex items-center justify-center">

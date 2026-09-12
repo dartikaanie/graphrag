@@ -50,6 +50,21 @@ const PARAM_ROWS: ParamRow[] = [
         ? '—'
         : `path=${r.params.fusion_w_path_trust ?? '—'} / intrinsic=${r.params.fusion_w_intrinsic ?? '—'}`,
   },
+  {
+    label: 'Semantic Expansion Enabled (C)',
+    get: (r) => (r.params.enable_semantic_expansion == null ? '—' : r.params.enable_semantic_expansion ? 'Yes' : 'No'),
+  },
+  {
+    label: 'N Low-Level / High-Level (D)',
+    get: (r) =>
+      r.params.n_low_level == null && r.params.n_high_level == null
+        ? '—'
+        : `${r.params.n_low_level ?? '—'} / ${r.params.n_high_level ?? '—'}`,
+  },
+  {
+    label: 'Grounding Constraint (C/D)',
+    get: (r) => (r.params.require_grounding == null ? '—' : r.params.require_grounding ? 'Yes' : 'No'),
+  },
 ]
 
 export function HistoryComparePage() {
@@ -57,15 +72,17 @@ export function HistoryComparePage() {
   const ids = (searchParams.get('ids') ?? '').split(',').filter(Boolean)
 
   // Hooks must run unconditionally in the same order every render, so we
-  // call useHistoryDetail once per fixed slot (max 3, per HistoryPage's
-  // selection cap) rather than inside a variable-length loop.
+  // call useHistoryDetail once per fixed slot (max 4, per HistoryPage's
+  // selection cap -- one per condition, A/B/C/D) rather than inside a
+  // variable-length loop.
   const q0 = useHistoryDetail(ids[0] ?? '')
   const q1 = useHistoryDetail(ids[1] ?? '')
   const q2 = useHistoryDetail(ids[2] ?? '')
-  const runs = [q0.data, q1.data, q2.data].filter((r): r is RunState => !!r)
+  const q3 = useHistoryDetail(ids[3] ?? '')
+  const runs = [q0.data, q1.data, q2.data, q3.data].filter((r): r is RunState => !!r)
 
   if (ids.length === 0) {
-    return <div className="text-sm text-text-muted">No runs selected. Go back to History and select 2-3 runs.</div>
+    return <div className="text-sm text-text-muted">No runs selected. Go back to History and select 2-4 runs.</div>
   }
 
   return (

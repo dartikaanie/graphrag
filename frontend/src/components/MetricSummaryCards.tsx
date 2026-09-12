@@ -1,4 +1,4 @@
-import type { RunSummary } from '@/types/run'
+import type { RunCondition, RunSummary } from '@/types/run'
 import { fmtDuration } from '@/lib/format'
 
 function fmtPct(v: number | undefined): string {
@@ -10,7 +10,7 @@ function fmtScore(v: number | null | undefined): string {
 }
 
 /** Reused for both the live run view and the (future) history detail view. */
-export function MetricSummaryCards({ summary }: { summary: RunSummary; condition: 'A' | 'B' | 'C' }) {
+export function MetricSummaryCards({ summary }: { summary: RunSummary; condition: RunCondition }) {
   const cards: { label: string; value: string }[] = [
     { label: 'Processed', value: String(summary.n_processed) },
     { label: 'Avg Cosine Similarity (0–1)', value: fmtScore(summary.cosine_similarity_mean) },

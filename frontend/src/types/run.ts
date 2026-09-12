@@ -1,4 +1,4 @@
-export type RunCondition = 'A' | 'B' | 'C'
+export type RunCondition = 'A' | 'B' | 'C' | 'D'
 export type RunMode = 'batch' | 'single'
 // Live runs use pending/running/completed/failed/cancelled; history entries
 // (read straight from run_history.jsonl, written by the CLI's own
@@ -21,6 +21,10 @@ export interface RunCreateParams {
   fusion_w_path_trust?: number
   fusion_w_intrinsic?: number
   semantic_expansion_trust_cap?: number
+  enable_semantic_expansion?: boolean
+  n_low_level?: number
+  n_high_level?: number
+  require_grounding?: boolean
   question_id?: number | null
   provider: string
   model: string
@@ -44,6 +48,8 @@ export interface RunSummary {
   pct_with_valid_citation?: number
   avg_retrieval_latency_sec?: number
   duration_sec?: number
+  require_grounding?: boolean
+  enable_semantic_expansion?: boolean
 }
 
 export interface RunState {
@@ -69,9 +75,10 @@ export interface RetrievedContextItem {
   chunk_text: string
   trust_weight?: number
   combined_score?: number
-  hop?: number
+  relevance_score?: number
+  hop?: number | string
   rel_type?: string | null
-  source_stage?: 'graph_traversal' | 'semantic_expansion'
+  source_stage?: 'graph_traversal' | 'semantic_expansion' | 'low_level' | 'high_level'
   is_accepted?: boolean | null
 }
 
@@ -100,6 +107,10 @@ export interface RunResultDetail {
   n_anchors?: number
   n_graph_candidates?: number
   n_expansion_candidates?: number
+  n_low_level_candidates?: number
+  n_high_level_candidates?: number
+  require_grounding?: boolean
+  enable_semantic_expansion?: boolean
   retrieval_latency_sec?: number
   llm_answer: string
   llm_model: string

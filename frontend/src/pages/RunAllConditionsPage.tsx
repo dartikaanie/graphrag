@@ -29,12 +29,12 @@ const inputClass =
   'px-2.5 py-1.5 text-sm border border-border-strong rounded-md bg-surface text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-border'
 
 /**
- * Triggers Condition A, B, and C together with IDENTICAL sampling params,
+ * Triggers Condition A, B, C, and D together with IDENTICAL sampling params,
  * for a direct apples-to-apples comparison run. The key correctness detail:
  * each condition's engine_service defaults oversample_pool differently when
- * left unset (A: n_sample*3, B/C: n_sample*4 -- see engine_service.py), so
+ * left unset (A: n_sample*3, B/C/D: n_sample*4 -- see engine_service.py), so
  * this form always computes and sends ONE explicit oversample_pool value to
- * all three requests rather than letting each condition pick its own.
+ * all four requests rather than letting each condition pick its own.
  */
 export function RunAllConditionsPage() {
   const navigate = useNavigate()
@@ -54,6 +54,10 @@ export function RunAllConditionsPage() {
   const [fusionWPathTrust, setFusionWPathTrust] = useState(0.7)
   const [fusionWIntrinsic, setFusionWIntrinsic] = useState(0.3)
   const [semanticExpansionTrustCap, setSemanticExpansionTrustCap] = useState(0.4)
+  const [enableSemanticExpansion, setEnableSemanticExpansion] = useState(true)
+  const [nLowLevel, setNLowLevel] = useState(3)
+  const [nHighLevel, setNHighLevel] = useState(3)
+  const [requireGrounding, setRequireGrounding] = useState(true)
   const [questionId, setQuestionId] = useState('')
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -71,7 +75,7 @@ export function RunAllConditionsPage() {
         ? { n_sample: nSample, seed, oversample_pool: effectiveOversamplePool }
         : { question_id: Number(questionId) }),
     }
-    const paramsFor = (condition: 'A' | 'B' | 'C'): RunCreateParams => ({
+    const paramsFor = (condition: 'A' | 'B' | 'C' | 'D'): RunCreateParams => ({
       condition,
       ...shared,
       ...(condition === 'B' ? { top_k: topK, require_citation: requireCitation } : {}),
@@ -84,17 +88,28 @@ export function RunAllConditionsPage() {
             fusion_w_path_trust: fusionWPathTrust,
             fusion_w_intrinsic: fusionWIntrinsic,
             semantic_expansion_trust_cap: semanticExpansionTrustCap,
+            enable_semantic_expansion: enableSemanticExpansion,
+            require_grounding: requireGrounding,
+          }
+        : {}),
+      ...(condition === 'D'
+        ? {
+            top_k: topK,
+            n_low_level: nLowLevel,
+            n_high_level: nHighLevel,
+            require_grounding: requireGrounding,
           }
         : {}),
     })
 
     try {
-      const [a, b, c] = await Promise.all([
+      const [a, b, c, d] = await Promise.all([
         createRun.mutateAsync(paramsFor('A')),
         createRun.mutateAsync(paramsFor('B')),
         createRun.mutateAsync(paramsFor('C')),
+        createRun.mutateAsync(paramsFor('D')),
       ])
-      navigate(`/experiment/all/runs?a=${a.run_id}&b=${b.run_id}&c=${c.run_id}`)
+      navigate(`/experiment/all/runs?a=${a.run_id}&b=${b.run_id}&c=${c.run_id}&d=${d.run_id}`)
     } catch (e) {
       setError((e as Error).message)
       setStarting(false)
@@ -105,9 +120,9 @@ export function RunAllConditionsPage() {
 
   return (
     <div>
-      <h1 className="text-lg font-semibold text-text-primary mb-1">Run All Conditions (A + B + C)</h1>
+      <h1 className="text-lg font-semibold text-text-primary mb-1">Run All Conditions (A + B + C + D)</h1>
       <p className="text-sm text-text-secondary mb-4">
-        Runs Condition A, B, and C together with identical sampling parameters, for a direct comparison.
+        Runs Condition A, B, C, and D together with identical sampling parameters, for a direct comparison.
       </p>
 
       <div className="border border-border rounded-lg bg-surface p-4">
@@ -133,7 +148,7 @@ export function RunAllConditionsPage() {
             <Field label="seed" glossaryKey="seed">
               <input type="number" className={inputClass} value={seed} onChange={(e) => setSeed(Number(e.target.value))} />
             </Field>
-            <Field label="oversample_pool (shared across A/B/C)" glossaryKey="oversample_pool">
+            <Field label="oversample_pool (shared across A/B/C/D)" glossaryKey="oversample_pool">
               <input
                 className={inputClass}
                 placeholder={`auto (${nSample * 4})`}
@@ -151,14 +166,23 @@ export function RunAllConditionsPage() {
             <Field label="model" glossaryKey="model">
               <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} />
             </Field>
-            <Field label="top_k (B/C)" glossaryKey="top_k">
+            <Field label="top_k (B/C/D)" glossaryKey="top_k">
               <input type="number" className={inputClass} value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
             </Field>
             <Field label="n_anchor (C)" glossaryKey="n_anchor">
               <input type="number" className={inputClass} value={nAnchor} onChange={(e) => setNAnchor(Number(e.target.value))} />
             </Field>
             <Field label="n_semantic_expansion (C)" glossaryKey="n_semantic_expansion">
-              <input type="number" className={inputClass} value={nSemanticExpansion} onChange={(e) => setNSemanticExpansion(Number(e.target.value))} />
+              <input
+                type="number" className={inputClass} value={nSemanticExpansion} disabled={!enableSemanticExpansion}
+                onChange={(e) => setNSemanticExpansion(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="n_low_level (D)" glossaryKey="n_low_level">
+              <input type="number" className={inputClass} value={nLowLevel} onChange={(e) => setNLowLevel(Number(e.target.value))} />
+            </Field>
+            <Field label="n_high_level (D)" glossaryKey="n_high_level">
+              <input type="number" className={inputClass} value={nHighLevel} onChange={(e) => setNHighLevel(Number(e.target.value))} />
             </Field>
           </div>
         ) : (
@@ -176,14 +200,23 @@ export function RunAllConditionsPage() {
             <Field label="model" glossaryKey="model">
               <input className={inputClass} value={model} onChange={(e) => setModel(e.target.value)} />
             </Field>
-            <Field label="top_k (B/C)" glossaryKey="top_k">
+            <Field label="top_k (B/C/D)" glossaryKey="top_k">
               <input type="number" className={inputClass} value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
             </Field>
             <Field label="n_anchor (C)" glossaryKey="n_anchor">
               <input type="number" className={inputClass} value={nAnchor} onChange={(e) => setNAnchor(Number(e.target.value))} />
             </Field>
             <Field label="n_semantic_expansion (C)" glossaryKey="n_semantic_expansion">
-              <input type="number" className={inputClass} value={nSemanticExpansion} onChange={(e) => setNSemanticExpansion(Number(e.target.value))} />
+              <input
+                type="number" className={inputClass} value={nSemanticExpansion} disabled={!enableSemanticExpansion}
+                onChange={(e) => setNSemanticExpansion(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="n_low_level (D)" glossaryKey="n_low_level">
+              <input type="number" className={inputClass} value={nLowLevel} onChange={(e) => setNLowLevel(Number(e.target.value))} />
+            </Field>
+            <Field label="n_high_level (D)" glossaryKey="n_high_level">
+              <input type="number" className={inputClass} value={nHighLevel} onChange={(e) => setNHighLevel(Number(e.target.value))} />
             </Field>
           </div>
         )}
@@ -193,6 +226,14 @@ export function RunAllConditionsPage() {
           <span className="text-text-secondary inline-flex items-center gap-1">
             Condition B: require_citation
             <InfoTooltip text={PARAM_GLOSSARY.require_citation} />
+          </span>
+        </label>
+
+        <label className="flex items-center gap-2 text-sm mt-2">
+          <input type="checkbox" checked={requireGrounding} onChange={(e) => setRequireGrounding(e.target.checked)} />
+          <span className="text-text-secondary inline-flex items-center gap-1">
+            Condition C/D: Grounding constraint
+            <InfoTooltip text={PARAM_GLOSSARY.require_grounding} />
           </span>
         </label>
 
@@ -231,12 +272,19 @@ export function RunAllConditionsPage() {
               />
             </Field>
           </div>
+          <label className="flex items-center gap-2 text-sm mt-3">
+            <input type="checkbox" checked={enableSemanticExpansion} onChange={(e) => setEnableSemanticExpansion(e.target.checked)} />
+            <span className="text-text-secondary inline-flex items-center gap-1">
+              Enable semantic expansion
+              <InfoTooltip text={PARAM_GLOSSARY.enable_semantic_expansion} />
+            </span>
+          </label>
         </div>
 
         {mode === 'batch' && (
           <div className="mt-2 text-xs text-text-secondary bg-primary-soft border border-primary-border rounded-md px-2 py-1.5">
-            All three conditions will use seed={seed} and oversample_pool={effectiveOversamplePool} — identical
-            candidate pool and sample, so the same {nSample} questions are evaluated by A, B, and C.
+            All four conditions will use seed={seed} and oversample_pool={effectiveOversamplePool} — identical
+            candidate pool and sample, so the same {nSample} questions are evaluated by A, B, C, and D.
           </div>
         )}
 
@@ -246,7 +294,7 @@ export function RunAllConditionsPage() {
             disabled={runDisabled}
             className="px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary-hover disabled:opacity-50"
           >
-            {starting ? 'Starting…' : '▶ Run All 3 Conditions'}
+            {starting ? 'Starting…' : '▶ Run All 4 Conditions'}
           </button>
           {error && <span className="text-sm text-danger">{error}</span>}
         </div>

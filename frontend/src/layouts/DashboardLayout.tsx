@@ -8,6 +8,7 @@ import {
   Layers,
   History,
   Settings,
+  BookOpen,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -19,7 +20,10 @@ interface NavItem {
   end?: boolean
 }
 
-const mainNav: NavItem[] = [{ to: '/', label: 'Home', icon: <LayoutDashboard className="h-4 w-4" />, end: true }]
+const mainNav: NavItem[] = [
+  { to: '/', label: 'Home', icon: <LayoutDashboard className="h-4 w-4" />, end: true },
+  { to: '/methodology', label: 'Methodology', icon: <BookOpen className="h-4 w-4" /> },
+]
 
 const masterDataNav: NavItem[] = [
   { to: '/questions', label: 'Questions', icon: <MessageSquare className="h-4 w-4" /> },
@@ -28,10 +32,11 @@ const masterDataNav: NavItem[] = [
 ]
 
 const experimentNav: NavItem[] = [
-  { to: '/experiment/all', label: 'Run All (A + B + C)', icon: <Layers className="h-4 w-4" /> },
-  { to: '/experiment/a', label: 'Condition A — Pure LLM', icon: <FlaskConical className="h-4 w-4" /> },
-  { to: '/experiment/b', label: 'Condition B — LLM + RAG', icon: <FlaskConical className="h-4 w-4" /> },
-  { to: '/experiment/c', label: 'Condition C — LLM + GraphRAG', icon: <FlaskConical className="h-4 w-4" /> },
+  { to: '/experiment/all', label: 'Run All (A + B + C + D)', icon: <Layers className="h-4 w-4" /> },
+  { to: '/experiment/a', label: 'A — Pure LLM', icon: <FlaskConical className="h-4 w-4" /> },
+  { to: '/experiment/b', label: 'B — LLM + RAG', icon: <FlaskConical className="h-4 w-4" /> },
+  { to: '/experiment/c', label: 'C — LLM + GraphRAG', icon: <FlaskConical className="h-4 w-4" /> },
+  { to: '/experiment/d', label: 'D — Dual-Level Retrieval (LightRAG-adapted)', icon: <FlaskConical className="h-4 w-4" /> },
 ]
 
 const footerNav: NavItem[] = [

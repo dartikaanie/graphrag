@@ -1,6 +1,6 @@
 export interface HistoryItem {
   run_started_at: string
-  condition: 'A' | 'B' | 'C'
+  condition: 'A' | 'B' | 'C' | 'D'
   status: string
   provider: string
   model: string
@@ -10,6 +10,9 @@ export interface HistoryItem {
   top_k?: number
   n_anchor?: number
   n_semantic_expansion?: number
+  n_low_level?: number
+  n_high_level?: number
+  require_grounding?: boolean
   output_path: string
   duration_sec: number
   source?: string

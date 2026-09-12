@@ -12,7 +12,7 @@ up to date as work progresses. For the dashboard's detailed design spec, see
 
 ## 1. What this project is
 
-The thesis compares three conditions for answering Stack Overflow-style
+The thesis compares four conditions for answering Stack Overflow-style
 programming questions with an LLM, using the SORD dataset (~2.68M questions):
 
 - **Condition A — Pure LLM baseline** (`llm/a_pure_llm/`): replicates Da Silva,
@@ -23,14 +23,23 @@ programming questions with an LLM, using the SORD dataset (~2.68M questions):
   retrieval over a trust-weighted Knowledge Graph in Neo4j — vector anchoring →
   graph traversal → semantic expansion — with enforced `[SO-<id>]` citation
   grounding. This is the thesis's novel contribution, benchmarked against A and B.
+- **Condition D — Dual-Level Retrieval (LightRAG-adapted)** (`llm/d_lightrag/`):
+  an adaptation of LightRAG's (Guo et al.) dual-level (low-level + high-level)
+  retrieval mechanism, running on the exact same Neo4j knowledge graph and
+  FAISS cache as Condition C (no new graph, no LLM-based entity extraction) —
+  isolates the contribution of trust-weighted fusion specifically, by swapping
+  in a trust-free ranking mechanism over identical data.
 
-All three conditions share the exact same 4-turn prompt skeleton
-(`llm/prompts.py`) so that presence/absence/type of retrieval is the only
-variable — that's the controlled comparison the thesis is built on.
+All four conditions share the exact same 4-turn prompt skeleton
+(`llm/prompts.py`) so that presence/absence/type of retrieval — and, for C/D,
+the grounding constraint specifically — is the only variable. That's the
+controlled comparison the thesis is built on. A full write-up of each
+condition's design, and a side-by-side comparison table, lives on the
+dashboard's **Methodology** page (`/methodology`) — see §6.
 
-A web dashboard (`backend/` + `frontend/`) is being built on top of this
-research engine so runs, results, and the knowledge graph can be
-demoed/driven from a browser instead of the terminal. See §4 below and
+A web dashboard (`backend/` + `frontend/`) has been built on top of this
+research engine so runs, results, history, and the knowledge graph can be
+demoed/driven from a browser instead of the terminal. See §6 below and
 `PLAN_UI_UX.md` for the full spec.
 
 ---
@@ -42,17 +51,19 @@ demoed/driven from a browser instead of the terminal. See §4 below and
 01_data_cleaning/       Data pipeline: merge → dedup → EDA → KG build → densify
 llm/                    The research engine (main project)
   client_factory.py       LLM provider abstraction (openai/anthropic/local/ollama)
-  prompts.py               Shared 4-turn message builders for Condition A/B/C
+  prompts.py               Shared 4-turn message builders for Condition A/B/C/D
+  citations.py             Shared [SO-<id>] citation extraction/validation (B/C/D)
   a_pure_llm/              Condition A script + its results/logs
   b_rag/                   Condition B script + its results/logs/index_cache
   c_graphrag/              Condition C script + its results/logs
+  d_lightrag/              Condition D script + its results/logs
 backend/                FastAPI dashboard backend
 frontend/               React (Vite) dashboard frontend
 config/                 One-off diagnostic scripts (accepted-answer match, KG feasibility, LLM connection test)
 report/                 Generated EDA/integrity reports (markdown + charts)
 docs/                   This file + PLAN_UI_UX.md
 run.py                  Interactive CLI launcher (menu wrapper around the scripts above)
-compare_condition_c_runs.py   Compares run_history.jsonl across A/B/C side by side
+compare_condition_c_runs.py   Compares run_history.jsonl across A/B/C/D side by side
 ```
 
 `llm/a_pure_llm`, `llm/b_rag`, `llm/c_graphrag` were originally named
@@ -120,34 +131,58 @@ otherwise hang (see the "lessons learned" note in §7).
 
 ---
 
-## 5. The three experiment conditions
+## 5. The four experiment conditions
 
 Each condition script (`a_baseline_replication.py`, `b_condition_b_rag.py`,
-`c_graphrag.py`) is resumable (JSONL append + skip-already-done), reads
-config from the repo-root `.env`, auto-names its output file from
-provider+model+n+seed, and logs a per-run summary to its own
-`logs/run_history.jsonl`.
+`c_graphrag.py`, `d_lightrag.py`) is resumable (JSONL append + skip-already-
+done), reads config from the repo-root `.env`, auto-names its output file
+from provider+model+n+seed(+ablation variant), and logs a per-run summary to
+its own `logs/run_history.jsonl`.
 
 - **Condition A**: sample 384 questions (95% CI / 5% margin, matching the
   original paper) → 1 LLM call per question → cosine similarity (MiniLM) vs.
   the accepted answer.
 - **Condition B**: same sampling, + FAISS top-k retrieval over a flat chunked
-  corpus of SO answers, inserted into the prompt as generic "Reference N" context.
+  corpus of SO answers. Citation labeling/validation is optional
+  (`--require-citation`, same `[SO-<id>]` format as C/D) for a direct NF2
+  comparison, but never includes a grounding constraint.
 - **Condition C**: same sampling, + hybrid retrieval — vector-anchor into the
   KG, 1–2 hop trust-weighted graph traversal, semantic expansion — fused into
-  a `[SO-<id>]`-labeled context with a dual constraint (grounding + mandatory
+  a `[SO-<id>]`-labeled context under a dual constraint (grounding + mandatory
   citation). Measures NF2 (citation compliance) and NF3 (retrieval latency
-  ≤15s) alongside cosine similarity.
+  ≤15s) alongside cosine similarity. Ships with three independent ablation
+  switches: `--fusion-mode {trust_weighted,uniform}` (isolates trust-
+  weighting itself), `--no-require-grounding` (isolates the grounding
+  constraint from the citation constraint), and
+  `--no-enable-semantic-expansion` (isolates the semantic-expansion stage).
+- **Condition D**: same sampling and KG/FAISS cache as Condition C, but a
+  dual-level retrieval mechanism (adapted from LightRAG, Guo et al.) instead
+  of trust-weighted fusion — low-level (1-hop from vector-search anchors) +
+  high-level (2-hop via tag/relatedness edges), ranked purely by relevance
+  score, never trust. Shares Condition C's `--require-grounding` ablation
+  switch so the grounding-constraint experiment can be run identically on
+  both graph-based conditions; semantic expansion is not implemented here
+  (only two retrieval levels, by design).
+
+See the dashboard's **Methodology** page (`/methodology`) for the full
+design write-up per condition and a side-by-side comparison table, or read
+the top-of-file docstring in each script above for exact implementation
+detail (leakage-exclusion queries, prompt text, CLI flags).
 
 `run.py` is a menu-driven launcher that wraps all of the above (plus the data
 pipeline scripts) so they can be run without remembering exact CLI flags.
-`compare_condition_c_runs.py` reads all three `run_history.jsonl` files and
-prints a side-by-side comparison table across conditions/models/runs.
+`compare_condition_c_runs.py` reads all four `run_history.jsonl` files
+(`--condition ABCD`, or any subset e.g. `CD`) and prints a side-by-side
+comparison table across conditions/models/runs.
 
-**Verified working** (Sept 2026, n=1 smoke test, gpt-4o-mini): all three
-conditions run end-to-end after the `llm/` folder reorganization — Condition
-A similarity 0.634, Condition B 0.634 (retrieval + FAISS cache load OK),
-Condition C 0.650 (Neo4j + KG workspace + citation validation OK, NF2/NF3 both PASS).
+**Verified working** (Sept 2026, n=1 smoke tests, gpt-4o-mini): all four
+conditions run end-to-end — Condition A similarity 0.634, Condition B 0.634
+(retrieval + FAISS cache load OK), Condition C 0.650/0.707 across
+trust_weighted/uniform fusion-mode ablation runs (Neo4j + KG workspace +
+citation validation OK, NF2/NF3 both PASS), Condition D verified via the
+dashboard's `/api/runs` endpoint (dual-level retrieval + grounding-toggle
+wiring confirmed end-to-end, cancelled before an LLM call to avoid pilot
+cost — see the run.py/dashboard smoke-test notes in git history for detail).
 
 ---
 
@@ -176,18 +211,51 @@ pages: nodes show a short `Q#<id>`/`A#<id>` label on-canvas with full detail
 (title, score, trust, accepted status) on hover; the edge-type legend sits
 below the graph so it never requires horizontal scrolling.
 
-**Phase 4 — Engine wrapper & Run endpoints (not started).** Refactor
-`a_/b_/c_*.py` into callable functions; `/api/runs` + SSE progress.
+**Phase 4 — Engine wrapper & Run endpoints (done).** `backend/app/services/
+engine_service.py` imports and calls each condition script's own functions
+(`get_candidate_questions`, `process_sample`, `append_run_history`, ...)
+directly rather than re-implementing retrieval/generation logic — one
+`run_condition_x()` per condition, all registered in a `RUNNERS` dict.
+`POST /api/runs` (batch or single-question, any condition A–D)
++ `GET /api/runs/{id}/stream` (SSE progress, polls run state so a page
+refresh mid-run recovers cleanly) + cancel support.
 
-**Phase 5 — Frontend Run pages (not started).**
+**Phase 5 — Frontend Run pages (done).** One `RunConditionPage` per
+condition (batch/single mode, all condition-specific parameters — top_k,
+n_anchor/n_semantic_expansion, fusion-mode ablation weights,
+n_low_level/n_high_level, the grounding-constraint toggle — each with an
+inline tooltip explaining what it does, backed by one shared glossary so
+wording is identical everywhere a parameter appears), a live
+`ProgressRunPanel`, and per-question `RunResultDetailPage` showing the full
+prompt transcript, retrieved context (ranked, with an explicit "Rank #N" and
+the actual ranking score used), and — for C/D — the real retrieval-path
+subgraph actually touched by that run (not a generic node-centered
+subgraph). **"Run All" (`/experiment/all`)** fires all four conditions in
+parallel with identical sampling parameters for a direct apples-to-apples
+comparison run.
 
-**Phase 6 — History / run comparison (not started).**
+**Phase 6 — History / run comparison (done).** `/api/history` reads each
+condition's `run_history.jsonl` directly (CLI runs and dashboard runs are
+indistinguishable to this UI) into one unified, paginated, filterable table;
+select 2–4 runs (any mix of conditions) to compare parameters and metrics
+side by side, with a per-row delete action (removes the transaction-log
+entry only — the underlying results `.jsonl` on disk is never touched by a
+UI delete). A dedicated **Methodology page** (`/methodology`) documents each
+condition's design/retrieval mechanism/leakage-prevention approach and a
+full A/B/C/D comparison table, so the dashboard is self-documenting rather
+than requiring this file to be read alongside it.
 
-**Phase 7 — Settings (not started).** Notably: provider/model/API-key/Neo4j
-config must move to an encrypted file *outside* the git repo
-(`~/.graphrag-dashboard/config.json`) rather than a repo-root `.env` — see §7.
+**Phase 7 — Settings (done).** Provider/model/API-key/Neo4j config lives in
+a Fernet-encrypted file *outside* the git repo
+(`~/.graphrag-dashboard/config.json`, chmod 600) rather than the repo-root
+`.env` — see §7 for why this pattern exists. A per-run UI override (e.g.
+Condition B's citation toggle) takes precedence over both Settings and
+`.env` without persisting the override anywhere.
 
-**Phase 8 — Demo polish (not started).**
+**Phase 8 — Demo polish (done).** Accepted-answer highlighting + auto-
+centering in graph views, edge hover tooltips (type, weight, endpoints) in
+every graph visualization, Duration/NF2/latency metrics shown generically
+(presence-based, not condition-gated) across History and Run views.
 
 ---
 
@@ -244,9 +312,12 @@ cd frontend
 npm run dev                                  # http://localhost:5173
 
 # Any condition, quick smoke test (cheap: n=1)
-cd llm/a_pure_llm   # or llm/b_rag, llm/c_graphrag
+cd llm/a_pure_llm   # or llm/b_rag, llm/c_graphrag, llm/d_lightrag
 python3 <script>.py --n-sample 1 --seed 42
 # add --provider ollama --model phi3:mini for a free local test run
+
+# Compare run_history.jsonl across all four conditions
+python3 compare_condition_c_runs.py --condition ABCD --group
 ```
 
 Requires: Neo4j Desktop running (`bolt://localhost:7687`, database

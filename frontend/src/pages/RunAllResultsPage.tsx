@@ -3,7 +3,12 @@ import { useCancelRun, useRunStream } from '@/api/hooks'
 import { ProgressRunPanel } from '@/components/ProgressRunPanel'
 import type { RunCondition } from '@/types/run'
 
-const LABELS: Record<RunCondition, string> = { A: 'Condition A — Pure LLM', B: 'Condition B — LLM + RAG', C: 'Condition C — LLM + GraphRAG' }
+const LABELS: Record<RunCondition, string> = {
+  A: 'A — Pure LLM',
+  B: 'B — LLM + RAG',
+  C: 'C — LLM + GraphRAG',
+  D: 'D — Dual-Level Retrieval (LightRAG-adapted)',
+}
 
 function fmt(v: number | null | undefined): string {
   return v === null || v === undefined ? '—' : v.toFixed(4)
@@ -76,9 +81,10 @@ export function RunAllResultsPage() {
     A: searchParams.get('a') ?? undefined,
     B: searchParams.get('b') ?? undefined,
     C: searchParams.get('c') ?? undefined,
+    D: searchParams.get('d') ?? undefined,
   }
 
-  if (!runIds.A || !runIds.B || !runIds.C) {
+  if (!runIds.A || !runIds.B || !runIds.C || !runIds.D) {
     return <div className="text-sm text-danger">Missing run ids — start a new comparison from "Run All Conditions".</div>
   }
 
@@ -89,12 +95,13 @@ export function RunAllResultsPage() {
           ← Back to Run All Conditions
         </Link>
       </div>
-      <h1 className="text-lg font-semibold text-text-primary mb-4">Comparing Condition A / B / C</h1>
+      <h1 className="text-lg font-semibold text-text-primary mb-4">Comparing Condition A / B / C / D</h1>
 
       <div className="flex gap-4 items-start">
         <ConditionColumn condition="A" runId={runIds.A} />
         <ConditionColumn condition="B" runId={runIds.B} />
         <ConditionColumn condition="C" runId={runIds.C} />
+        <ConditionColumn condition="D" runId={runIds.D} />
       </div>
     </div>
   )
