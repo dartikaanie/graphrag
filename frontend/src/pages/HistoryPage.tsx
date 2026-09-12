@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useHistory } from '@/api/hooks'
+import { useDeleteHistory, useHistory } from '@/api/hooks'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/Badge'
 import { fmtDuration } from '@/lib/format'
@@ -27,12 +27,24 @@ export function HistoryPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const navigate = useNavigate()
   const { data, isLoading, isError } = useHistory(condition, page, PAGE_SIZE)
+  const deleteHistory = useDeleteHistory()
+
+  const handleDelete = (e: MouseEvent, id: string) => {
+    e.stopPropagation()
+    if (!window.confirm('Delete this run from History? This removes the run_history.jsonl entry only -- the underlying results file on disk is kept.')) return
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    deleteHistory.mutate(id)
+  }
 
   const toggle = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
-      else if (next.size < 3) next.add(id)
+      else if (next.size < 4) next.add(id)
       return next
     })
   }
@@ -61,11 +73,12 @@ export function HistoryPage() {
           }}
         >
           <option value="">All conditions</option>
-          <option value="A">Condition A</option>
-          <option value="B">Condition B</option>
-          <option value="C">Condition C</option>
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+          <option value="D">D</option>
         </select>
-        <span className="text-xs text-text-muted">Select up to 3 runs to compare.</span>
+        <span className="text-xs text-text-muted">Select up to 4 runs to compare.</span>
       </div>
 
       {isError && <div className="text-sm text-danger mb-4">Failed to load history.</div>}
@@ -83,12 +96,13 @@ export function HistoryPage() {
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">NF2%</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Duration</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Status</th>
+              <th className="w-8 px-3 py-2.5" />
             </tr>
           </thead>
           <tbody>
             {!isLoading && data?.items.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-text-muted">
+                <td colSpan={10} className="px-3 py-8 text-center text-text-muted">
                   No runs yet.
                 </td>
               </tr>
@@ -121,6 +135,16 @@ export function HistoryPage() {
                 </td>
                 <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
                   <Badge tone={STATUS_TONE[item.status] ?? 'neutral'}>{item.status}</Badge>
+                </td>
+                <td className="px-3 py-2.5">
+                  <button
+                    onClick={(e) => handleDelete(e, item.history_id)}
+                    disabled={deleteHistory.isPending}
+                    title="Delete this run from History"
+                    className="text-text-muted hover:text-danger disabled:opacity-50"
+                  >
+                    ✕
+                  </button>
                 </td>
               </tr>
             ))}

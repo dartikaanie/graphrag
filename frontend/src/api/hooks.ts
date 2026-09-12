@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { API_BASE, apiGet, apiPost, apiPut } from './client'
+import { API_BASE, apiDelete, apiGet, apiPost, apiPut } from './client'
 import type {
   AnswerDetail,
   AnswerListResponse,
@@ -208,6 +208,14 @@ export function useRunResultGraph(runId: string, questionId: number | string) {
     queryKey: ['run-result-graph', runId, questionId],
     queryFn: () => apiGet<GraphData>(`/api/runs/${runId}/results/${questionId}/graph`),
     enabled: !!runId && questionId !== undefined,
+  })
+}
+
+export function useDeleteHistory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (historyId: string) => apiDelete<{ status: string; history_id: string }>(`/api/history/${historyId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['history'] }),
   })
 }
 

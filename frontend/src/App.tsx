@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { HomePage } from '@/pages/HomePage'
+import { MethodologyPage } from '@/pages/MethodologyPage'
 import { QuestionListPage } from '@/pages/QuestionListPage'
 import { QuestionDetailPage } from '@/pages/QuestionDetailPage'
 import { AnswerListPage } from '@/pages/AnswerListPage'
@@ -24,6 +25,7 @@ export default function App() {
     <Routes>
       <Route element={<DashboardLayout />}>
         <Route path="/" element={<HomePage />} />
+        <Route path="/methodology" element={<MethodologyPage />} />
         <Route path="/questions" element={<QuestionListPage />} />
         <Route path="/questions/:id" element={<QuestionDetailPage />} />
         <Route path="/answers" element={<AnswerListPage />} />

@@ -6,9 +6,10 @@ import { PARAM_GLOSSARY } from '@/lib/paramGlossary'
 import type { RunCondition, RunCreateParams } from '@/types/run'
 
 const CONDITION_LABELS: Record<RunCondition, string> = {
-  A: 'Condition A — Pure LLM',
-  B: 'Condition B — LLM + RAG',
-  C: 'Condition C — LLM + GraphRAG',
+  A: 'A — Pure LLM',
+  B: 'B — LLM + RAG',
+  C: 'C — LLM + GraphRAG',
+  D: 'D — Dual-Level Retrieval (LightRAG-adapted)',
 }
 
 function Field({
@@ -54,11 +55,17 @@ export function RunConditionPage() {
   const [fusionWPathTrust, setFusionWPathTrust] = useState(0.7)
   const [fusionWIntrinsic, setFusionWIntrinsic] = useState(0.3)
   const [semanticExpansionTrustCap, setSemanticExpansionTrustCap] = useState(0.4)
+  const [enableSemanticExpansion, setEnableSemanticExpansion] = useState(true)
+  const [nLowLevel, setNLowLevel] = useState(3)
+  const [nHighLevel, setNHighLevel] = useState(3)
+  const [requireGrounding, setRequireGrounding] = useState(true)
   const [questionId, setQuestionId] = useState('')
 
-  const isRag = condition === 'B' || condition === 'C'
+  const isRag = condition === 'B' || condition === 'C' || condition === 'D'
   const isGraph = condition === 'C'
+  const isDualLevel = condition === 'D'
   const isConditionB = condition === 'B'
+  const supportsGrounding = isGraph || isDualLevel
 
   const handleRun = () => {
     const params: RunCreateParams = {
@@ -73,8 +80,16 @@ export function RunConditionPage() {
             fusion_w_path_trust: fusionWPathTrust,
             fusion_w_intrinsic: fusionWIntrinsic,
             semantic_expansion_trust_cap: semanticExpansionTrustCap,
+            enable_semantic_expansion: enableSemanticExpansion,
           }
         : {}),
+      ...(isDualLevel
+        ? {
+            n_low_level: nLowLevel,
+            n_high_level: nHighLevel,
+          }
+        : {}),
+      ...(supportsGrounding ? { require_grounding: requireGrounding } : {}),
       ...(mode === 'batch'
         ? {
             n_sample: nSample,
@@ -143,7 +158,20 @@ export function RunConditionPage() {
                   <input type="number" className={inputClass} value={nAnchor} onChange={(e) => setNAnchor(Number(e.target.value))} />
                 </Field>
                 <Field label="n_semantic_expansion" glossaryKey="n_semantic_expansion">
-                  <input type="number" className={inputClass} value={nSemanticExpansion} onChange={(e) => setNSemanticExpansion(Number(e.target.value))} />
+                  <input
+                    type="number" className={inputClass} value={nSemanticExpansion} disabled={!enableSemanticExpansion}
+                    onChange={(e) => setNSemanticExpansion(Number(e.target.value))}
+                  />
+                </Field>
+              </>
+            )}
+            {isDualLevel && (
+              <>
+                <Field label="n_low_level" glossaryKey="n_low_level">
+                  <input type="number" className={inputClass} value={nLowLevel} onChange={(e) => setNLowLevel(Number(e.target.value))} />
+                </Field>
+                <Field label="n_high_level" glossaryKey="n_high_level">
+                  <input type="number" className={inputClass} value={nHighLevel} onChange={(e) => setNHighLevel(Number(e.target.value))} />
                 </Field>
               </>
             )}
@@ -207,7 +235,24 @@ export function RunConditionPage() {
                 Uniform mode ignores trust weights entirely — ranking is determined purely by retrieval discovery order (graph traversal before semantic expansion, hop 1 before hop 2).
               </div>
             )}
+            <label className="flex items-center gap-2 text-sm mt-3">
+              <input type="checkbox" checked={enableSemanticExpansion} onChange={(e) => setEnableSemanticExpansion(e.target.checked)} />
+              <span className="text-text-secondary inline-flex items-center gap-1">
+                Enable semantic expansion
+                <InfoTooltip text={PARAM_GLOSSARY.enable_semantic_expansion} />
+              </span>
+            </label>
           </div>
+        )}
+
+        {supportsGrounding && (
+          <label className="flex items-center gap-2 text-sm mt-3">
+            <input type="checkbox" checked={requireGrounding} onChange={(e) => setRequireGrounding(e.target.checked)} />
+            <span className="text-text-secondary inline-flex items-center gap-1">
+              Grounding constraint
+              <InfoTooltip text={PARAM_GLOSSARY.require_grounding} />
+            </span>
+          </label>
         )}
 
         {isConditionB && (
@@ -223,7 +268,7 @@ export function RunConditionPage() {
 
         {(seed !== 42 || (oversamplePool && oversamplePool !== '')) && mode === 'batch' && (
           <div className="mt-2 text-xs text-warning bg-white border border-warning/40 rounded-md px-2 py-1.5">
-            ⚠ seed/oversample_pool differ from the default (42 / auto) — use the same values across A/B/C for a fair comparison.
+            ⚠ seed/oversample_pool differ from the default (42 / auto) — use the same values across A/B/C/D for a fair comparison.
           </div>
         )}
 

@@ -5,6 +5,8 @@ import type { RetrievedContextItem } from '@/types/run'
 const STAGE_LABEL: Record<string, string> = {
   graph_traversal: 'Graph Traversal',
   semantic_expansion: 'Semantic Expansion',
+  low_level: 'Low-Level Retrieval',
+  high_level: 'High-Level Retrieval',
 }
 
 export function RetrievalEvidenceList({ items }: { items: RetrievedContextItem[] }) {
@@ -12,11 +14,16 @@ export function RetrievalEvidenceList({ items }: { items: RetrievedContextItem[]
     return <div className="text-sm text-text-muted">No context was retrieved for this question.</div>
   }
 
+  // Items already arrive in final ranked order (fuse_and_rank/fuse_dual_level
+  // sort before capping to top_k), so position in this list IS the rank --
+  // shown explicitly here rather than making the reader infer it from score
+  // order alone.
   return (
     <div className="flex flex-col gap-2">
       {items.map((item, i) => (
         <div key={i} className="border border-border rounded-md p-3 text-sm">
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <Badge tone="neutral">Rank #{i + 1}</Badge>
             {item.question_id != null && (
               <Link
                 to={`/questions/${item.question_id}`}
@@ -36,7 +43,10 @@ export function RetrievalEvidenceList({ items }: { items: RetrievedContextItem[]
               <span className="text-xs text-text-secondary">trust={item.trust_weight.toFixed(2)}</span>
             )}
             {item.combined_score != null && (
-              <span className="text-xs text-text-secondary">score={item.combined_score.toFixed(2)}</span>
+              <span className="text-xs font-medium text-text-primary">ranking score={item.combined_score.toFixed(3)}</span>
+            )}
+            {item.relevance_score != null && (
+              <span className="text-xs font-medium text-text-primary">ranking score={item.relevance_score.toFixed(3)}</span>
             )}
             {item.hop != null && <span className="text-xs text-text-secondary">{item.hop}-hop</span>}
           </div>

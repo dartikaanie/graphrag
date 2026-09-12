@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import ForceGraph2D, { type NodeObject, type LinkObject, type ForceGraphMethods } from 'react-force-graph-2d'
 import type { GraphData, GraphLink, GraphNode } from '@/types/graph'
-import { ACCEPTED_ANSWER_COLOR, EDGE_COLORS, NODE_COLORS } from '@/lib/graphColors'
+import { ACCEPTED_ANSWER_COLOR, EDGE_COLORS, EDGE_LABELS, NODE_COLORS } from '@/lib/graphColors'
 
 interface GraphViewProps {
   data: GraphData
@@ -60,6 +60,24 @@ function hoverLabel(node: GraphNode): string {
     default:
       return escapeHtml(node.label)
   }
+}
+
+/** react-force-graph mutates link.source/target from plain ids into the
+ * resolved node objects once the simulation has data -- handle both shapes
+ * rather than assuming which one we've been handed. */
+function endpointLabel(end: GraphLink['source'] | GraphNode): string {
+  if (typeof end === 'string') return end
+  const n = end as GraphNode
+  return n.type ? `${n.type} ${shortLabel(n)}` : String(n.id ?? end)
+}
+
+function linkHoverLabel(link: GraphLink): string {
+  const label = EDGE_LABELS[link.type] ?? link.type
+  const weightText = typeof link.weight === 'number' ? ` · weight: ${link.weight.toFixed(3)}` : ''
+  return `<div style="max-width:240px;white-space:normal">
+    <strong>${escapeHtml(label)}</strong>${weightText}<br/>
+    ${escapeHtml(endpointLabel(link.source))} → ${escapeHtml(endpointLabel(link.target))}
+  </div>`
 }
 
 export function GraphView({ data, height = 360, onNodeClick, centerNodeId }: GraphViewProps) {
@@ -136,7 +154,9 @@ export function GraphView({ data, height = 360, onNodeClick, centerNodeId }: Gra
           ctx.fill()
         }}
         linkColor={(link) => EDGE_COLORS[(link as unknown as GraphLink).type] ?? '#cbd5e1'}
+        linkLabel={(link) => linkHoverLabel(link as unknown as GraphLink)}
         linkWidth={1}
+        linkHoverPrecision={4}
         linkDirectionalParticles={0}
         onNodeClick={handleNodeClick}
         onEngineStop={handleEngineStop}
