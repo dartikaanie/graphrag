@@ -26,6 +26,9 @@ export function QuestionDetailPage() {
 
   const attrs = detail.attributes
   const body = typeof attrs.body === 'string' ? attrs.body : null
+  const acceptedAnswer = answers?.find((a) => Boolean((a as Record<string, unknown>).isAccepted)) as
+    | Record<string, unknown>
+    | undefined
 
   return (
     <div>
@@ -34,9 +37,21 @@ export function QuestionDetailPage() {
           ← Back to Questions
         </Link>
       </div>
-      <h1 className="text-lg font-semibold text-text-primary mb-4 break-words">
+      <h1 className="text-lg font-semibold text-text-primary mb-1 break-words">
         {typeof attrs.title === 'string' ? attrs.title : `Question #${id}`}
       </h1>
+      <p className="text-sm text-text-secondary mb-4">
+        {acceptedAnswer ? (
+          <>
+            Accepted answer:{' '}
+            <Link to={`/answers/${acceptedAnswer.id}`} className="text-primary hover:underline">
+              #{String(acceptedAnswer.id)}
+            </Link>
+          </>
+        ) : (
+          <span className="text-text-muted">No accepted answer</span>
+        )}
+      </p>
 
       <div className="grid grid-cols-2 gap-6">
         <div>

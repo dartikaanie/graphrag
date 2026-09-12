@@ -34,7 +34,13 @@ export const EDGE_LABELS: Record<EdgeType, string> = {
 
 export const NODE_COLORS: Record<GraphNodeType, string> = {
   Question: '#2563eb',
-  Answer: '#16a34a',
+  Answer: '#64748b',
   Tag: '#94a3b8',
   User: '#c4b5fd',
 }
+
+// The accepted answer gets the same green used everywhere else in the app
+// for "Accepted" (Badge tone="success"), so the one visually distinct node
+// in a question/answer graph is unambiguous at a glance -- not just another
+// shade among the flat Answer/Tag/User palette.
+export const ACCEPTED_ANSWER_COLOR = '#16a34a'
