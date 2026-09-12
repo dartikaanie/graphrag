@@ -39,6 +39,7 @@ export interface RunSummary {
   pct_with_citation?: number
   pct_with_valid_citation?: number
   avg_retrieval_latency_sec?: number
+  duration_sec?: number
 }
 
 export interface RunState {

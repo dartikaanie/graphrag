@@ -1,4 +1,5 @@
 import type { RunSummary } from '@/types/run'
+import { fmtDuration } from '@/lib/format'
 
 function fmtPct(v: number | undefined): string {
   return v === undefined ? '—' : `${v.toFixed(1)}%`
@@ -26,6 +27,9 @@ export function MetricSummaryCards({ summary }: { summary: RunSummary; condition
   }
   if (summary.avg_retrieval_latency_sec !== undefined) {
     cards.push({ label: 'Avg Retrieval Latency', value: `${summary.avg_retrieval_latency_sec.toFixed(2)}s` })
+  }
+  if (summary.duration_sec !== undefined) {
+    cards.push({ label: 'Total Run Time', value: fmtDuration(summary.duration_sec) })
   }
 
   return (

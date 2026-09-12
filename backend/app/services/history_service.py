@@ -116,7 +116,7 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
     summary_keys = [
         "n_processed", "cosine_similarity_mean", "cosine_similarity_median",
         "pct_similarity_above_0_5", "pct_with_citation", "pct_with_valid_citation",
-        "avg_retrieval_latency_sec",
+        "avg_retrieval_latency_sec", "duration_sec",
     ]
     summary = {k: record[k] for k in summary_keys if k in record}
 
@@ -130,9 +130,11 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
             "model": record.get("model"),
             "n_sample": record.get("n_sample_target"),
             "seed": record.get("seed"),
+            "oversample_pool": record.get("oversample_pool"),
             "top_k": record.get("top_k"),
             "n_anchor": record.get("n_anchor"),
             "n_semantic_expansion": record.get("n_semantic_expansion"),
+            "require_citation": record.get("require_citation"),
         },
         "created_at": started_at,
         "started_at": started_at,
