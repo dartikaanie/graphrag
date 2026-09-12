@@ -42,6 +42,14 @@ const PARAM_ROWS: ParamRow[] = [
     label: 'Require Citation (B)',
     get: (r) => (r.params.require_citation == null ? '—' : r.params.require_citation ? 'Yes' : 'No'),
   },
+  { label: 'Fusion Mode (C)', get: (r) => r.params.fusion_mode ?? '—' },
+  {
+    label: 'Fusion Weights (C)',
+    get: (r) =>
+      r.params.fusion_w_path_trust == null && r.params.fusion_w_intrinsic == null
+        ? '—'
+        : `path=${r.params.fusion_w_path_trust ?? '—'} / intrinsic=${r.params.fusion_w_intrinsic ?? '—'}`,
+  },
 ]
 
 export function HistoryComparePage() {

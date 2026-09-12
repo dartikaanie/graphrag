@@ -376,6 +376,10 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     top_k = int(params.get("top_k") or 5)
     n_anchor = int(params.get("n_anchor") or 3)
     n_semantic_expansion = int(params.get("n_semantic_expansion") or 3)
+    fusion_mode = params.get("fusion_mode") or "trust_weighted"
+    fusion_w_path_trust = float(params.get("fusion_w_path_trust") if params.get("fusion_w_path_trust") is not None else 0.7)
+    fusion_w_intrinsic = float(params.get("fusion_w_intrinsic") if params.get("fusion_w_intrinsic") is not None else 0.3)
+    semantic_expansion_trust_cap = float(params.get("semantic_expansion_trust_cap") if params.get("semantic_expansion_trust_cap") is not None else 0.4)
     token_chunk_limit = 400
 
     driver = None
@@ -399,7 +403,10 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
-            output_path = cond.build_output_path("results", provider, model, n_sample, seed)
+            output_path = cond.build_output_path(
+                "results", provider, model, n_sample, seed,
+                fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
+            )
 
         output_path = _anchor_output_path(output_path, "c_graphrag")
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -419,6 +426,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             sample_df, llm_client, call_llm_fn, embed_model, driver, database,
             faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
             top_k, n_anchor, n_semantic_expansion, token_chunk_limit, model, output_path, already_done,
+            fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
+            semantic_expansion_trust_cap=semantic_expansion_trust_cap,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
         )
 
@@ -447,6 +456,10 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "top_k": top_k,
             "n_anchor": n_anchor,
             "n_semantic_expansion": n_semantic_expansion,
+            "fusion_mode": fusion_mode,
+            "fusion_w_path_trust": fusion_w_path_trust,
+            "fusion_w_answer_intrinsic_trust": fusion_w_intrinsic,
+            "semantic_expansion_trust_cap": semantic_expansion_trust_cap,
             "output_path": str(output_path),
             "duration_sec": duration,
             "source": "dashboard",

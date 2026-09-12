@@ -37,6 +37,10 @@ export function RunAllConditionsPage() {
   const [nAnchor, setNAnchor] = useState(3)
   const [nSemanticExpansion, setNSemanticExpansion] = useState(3)
   const [requireCitation, setRequireCitation] = useState(true)
+  const [fusionMode, setFusionMode] = useState<'trust_weighted' | 'uniform'>('trust_weighted')
+  const [fusionWPathTrust, setFusionWPathTrust] = useState(0.7)
+  const [fusionWIntrinsic, setFusionWIntrinsic] = useState(0.3)
+  const [semanticExpansionTrustCap, setSemanticExpansionTrustCap] = useState(0.4)
   const [questionId, setQuestionId] = useState('')
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,7 +62,17 @@ export function RunAllConditionsPage() {
       condition,
       ...shared,
       ...(condition === 'B' ? { top_k: topK, require_citation: requireCitation } : {}),
-      ...(condition === 'C' ? { top_k: topK, n_anchor: nAnchor, n_semantic_expansion: nSemanticExpansion } : {}),
+      ...(condition === 'C'
+        ? {
+            top_k: topK,
+            n_anchor: nAnchor,
+            n_semantic_expansion: nSemanticExpansion,
+            fusion_mode: fusionMode,
+            fusion_w_path_trust: fusionWPathTrust,
+            fusion_w_intrinsic: fusionWIntrinsic,
+            semantic_expansion_trust_cap: semanticExpansionTrustCap,
+          }
+        : {}),
     })
 
     try {
@@ -167,6 +181,43 @@ export function RunAllConditionsPage() {
             Condition B: require [SO-&lt;id&gt;] citations (same format as Condition C, for NF2 comparison)
           </span>
         </label>
+
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="text-sm font-medium text-text-primary mb-2">Condition C fusion mode (ablation study)</div>
+          <div className="grid grid-cols-4 gap-4">
+            <Field label="fusion_mode">
+              <select
+                className={inputClass}
+                value={fusionMode}
+                onChange={(e) => setFusionMode(e.target.value as 'trust_weighted' | 'uniform')}
+              >
+                <option value="trust_weighted">trust_weighted (default)</option>
+                <option value="uniform">uniform (ablation)</option>
+              </select>
+            </Field>
+            <Field label="fusion_w_path_trust">
+              <input
+                type="number" step="0.1" min="0" max="1" className={inputClass}
+                value={fusionWPathTrust} disabled={fusionMode === 'uniform'}
+                onChange={(e) => setFusionWPathTrust(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="fusion_w_intrinsic">
+              <input
+                type="number" step="0.1" min="0" max="1" className={inputClass}
+                value={fusionWIntrinsic} disabled={fusionMode === 'uniform'}
+                onChange={(e) => setFusionWIntrinsic(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="semantic_expansion_trust_cap">
+              <input
+                type="number" step="0.1" min="0" max="1" className={inputClass}
+                value={semanticExpansionTrustCap} disabled={fusionMode === 'uniform'}
+                onChange={(e) => setSemanticExpansionTrustCap(Number(e.target.value))}
+              />
+            </Field>
+          </div>
+        </div>
 
         {mode === 'batch' && (
           <div className="mt-2 text-xs text-text-secondary bg-primary-soft border border-primary-border rounded-md px-2 py-1.5">
