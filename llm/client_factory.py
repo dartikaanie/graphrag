@@ -18,15 +18,15 @@ import os
 import sys
 
 
-def call_llm_openai(client, messages: list[dict], model: str) -> str:
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-    )
+def call_llm_openai(client, messages: list[dict], model: str, temperature: float | None = None) -> str:
+    kwargs = {"model": model, "messages": messages}
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    response = client.chat.completions.create(**kwargs)
     return response.choices[0].message.content
 
 
-def call_llm_anthropic(client, messages: list[dict], model: str) -> str:
+def call_llm_anthropic(client, messages: list[dict], model: str, temperature: float | None = None) -> str:
     """Anthropic API memisahkan system message dari array messages (beda
     dari OpenAI/Ollama yang menaruh role='system' langsung di dalam
     array) -- system diekstrak lalu dikirim lewat parameter `system`,
@@ -34,16 +34,14 @@ def call_llm_anthropic(client, messages: list[dict], model: str) -> str:
     urutan 4-turn tetap identik dengan struktur asli."""
     system_content = next((m["content"] for m in messages if m["role"] == "system"), None)
     chat_messages = [m for m in messages if m["role"] != "system"]
-    response = client.messages.create(
-        model=model,
-        max_tokens=1024,
-        system=system_content,
-        messages=chat_messages,
-    )
+    kwargs = {"model": model, "max_tokens": 1024, "system": system_content, "messages": chat_messages}
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    response = client.messages.create(**kwargs)
     return response.content[0].text
 
 
-def call_llm_local(pipe, messages: list[dict], model: str) -> str:
+def call_llm_local(pipe, messages: list[dict], model: str, temperature: float | None = None) -> str:
     """Untuk model lokal via Hugging Face (mis. LLaMA), pola yang sama
     dipakai paper baseline asli (load Llama-2-7b-chat-hf secara lokal).
     Pakai chat template tokenizer kalau tersedia (representasi 4-turn
@@ -60,7 +58,7 @@ def call_llm_local(pipe, messages: list[dict], model: str) -> str:
     return output[0]["generated_text"][len(prompt_text):].strip()
 
 
-def call_llm_ollama(client, messages: list[dict], model: str) -> str:
+def call_llm_ollama(client, messages: list[dict], model: str, temperature: float | None = None) -> str:
     """Provider dev/testing: model kecil lokal via Ollama (mis. qwen2.5:1.5b,
     phi3:mini). TIDAK dipakai untuk hasil evaluasi final laporan -- hanya
     untuk iterasi cepat pipeline sebelum run resmi pakai model besar
@@ -85,10 +83,13 @@ def call_llm_ollama(client, messages: list[dict], model: str) -> str:
     repeat_penalty dinaikkan sedikit (1.3, default Ollama 1.1) utk
     mengurangi kecenderungan model kecil masuk mode repetisi sejak awal,
     bukan cuma membatasi dampaknya lewat num_predict."""
+    options = {"num_ctx": 8192, "num_predict": 1536, "repeat_penalty": 1.3}
+    if temperature is not None:
+        options["temperature"] = temperature
     response = client.chat(
         model=model,
         messages=messages,
-        options={"num_ctx": 8192, "num_predict": 1536, "repeat_penalty": 1.3},
+        options=options,
     )
     return response["message"]["content"]
 

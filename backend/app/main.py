@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.neo4j_client import close_driver
-from app.routers import graph, history, master_data, runs, settings
+from app.routers import graph, history, judge, master_data, runs, settings
 
 app = FastAPI(title="GraphRAG Thesis Dashboard API", version="0.1.0")
 
@@ -17,6 +17,7 @@ app.add_middleware(
 app.include_router(master_data.router)
 app.include_router(graph.router)
 app.include_router(runs.router)
+app.include_router(judge.router)
 app.include_router(history.router)
 app.include_router(settings.router)
 
