@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Rangkum & bandingkan SEMUA run (Kondisi A, B, C) jadi 1 tabel, supaya gampang
-membandingkan baseline vs conventional RAG vs GraphRAG, dan memilih model mana
-yang layak lanjut ke n=384.
+Rangkum & bandingkan SEMUA run (Kondisi A, B, C, D) jadi 1 tabel, supaya
+gampang membandingkan baseline vs conventional RAG vs GraphRAG vs Dual-Level
+Retrieval (adaptasi LightRAG), dan memilih model mana yang layak lanjut ke
+n=384.
 
-Ketiga kondisi punya run_history.jsonl masing-masing di folder yang berbeda
+Keempat kondisi punya run_history.jsonl masing-masing di folder yang berbeda
 (bukan 1 file gabungan):
     Kondisi A: a_pure_llm/logs/run_history.jsonl
     Kondisi B: b_rag/logs/run_history.jsonl
     Kondisi C: c_graphrag/logs/run_history.jsonl
+    Kondisi D: d_lightrag/logs/run_history.jsonl
 
-Script ini otomatis membaca ketiganya relatif terhadap folder root repo. Kalau
-struktur foldermu beda, override lewat --history-path-a/-b/-c.
+Script ini otomatis membaca keempatnya relatif terhadap folder root repo.
+Kalau struktur foldermu beda, override lewat --history-path-a/-b/-c/-d.
 
 Catatan penting:
 - Kondisi A (pure LLM baseline) TIDAK melakukan retrieval, jadi field
@@ -24,18 +26,19 @@ Catatan penting:
 
 Cara pakai (dari folder root repo, mis. graphrag/):
     python compare_condition_c_runs.py
-    python compare_condition_c_runs.py --condition ABC          # default, semua
-    python compare_condition_c_runs.py --condition BC           # cuma B vs C
+    python compare_condition_c_runs.py --condition ABCD          # default, semua
+    python compare_condition_c_runs.py --condition CD            # cuma C vs D
     python compare_condition_c_runs.py --n-sample 30            # filter n_sample_target tertentu
     python compare_condition_c_runs.py --sort similarity
     python compare_condition_c_runs.py --best-per-condition      # 1 baris terbaik per kondisi
-    python compare_condition_c_runs.py --group                   # kelompokkan per (model, n), A vs B vs C berdampingan
+    python compare_condition_c_runs.py --group                   # kelompokkan per (model, n), A/B/C/D berdampingan
 
 Kalau dijalankan dari lokasi lain / nama folder beda, override path log-nya:
     python compare_condition_c_runs.py \\
         --history-path-a path/to/kondisi_a/run_history.jsonl \\
         --history-path-b path/to/kondisi_b/run_history.jsonl \\
-        --history-path-c path/to/kondisi_c/run_history.jsonl
+        --history-path-c path/to/kondisi_c/run_history.jsonl \\
+        --history-path-d path/to/kondisi_d/run_history.jsonl
 """
 
 import argparse
@@ -58,6 +61,7 @@ DEFAULT_HISTORY_PATHS = {
     "A": "llm/a_pure_llm/logs/run_history.jsonl",
     "B": "llm/b_rag/logs/run_history.jsonl",
     "C": "llm/c_graphrag/logs/run_history.jsonl",
+    "D": "llm/d_lightrag/logs/run_history.jsonl",
 }
 
 # Fallback tambahan per kondisi kalau default tidak ketemu (mis. script
@@ -66,6 +70,7 @@ FALLBACK_HISTORY_PATHS = {
     "A": ["logs/run_history.jsonl", "../a_pure_llm/logs/run_history.jsonl"],
     "B": ["logs/run_history.jsonl", "../b_rag/logs/run_history.jsonl"],
     "C": ["logs/run_history.jsonl", "../c_graphrag/logs/run_history.jsonl"],
+    "D": ["logs/run_history.jsonl", "../d_lightrag/logs/run_history.jsonl"],
 }
 
 
@@ -141,12 +146,20 @@ def flag_outliers(runs: list[dict]) -> None:
             r["_outlier"] = (sim is not None and max_sim > 0 and sim < OUTLIER_RATIO * max_sim)
 
 
+def _fmt_grounding(r: dict) -> str:
+    rg = r.get("require_grounding")
+    return NA if rg is None else ("Yes" if rg else "No")
+
+
 def print_table(runs: list[dict], sort_label: str, extra_note: str = "") -> None:
+    has_grounding_col = any(r.get("require_grounding") is not None for r in runs)
     cols = [
         ("Kondisi", 8), ("Provider", 10), ("Model", 22), ("n", 4),
         ("Sim.Mean", 10), ("Sim.Med", 8), ("%>0.5", 7), ("NF2%", 7),
         ("Lat.avg", 8), ("Durasi(s)", 10),
     ]
+    if has_grounding_col:
+        cols.append(("Ground(D)", 9))
     header = "".join(f"{name:<{w}}" for name, w in cols)
     print(header)
     print("-" * len(header))
@@ -169,6 +182,8 @@ def print_table(runs: list[dict], sort_label: str, extra_note: str = "") -> None
             fmt(r.get("avg_retrieval_latency_sec"), ".2f") + ("s" if r.get("avg_retrieval_latency_sec") is not None else ""),
             fmt(r.get("duration_sec"), ".1f"),
         ]
+        if has_grounding_col:
+            row.append(_fmt_grounding(r))
         line = "".join(f"{val:<{w}}" for val, (_, w) in zip(row, cols))
         print(line)
 
@@ -201,7 +216,7 @@ def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> Non
         model, n = key
         return (str(model), n if n is not None else -1)
 
-    order = {"A": 0, "B": 1, "C": 2}
+    order = {"A": 0, "B": 1, "C": 2, "D": 3}
     any_outlier = False
 
     for (model, n) in sorted(groups.keys(), key=group_sort_key):
@@ -211,10 +226,13 @@ def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> Non
         conditions_present = sorted({r.get("condition") for r in group_runs})
         print(f"\n=== Model: {model} | n={n} | Kondisi: {', '.join(conditions_present)} ===")
 
+        has_grounding_col = any(r.get("require_grounding") is not None for r in group_runs)
         cols = [
             ("Kondisi", 8), ("Sim.Mean", 10), ("Sim.Med", 8), ("%>0.5", 7),
             ("NF2%", 7), ("Lat.avg", 8), ("Durasi(s)", 10),
         ]
+        if has_grounding_col:
+            cols.append(("Ground(D)", 9))
         header = "".join(f"{name:<{w}}" for name, w in cols)
         print(header)
         print("-" * len(header))
@@ -233,6 +251,8 @@ def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> Non
                 fmt(r.get("avg_retrieval_latency_sec"), ".2f") + ("s" if r.get("avg_retrieval_latency_sec") is not None else ""),
                 fmt(r.get("duration_sec"), ".1f"),
             ]
+            if has_grounding_col:
+                row.append(_fmt_grounding(r))
             line = "".join(f"{val:<{w}}" for val, (_, w) in zip(row, cols))
             print(line)
 
@@ -276,9 +296,12 @@ def main():
     parser.add_argument("--history-path-c", default=DEFAULT_HISTORY_PATHS["C"],
                          help="Path ke run_history.jsonl Kondisi C "
                               f"(default: {DEFAULT_HISTORY_PATHS['C']})")
-    parser.add_argument("--condition", default="ABC",
-                         help="Kondisi mana yang ditampilkan, gabungan huruf A/B/C "
-                              "(mis. 'ABC' untuk semua, 'BC' untuk B vs C saja). Default: ABC")
+    parser.add_argument("--history-path-d", default=DEFAULT_HISTORY_PATHS["D"],
+                         help="Path ke run_history.jsonl Kondisi D "
+                              f"(default: {DEFAULT_HISTORY_PATHS['D']})")
+    parser.add_argument("--condition", default="ABCD",
+                         help="Kondisi mana yang ditampilkan, gabungan huruf A/B/C/D "
+                              "(mis. 'ABCD' untuk semua, 'CD' untuk C vs D saja). Default: ABCD")
     parser.add_argument("--n-sample", type=int, default=None,
                          help="Filter hanya run dengan n_sample_target tertentu")
     parser.add_argument("--sort", default="similarity",
@@ -291,14 +314,17 @@ def main():
                               "apple-to-apple, bukan sekadar diurutkan global.")
     args = parser.parse_args()
 
-    wanted_conditions = {c for c in args.condition.upper() if c in ("A", "B", "C")}
+    wanted_conditions = {c for c in args.condition.upper() if c in ("A", "B", "C", "D")}
     if not wanted_conditions:
-        print("[ERROR] --condition harus berisi kombinasi huruf A/B/C, contoh: ABC, BC, AC")
+        print("[ERROR] --condition harus berisi kombinasi huruf A/B/C/D, contoh: ABCD, CD, AC")
         return
 
-    path_map = {"A": args.history_path_a, "B": args.history_path_b, "C": args.history_path_c}
+    path_map = {
+        "A": args.history_path_a, "B": args.history_path_b,
+        "C": args.history_path_c, "D": args.history_path_d,
+    }
     records = []
-    for cond in ("A", "B", "C"):
+    for cond in ("A", "B", "C", "D"):
         if cond in wanted_conditions:
             records.extend(load_history(Path(path_map[cond]), cond))
 
@@ -341,8 +367,8 @@ def main():
                 seen.add(cond)
                 best.append(r)
         runs = best
-        # keep a sensible display order: A, B, C
-        order = {"A": 0, "B": 1, "C": 2}
+        # keep a sensible display order: A, B, C, D
+        order = {"A": 0, "B": 1, "C": 2, "D": 3}
         runs.sort(key=lambda r: order.get(r.get("condition"), 99))
 
     label = "terbaik per kondisi" if args.best_per_condition else f"diurutkan berdasarkan '{args.sort}'"

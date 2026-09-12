@@ -52,6 +52,12 @@ Yang BARU dibanding Kondisi B (hybrid retrieval + grounded generation):
      (--fusion-w-path-trust, --fusion-w-intrinsic,
      --semantic-expansion-trust-cap) juga bisa diubah lewat CLI/.env utk
      ablasi bobot, bukan cuma on/off.
+  5. ABLATION STUDY -- grounding constraint & semantic expansion stage kini
+     opsional: --no-require-grounding melepas instruksi grounding (hanya
+     instruksi citation yang tersisa, lihat build_graphrag_messages());
+     --no-enable-semantic-expansion men-skip tahap semantic expansion
+     sepenuhnya (retrieval hanya anchor+traversal). Struktur retrieval lain
+     & leakage exclusion TIDAK berubah pada kedua toggle ini.
 
 PENCEGAHAN LEAKAGE -- BEDA DARI KONDISI B, WAJIB DIBACA
 ------------------------------------------------------------
@@ -613,6 +619,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     fusion_w_path_trust: float = DEFAULT_FUSION_W_PATH_TRUST,
                     fusion_w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST,
                     semantic_expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP,
+                    require_grounding: bool = True, enable_semantic_expansion: bool = True,
                     ) -> tuple[list[dict], dict]:
     """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
@@ -630,6 +637,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     fuse_and_rank() (lihat docstring-nya utk arti fusion_mode="uniform" vs
     "trust_weighted"); default-nya PERSIS nilai lama, jadi CLI tanpa
     override tetap berperilaku identik dengan sebelum fitur ablasi ini ada.
+
+    `require_grounding` (default True) -> diteruskan ke build_graphrag_messages()
+    (lihat docstring-nya); False = hanya instruksi citation, tanpa grounding.
+    `enable_semantic_expansion` (default True) -> kalau False, TAHAP c (semantic
+    expansion) di-skip sepenuhnya (expansion_candidates selalu []) -- ablasi utk
+    mengisolasi kontribusi tahap semantic expansion itu sendiri terhadap hasil.
+    Keduanya opsional & default-nya PERSIS perilaku lama.
     """
     already_done = already_done or set()
     total = len(sample_df)
@@ -684,12 +698,15 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         driver, database, anchor_ids, exclude_question_ids, exclude_answer_ids,
                     )
 
-                # --- c. Semantic Expansion ---
-                seen_qids = exclude_question_ids | set(anchor_ids)
-                expansion_candidates = semantic_expansion(
-                    driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
-                    n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
-                )
+                # --- c. Semantic Expansion (ablation: skippable via enable_semantic_expansion) ---
+                if enable_semantic_expansion:
+                    seen_qids = exclude_question_ids | set(anchor_ids)
+                    expansion_candidates = semantic_expansion(
+                        driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
+                        n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
+                    )
+                else:
+                    expansion_candidates = []
 
                 # --- Fusi + rerank + chunking + cap top-K ---
                 retrieved = fuse_and_rank(graph_candidates, expansion_candidates,
@@ -700,7 +717,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 if not retrieved:
                     n_no_context += 1
 
-                messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved)
+                messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
+                                                    require_grounding=require_grounding)
                 try:
                     llm_answer = call_llm_fn(llm_client, messages, model)
                 except Exception as e:
@@ -737,6 +755,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "n_anchors": len(anchor_ids),
                     "n_graph_candidates": len(graph_candidates),
                     "n_expansion_candidates": len(expansion_candidates),
+                    "require_grounding": require_grounding,
+                    "enable_semantic_expansion": enable_semantic_expansion,
                     "retrieval_latency_sec": round(retrieval_latency, 3),
                     "llm_answer": llm_answer,
                     "llm_model": model,
@@ -810,17 +830,27 @@ def _fmt_weight_for_filename(w: float) -> str:
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
                        fusion_mode: str = "trust_weighted",
                        fusion_w_path_trust: float = DEFAULT_FUSION_W_PATH_TRUST,
-                       fusion_w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST) -> Path:
+                       fusion_w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST,
+                       require_grounding: bool = True, enable_semantic_expansion: bool = True) -> Path:
     """Nama file menyertakan fusion mode/bobot supaya run ablasi (mis.
     --fusion-mode uniform vs --fusion-mode trust_weighted dgn bobot
     berbeda) tidak saling menimpa file .jsonl satu sama lain -- pola sama
-    dengan alasan n_sample/seed sudah ada di nama file sejak awal."""
+    dengan alasan n_sample/seed sudah ada di nama file sejak awal.
+
+    `require_grounding=False`/`enable_semantic_expansion=False` masing-masing
+    HANYA menambah suffix kalau non-default (False) -- run default (kedua True,
+    perilaku asli sebelum toggle ini ada) tetap menghasilkan nama file yang
+    SAMA seperti sebelumnya, tidak ada perubahan back-compat."""
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
     base = f"condition_c_{provider}_{safe_model}_n{n_sample}_seed{seed}"
     if fusion_mode == "uniform":
         suffix = "uniform"
     else:
         suffix = f"fw{_fmt_weight_for_filename(fusion_w_path_trust)}-{_fmt_weight_for_filename(fusion_w_intrinsic)}"
+    if not require_grounding:
+        suffix += "_ungrounded"
+    if not enable_semantic_expansion:
+        suffix += "_noexp"
     return Path(output_dir) / f"{base}_{suffix}.jsonl"
 
 
@@ -873,6 +903,16 @@ def main():
                               f"{DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP}, dari "
                               f"SEMANTIC_EXPANSION_TRUST_CAP di .env). Tidak dipakai kalau "
                               f"--fusion-mode uniform.")
+    parser.add_argument("--require-grounding", action=argparse.BooleanOptionalAction,
+                         default=os.getenv("GRAPHRAG_REQUIRE_GROUNDING", "true").strip().lower() == "true",
+                         help="True (default): dual-constraint grounding+citation (perilaku asli). "
+                              "False: hanya instruksi citation, TANPA instruksi grounding -- ablasi "
+                              "utk mengisolasi kontribusi constraint grounding itu sendiri.")
+    parser.add_argument("--enable-semantic-expansion", action=argparse.BooleanOptionalAction,
+                         default=os.getenv("SEMANTIC_EXPANSION_ENABLED", "true").strip().lower() == "true",
+                         help="True (default): tahap semantic expansion (c) aktif seperti biasa. "
+                              "False: tahap ini di-skip sepenuhnya (retrieval hanya anchor+traversal) "
+                              "-- ablasi utk mengisolasi kontribusi tahap semantic expansion.")
     args = parser.parse_args()
 
     global log
@@ -898,7 +938,8 @@ def main():
     else:
         args.output = str(build_output_path(args.output_dir, args.provider, args.model,
                                              args.n_sample, args.seed, args.fusion_mode,
-                                             args.fusion_w_path_trust, args.fusion_w_intrinsic))
+                                             args.fusion_w_path_trust, args.fusion_w_intrinsic,
+                                             args.require_grounding, args.enable_semantic_expansion))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -911,6 +952,8 @@ def main():
     log(f"[config] fusion_mode={args.fusion_mode} fusion_w_path_trust={args.fusion_w_path_trust} "
         f"fusion_w_intrinsic={args.fusion_w_intrinsic} "
         f"semantic_expansion_trust_cap={args.semantic_expansion_trust_cap}")
+    log(f"[config] require_grounding={args.require_grounding} "
+        f"enable_semantic_expansion={args.enable_semantic_expansion}")
 
     llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
 
@@ -971,6 +1014,8 @@ def main():
         fusion_mode=args.fusion_mode, fusion_w_path_trust=args.fusion_w_path_trust,
         fusion_w_intrinsic=args.fusion_w_intrinsic,
         semantic_expansion_trust_cap=args.semantic_expansion_trust_cap,
+        require_grounding=args.require_grounding,
+        enable_semantic_expansion=args.enable_semantic_expansion,
     )
     interrupted = stats["interrupted"]
 
@@ -993,6 +1038,8 @@ def main():
             "fusion_w_path_trust": args.fusion_w_path_trust,
             "fusion_w_answer_intrinsic_trust": args.fusion_w_intrinsic,
             "semantic_expansion_trust_cap": args.semantic_expansion_trust_cap,
+            "require_grounding": args.require_grounding,
+            "enable_semantic_expansion": args.enable_semantic_expansion,
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
@@ -1031,6 +1078,8 @@ def main():
         "fusion_w_path_trust": args.fusion_w_path_trust,
         "fusion_w_answer_intrinsic_trust": args.fusion_w_intrinsic,
         "semantic_expansion_trust_cap": args.semantic_expansion_trust_cap,
+        "require_grounding": args.require_grounding,
+        "enable_semantic_expansion": args.enable_semantic_expansion,
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),

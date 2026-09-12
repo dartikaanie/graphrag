@@ -13,8 +13,8 @@ def get_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
 ):
-    if condition and condition.upper() not in ("A", "B", "C"):
-        raise HTTPException(status_code=400, detail="condition must be A, B, or C")
+    if condition and condition.upper() not in ("A", "B", "C", "D"):
+        raise HTTPException(status_code=400, detail="condition must be A, B, C, or D")
     items, total = svc.list_history(condition, date_from, date_to, page, page_size)
     return {
         "items": items,
@@ -45,3 +45,10 @@ def get_history_result_graph(history_id: str, question_id: int):
     if not record:
         raise HTTPException(status_code=404, detail=f"Question {question_id} not found in this run's output")
     return graph_service.get_run_result_graph(record)
+
+
+@router.delete("/{history_id}")
+def delete_history(history_id: str):
+    if not svc.delete_history_record(history_id):
+        raise HTTPException(status_code=404, detail="History entry not found")
+    return {"status": "deleted", "history_id": history_id}

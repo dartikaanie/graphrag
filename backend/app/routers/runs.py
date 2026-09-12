@@ -31,8 +31,8 @@ def _find_result_record(output_path: str | None, question_id: int) -> dict | Non
 @router.post("", response_model=RunCreateResponse)
 def create_run(body: RunCreateRequest):
     condition = body.condition.upper()
-    if condition not in ("A", "B", "C"):
-        raise HTTPException(status_code=400, detail="condition must be A, B, or C")
+    if condition not in ("A", "B", "C", "D"):
+        raise HTTPException(status_code=400, detail="condition must be A, B, C, or D")
     if body.mode not in ("batch", "single"):
         raise HTTPException(status_code=400, detail="mode must be 'batch' or 'single'")
     if body.mode == "single" and not body.question_id:

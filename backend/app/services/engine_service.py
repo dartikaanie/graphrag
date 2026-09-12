@@ -6,9 +6,11 @@ filter_by_token_limit, sample_questions, get_accepted_answers,
 process_sample, append_run_history, ...) rather than re-implementing
 retrieval/generation logic here.
 
-Condition A, B, and C are all wired -- PLAN_UI_UX.md §9 sequenced building
+Condition A, B, C, and D are all wired -- PLAN_UI_UX.md §9 sequenced building
 them in that order ("test with Condition A first, then B, then C"), which is
-also the order they were implemented in.
+also the order they were implemented in. Condition D (Dual-Level Retrieval,
+adaptasi LightRAG) reuses the SAME Neo4j KG & FAISS cache as Condition C --
+see llm/d_lightrag/d_lightrag.py.
 """
 
 import importlib
@@ -63,6 +65,13 @@ def _condition_b_module():
 def _condition_c_module():
     mod = importlib.import_module("llm.c_graphrag.c_graphrag")
     mod.LOG_DIR = REPO_ROOT / "llm" / "c_graphrag" / "logs"
+    return mod
+
+
+@lru_cache
+def _condition_d_module():
+    mod = importlib.import_module("llm.d_lightrag.d_lightrag")
+    mod.LOG_DIR = REPO_ROOT / "llm" / "d_lightrag" / "logs"
     return mod
 
 
@@ -380,6 +389,10 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     fusion_w_path_trust = float(params.get("fusion_w_path_trust") if params.get("fusion_w_path_trust") is not None else 0.7)
     fusion_w_intrinsic = float(params.get("fusion_w_intrinsic") if params.get("fusion_w_intrinsic") is not None else 0.3)
     semantic_expansion_trust_cap = float(params.get("semantic_expansion_trust_cap") if params.get("semantic_expansion_trust_cap") is not None else 0.4)
+    require_grounding = params.get("require_grounding")
+    require_grounding = True if require_grounding is None else bool(require_grounding)
+    enable_semantic_expansion = params.get("enable_semantic_expansion")
+    enable_semantic_expansion = True if enable_semantic_expansion is None else bool(enable_semantic_expansion)
     token_chunk_limit = 400
 
     driver = None
@@ -406,6 +419,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed,
                 fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
+                require_grounding=require_grounding, enable_semantic_expansion=enable_semantic_expansion,
             )
 
         output_path = _anchor_output_path(output_path, "c_graphrag")
@@ -428,6 +442,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             top_k, n_anchor, n_semantic_expansion, token_chunk_limit, model, output_path, already_done,
             fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
             semantic_expansion_trust_cap=semantic_expansion_trust_cap,
+            require_grounding=require_grounding, enable_semantic_expansion=enable_semantic_expansion,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
         )
 
@@ -444,6 +459,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
 
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
+        summary["require_grounding"] = require_grounding
+        summary["enable_semantic_expansion"] = enable_semantic_expansion
         cond.append_run_history({
             "run_started_at": run_started_at.isoformat(),
             "condition": "C",
@@ -460,6 +477,120 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "fusion_w_path_trust": fusion_w_path_trust,
             "fusion_w_answer_intrinsic_trust": fusion_w_intrinsic,
             "semantic_expansion_trust_cap": semantic_expansion_trust_cap,
+            "require_grounding": require_grounding,
+            "enable_semantic_expansion": enable_semantic_expansion,
+            "output_path": str(output_path),
+            "duration_sec": duration,
+            "source": "dashboard",
+            **summary,
+        })
+        run_registry.update_run(
+            run_id, status="cancelled" if cancelled else "completed",
+            finished_at=datetime.now(timezone.utc).isoformat(), summary=summary,
+        )
+    except Exception as e:
+        run_registry.update_run(
+            run_id, status="failed", finished_at=datetime.now(timezone.utc).isoformat(), error=str(e),
+        )
+    finally:
+        if driver is not None:
+            driver.close()
+
+
+def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
+    """Batch or single-question run of Condition D (Dual-Level Retrieval,
+    adaptasi LightRAG). Struktur SAMA PERSIS run_condition_c() -- sampling
+    1-4 identik, connect_neo4j, load_faiss_cache -- tapi memakai KG & FAISS
+    cache Kondisi C APA ADANYA (TIDAK membangun apa pun baru) dan memanggil
+    process_sample() Kondisi D (dual-level retrieval, bukan trust-weighted).
+    """
+    cond = _condition_d_module()
+    run_started_at = datetime.now(timezone.utc)
+    run_registry.update_run(run_id, status="running", started_at=run_started_at.isoformat())
+
+    provider = params["provider"]
+    model = params["model"]
+    top_k = int(params.get("top_k") or 5)
+    n_low_level = int(params.get("n_low_level") or 3)
+    n_high_level = int(params.get("n_high_level") or 3)
+    require_grounding = params.get("require_grounding")
+    require_grounding = True if require_grounding is None else bool(require_grounding)
+    token_chunk_limit = 400
+
+    driver = None
+    try:
+        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
+        con = duckdb.connect()
+
+        if params["mode"] == "single":
+            sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
+            output_path = Path("results") / f"condition_d_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
+        else:
+            n_sample = int(params["n_sample"])
+            seed = int(params["seed"])
+            oversample_pool = int(params.get("oversample_pool") or n_sample * 4)
+            candidates = cond.get_candidate_questions(
+                con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
+            )
+            candidates = cond.filter_by_token_limit(candidates)
+            sample_df = cond.sample_questions(candidates, n_sample, seed)
+            accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
+            answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
+            sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
+            sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
+            output_path = cond.build_output_path(
+                "results", provider, model, n_sample, seed, require_grounding=require_grounding,
+            )
+
+        output_path = _anchor_output_path(output_path, "d_lightrag")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        already_done = _read_already_done(output_path)
+
+        run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
+
+        eval_question_ids = sample_df["Id"].astype(int).tolist()
+        all_answer_ids_map = cond.get_all_answer_ids_for_questions(con, _answers_parquet(), eval_question_ids)
+
+        driver, database = cond.connect_neo4j(print)
+        kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
+        faiss_index, faiss_ids, faiss_embeddings, id_to_row = cond.load_faiss_cache(kg_workspace_dir, print)
+        embed_model = _embed_model_cpu()
+
+        results, stats = cond.process_sample(
+            sample_df, llm_client, call_llm_fn, embed_model, driver, database,
+            faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
+            top_k, n_low_level, n_high_level, token_chunk_limit, model, output_path, already_done,
+            require_grounding=require_grounding,
+            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+        )
+
+        cancelled = run_registry.is_cancelled(run_id) or stats["interrupted"]
+        summary = _summarize(results)
+        if results:
+            n_citation = sum(1 for r in results if r.get("has_citation"))
+            n_valid_citation = sum(1 for r in results if r.get("has_valid_citation"))
+            latencies = [r["retrieval_latency_sec"] for r in results if r.get("retrieval_latency_sec") is not None]
+            summary["pct_with_citation"] = round(n_citation / len(results) * 100, 1)
+            summary["pct_with_valid_citation"] = round(n_valid_citation / len(results) * 100, 1)
+            if latencies:
+                summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
+
+        duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
+        summary["duration_sec"] = duration
+        summary["require_grounding"] = require_grounding
+        cond.append_run_history({
+            "run_started_at": run_started_at.isoformat(),
+            "condition": "D",
+            "status": "cancelled" if cancelled else ("success" if results else "no_results"),
+            "provider": provider,
+            "model": model,
+            "n_sample_target": params.get("n_sample", 1),
+            "n_processed": len(results),
+            "seed": params.get("seed"),
+            "top_k": top_k,
+            "n_low_level": n_low_level,
+            "n_high_level": n_high_level,
+            "require_grounding": require_grounding,
             "output_path": str(output_path),
             "duration_sec": duration,
             "source": "dashboard",
@@ -482,6 +613,7 @@ RUNNERS: dict[str, Callable[[str, dict[str, Any]], None]] = {
     "A": run_condition_a,
     "B": run_condition_b,
     "C": run_condition_c,
+    "D": run_condition_d,
 }
 
 
