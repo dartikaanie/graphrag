@@ -84,7 +84,7 @@ def get_partial_graph(limit: int = 100) -> dict:
         UNWIND $ids AS qid
         MATCH (q:Question {id: qid})
         CALL (q) {
-            MATCH (q)-[r:HAS_ANSWER]->(a:Answer)
+            MATCH (q)-[r:HAS_ANSWER|HAS_ACCEPTED_ANSWER]->(a:Answer)
             RETURN a, r.weight AS weight
             ORDER BY a.score DESC
             LIMIT 2
@@ -134,7 +134,7 @@ def _question_neighbors(question_id: int) -> tuple[dict, list, list]:
 
     answers = run_query(
         """
-        MATCH (q:Question {id: $id})-[r:HAS_ANSWER]->(a:Answer)
+        MATCH (q:Question {id: $id})-[r:HAS_ANSWER|HAS_ACCEPTED_ANSWER]->(a:Answer)
         OPTIONAL MATCH (q)-[:HAS_ACCEPTED_ANSWER]->(a)
         RETURN a.id AS id, a.score AS score, a.trustScore AS trustScore, r.weight AS weight,
                (a IS NOT NULL AND exists((q)-[:HAS_ACCEPTED_ANSWER]->(a))) AS accepted
@@ -255,7 +255,7 @@ def get_answer_subgraph(answer_id: int, hops: int = 2) -> dict:
 
     owner = run_query(
         """
-        MATCH (q:Question)-[:HAS_ANSWER]->(a:Answer {id: $id})
+        MATCH (q:Question)-[:HAS_ANSWER|HAS_ACCEPTED_ANSWER]->(a:Answer {id: $id})
         OPTIONAL MATCH (q)-[:HAS_ACCEPTED_ANSWER]->(a)
         RETURN q.id AS id, q.title AS title, q.score AS score, q.trustScore AS trustScore, q.domainTag AS domainTag,
                (a IS NOT NULL AND exists((q)-[:HAS_ACCEPTED_ANSWER]->(a))) AS accepted

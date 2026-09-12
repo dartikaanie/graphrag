@@ -53,7 +53,7 @@ def list_questions(page: int, page_size: int, search: str | None, tag: str | Non
     counts_query = """
         UNWIND $ids AS qid
         MATCH (q:Question {id: qid})
-        OPTIONAL MATCH (q)-[:HAS_ANSWER]->(a:Answer)
+        OPTIONAL MATCH (q)-[:HAS_ANSWER|HAS_ACCEPTED_ANSWER]->(a:Answer)
         RETURN qid, count(a) AS answer_count
     """
     count_rows = run_query(counts_query, {"ids": ids})
@@ -91,7 +91,7 @@ def _search_questions(page: int, page_size: int, search: str, tag: str | None) -
 def get_question_detail(question_id: int) -> dict | None:
     query = """
         MATCH (q:Question {id: $id})
-        OPTIONAL MATCH (q)-[:HAS_ANSWER]->(a:Answer)
+        OPTIONAL MATCH (q)-[:HAS_ANSWER|HAS_ACCEPTED_ANSWER]->(a:Answer)
         OPTIONAL MATCH (q)-[r]-()
         RETURN q AS question, count(DISTINCT a) AS answer_count, count(r) AS relation_count
     """
@@ -112,7 +112,7 @@ def get_question_detail(question_id: int) -> dict | None:
 
 def get_question_answers(question_id: int) -> list[dict]:
     query = """
-        MATCH (q:Question {id: $id})-[:HAS_ANSWER]->(a:Answer)
+        MATCH (q:Question {id: $id})-[:HAS_ANSWER|HAS_ACCEPTED_ANSWER]->(a:Answer)
         OPTIONAL MATCH (q)-[:HAS_ACCEPTED_ANSWER]->(a)
         RETURN a AS answer, (a IS NOT NULL AND exists((q)-[:HAS_ACCEPTED_ANSWER]->(a))) AS is_accepted
         ORDER BY is_accepted DESC, a.score DESC
@@ -148,7 +148,7 @@ def list_answers(page: int, page_size: int, search: str | None) -> tuple[list[di
 
     query = f"""
         {match_clause}
-        OPTIONAL MATCH (q:Question)-[:HAS_ANSWER]->(a)
+        OPTIONAL MATCH (q:Question)-[:HAS_ANSWER|HAS_ACCEPTED_ANSWER]->(a)
         RETURN a.id AS id, a.body AS body, a.score AS score,
                a.isAccepted AS is_accepted, q.id AS question_id
         ORDER BY a.score DESC
@@ -161,7 +161,7 @@ def list_answers(page: int, page_size: int, search: str | None) -> tuple[list[di
 def get_answer_detail(answer_id: int) -> dict | None:
     query = """
         MATCH (a:Answer {id: $id})
-        OPTIONAL MATCH (q:Question)-[:HAS_ANSWER]->(a)
+        OPTIONAL MATCH (q:Question)-[:HAS_ANSWER|HAS_ACCEPTED_ANSWER]->(a)
         OPTIONAL MATCH (a)-[r]-()
         RETURN a AS answer, q.id AS question_id, count(r) AS relation_count
     """

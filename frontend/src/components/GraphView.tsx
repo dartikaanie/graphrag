@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import ForceGraph2D, { type NodeObject, type LinkObject, type ForceGraphMethods } from 'react-force-graph-2d'
 import type { GraphData, GraphLink, GraphNode } from '@/types/graph'
-import { EDGE_COLORS, NODE_COLORS } from '@/lib/graphColors'
+import { ACCEPTED_ANSWER_COLOR, EDGE_COLORS, NODE_COLORS } from '@/lib/graphColors'
 
 interface GraphViewProps {
   data: GraphData
@@ -11,6 +11,11 @@ interface GraphViewProps {
 }
 
 const NODE_RADIUS: Record<string, number> = { Question: 5, Answer: 4, Tag: 3.5, User: 3.5 }
+
+function nodeColor(n: GraphNode): string {
+  if (n.type === 'Answer' && n.properties.isAccepted) return ACCEPTED_ANSWER_COLOR
+  return NODE_COLORS[n.type] ?? '#94a3b8'
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -69,6 +74,22 @@ export function GraphView({ data, height = 360, onNodeClick, centerNodeId }: Gra
     [onNodeClick],
   )
 
+  // Once the force simulation settles, re-center the camera on the entity
+  // this graph is actually about (centerNodeId) rather than leaving the
+  // view wherever the auto-layout happened to land -- otherwise the node
+  // the user came here to inspect can end up off to one side.
+  const handleEngineStop = useCallback(() => {
+    if (!centerNodeId || !fgRef.current) return
+    // react-force-graph mutates the same node objects we passed in via
+    // `data` in place, adding x/y as the simulation runs -- so the settled
+    // position is readable straight off `data.nodes`, no separate getter.
+    const node = data.nodes.find((n) => n.id === centerNodeId) as (GraphNode & { x?: number; y?: number }) | undefined
+    if (node?.x != null && node?.y != null) {
+      fgRef.current.centerAt(node.x, node.y, 600)
+      fgRef.current.zoom(2.5, 600)
+    }
+  }, [centerNodeId, data])
+
   const nodeCanvasObject = useCallback(
     (node: NodeObject<GraphNode>, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const n = node as unknown as GraphNode & { x: number; y: number }
@@ -76,7 +97,7 @@ export function GraphView({ data, height = 360, onNodeClick, centerNodeId }: Gra
       const isCenter = centerNodeId === n.id
       ctx.beginPath()
       ctx.arc(n.x, n.y, isCenter ? radius * 1.6 : radius, 0, 2 * Math.PI)
-      ctx.fillStyle = NODE_COLORS[n.type] ?? '#94a3b8'
+      ctx.fillStyle = nodeColor(n)
       ctx.fill()
       if (isCenter) {
         ctx.lineWidth = 1.5 / globalScale
@@ -118,6 +139,7 @@ export function GraphView({ data, height = 360, onNodeClick, centerNodeId }: Gra
         linkWidth={1}
         linkDirectionalParticles={0}
         onNodeClick={handleNodeClick}
+        onEngineStop={handleEngineStop}
         cooldownTicks={100}
         enableNodeDrag={true}
       />

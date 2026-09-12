@@ -19,6 +19,9 @@ export function AnswerDetailPage() {
   const attrs = detail.attributes
   const body = typeof attrs.body === 'string' ? attrs.body : null
   const questionId = detail.graph_meta?.question_id
+  // Reuse the graph data we already fetch for the visualization to get the
+  // owning question's title, rather than a separate API call just for that.
+  const questionNode = graph?.nodes.find((n) => n.id === `Question-${questionId}`)
 
   const handleNodeClick = (node: GraphNode) => {
     if (node.type === 'Question') navigate(`/questions/${node.properties.id}`)
@@ -28,17 +31,24 @@ export function AnswerDetailPage() {
 
   return (
     <div>
-      <div className="text-sm text-text-secondary mb-2 flex gap-4">
+      <div className="text-sm text-text-secondary mb-2">
         <Link to="/answers" className="hover:text-primary">
           ← Back to Answers
         </Link>
-        {questionId != null && (
-          <Link to={`/questions/${questionId}`} className="hover:text-primary">
-            ← Back to Question #{String(questionId)}
-          </Link>
-        )}
       </div>
-      <h1 className="text-lg font-semibold text-text-primary mb-4">Answer #{id}</h1>
+      <h1 className="text-lg font-semibold text-text-primary mb-1">Answer #{id}</h1>
+      <p className="text-sm text-text-secondary mb-4">
+        {questionId != null ? (
+          <>
+            Answers question:{' '}
+            <Link to={`/questions/${questionId}`} className="text-primary hover:underline">
+              {questionNode?.label ?? `#${String(questionId)}`}
+            </Link>
+          </>
+        ) : (
+          <span className="text-text-muted">Owning question not found</span>
+        )}
+      </p>
 
       <div className="grid grid-cols-2 gap-6">
         <div>
