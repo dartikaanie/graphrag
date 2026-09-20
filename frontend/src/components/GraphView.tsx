@@ -12,6 +12,13 @@ interface GraphViewProps {
 
 const NODE_RADIUS: Record<string, number> = { Question: 5, Answer: 4, Tag: 3.5, User: 3.5 }
 
+// Below this zoom level, node labels are hidden entirely -- at the default
+// zoomed-out view a graph of even a few dozen nodes turns into unreadable
+// text soup, so labels only appear once the user has actually zoomed in
+// enough to read them individually. The center node (if any) is exempt,
+// since it's the one node the user came here to identify.
+const LABEL_MIN_ZOOM = 1.5
+
 function nodeColor(n: GraphNode): string {
   if (n.type === 'Answer' && n.properties.isAccepted) return ACCEPTED_ANSWER_COLOR
   return NODE_COLORS[n.type] ?? '#94a3b8'
@@ -123,15 +130,19 @@ export function GraphView({ data, height = 360, onNodeClick, centerNodeId }: Gra
         ctx.stroke()
       }
 
-      // Short id-only label always on -- full title/score/etc. shows in the
-      // native hover tooltip (nodeLabel below) instead of cluttering the canvas.
-      const label = shortLabel(n)
-      const fontSize = 11 / globalScale
-      ctx.font = `${fontSize}px Inter, system-ui, sans-serif`
-      ctx.fillStyle = '#0f172a'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'top'
-      ctx.fillText(label, n.x, n.y + radius + 2)
+      // Short id-only label -- only drawn past LABEL_MIN_ZOOM (or for the
+      // center node, always) so a zoomed-out graph stays clean; full
+      // title/score/etc. is still available any time via the native hover
+      // tooltip (nodeLabel below), zoom level notwithstanding.
+      if (globalScale > LABEL_MIN_ZOOM || isCenter) {
+        const label = shortLabel(n)
+        const fontSize = 11 / globalScale
+        ctx.font = `${fontSize}px Inter, system-ui, sans-serif`
+        ctx.fillStyle = '#0f172a'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'top'
+        ctx.fillText(label, n.x, n.y + radius + 2)
+      }
     },
     [centerNodeId],
   )
