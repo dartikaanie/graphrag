@@ -11,11 +11,34 @@ them in that order ("test with Condition A first, then B, then C"), which is
 also the order they were implemented in. Condition D (Dual-Level Retrieval,
 adaptasi LightRAG) reuses the SAME Neo4j KG & FAISS cache as Condition C --
 see llm/d_lightrag/d_lightrag.py.
+
+RESOURCE BUDGET (target machine: 8GB RAM MacBook M2) -- "Run All Conditions"
+used to fire A/B/C/D as four fully-parallel background threads, which could
+mean 4x embedding model + 2x Neo4j driver + 2x FAISS/embedding-cache memmap
++ 4x DuckDB connection alive AT ONCE, on top of n_sample now defaulting to
+384 (see RunAllConditionsPage.tsx). That was enough to exhaust memory and
+hang/crash the machine. Three mitigations, all in this file:
+  1. `_HEAVY_RUN_LOCK` -- B/C/D (the conditions that touch Neo4j/FAISS/a
+     real retrieval pipeline) now run ONE AT A TIME, never concurrently.
+     Condition A stays unlocked (it's just LLM calls + one small
+     embedding step, materially lighter) and can still overlap with
+     whichever heavy condition currently holds the lock.
+  2. `_faiss_cache()` -- Condition C and D read the EXACT SAME on-disk
+     FAISS index + embedding memmap (see d_lightrag.py's docstring: "SAME
+     KG & FAISS cache as Condition C"); loading it twice doubled that
+     memory footprint for no reason. Now loaded once and shared.
+  3. `_duckdb_connect()` -- every duckdb.connect() in this module goes
+     through one helper that applies memory_limit='2GB'/threads=2/
+     preserve_insertion_order=false, so DuckDB itself is capped instead of
+     defaulting to "use all available resources" on a machine that can't
+     spare them, especially with multiple connections alive across A
+     overlapping a queued/running B/C/D.
 """
 
 import importlib
 import json as _json
 import sys
+import threading
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -40,6 +63,38 @@ def _answers_parquet() -> str:
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+# Only one of B/C/D actually running at a time -- see module docstring
+# ("RESOURCE BUDGET"). Condition A is deliberately NOT gated by this lock.
+_HEAVY_RUN_LOCK = threading.Lock()
+HEAVY_CONDITIONS = {"B", "C", "D"}
+
+
+def _duckdb_connect() -> duckdb.DuckDBPyConnection:
+    """Every duckdb.connect() in this module goes through here so the same
+    memory/thread cap applies everywhere -- see module docstring point 3.
+    Same pragmas already used by the standalone analysis scripts (e.g.
+    analyze_retrieval_quality.py, llm/evaluation/_judge_common.py)."""
+    con = duckdb.connect()
+    con.execute("SET memory_limit='2GB'")
+    con.execute("SET threads=2")
+    con.execute("SET preserve_insertion_order=false")
+    return con
+
+
+@lru_cache
+def _faiss_cache(kg_workspace_dir_str: str):
+    """Shared FAISS index + embedding-cache loader for Condition C AND D --
+    see module docstring point 2. Both conditions' own load_faiss_cache()
+    read the identical files from the same kg_workspace_dir; this loads
+    them ONCE (cached on the workspace-dir string, which is always the same
+    path in practice) and both conditions reuse the result instead of each
+    memmap-ing the embeddings file and reading the FAISS index a second
+    time. Uses Condition C's module to do the actual reading (D's version
+    is byte-for-byte the same function) -- an implementation detail, not a
+    behavior difference for D."""
+    cond = _condition_c_module()
+    return cond.load_faiss_cache(Path(kg_workspace_dir_str), print)
 
 
 @lru_cache
@@ -160,7 +215,7 @@ def _build_single_question_df(question_id: int, cond_module):
     reusing the same dedup CTEs the rest of the backend already relies on
     (app.db.duckdb_client) rather than duplicating that SQL here.
     """
-    con = duckdb.connect()
+    con = _duckdb_connect()
     q_df = con.execute(
         f"""
         SELECT Id, Title, Body, Tags, AcceptedAnswerId, ViewCount, Score
@@ -230,7 +285,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
             oversample_pool = int(params.get("oversample_pool") or n_sample * 3)
-            con = duckdb.connect()
+            con = _duckdb_connect()
             candidates = cond.get_candidate_questions(
                 con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
             )
@@ -311,7 +366,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
 
     try:
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
-        con = duckdb.connect()
+        con = _duckdb_connect()
 
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
@@ -428,7 +483,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     driver = None
     try:
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
-        con = duckdb.connect()
+        con = _duckdb_connect()
 
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
@@ -463,7 +518,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
 
         driver, database = cond.connect_neo4j(print)
         kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
-        faiss_index, faiss_ids, faiss_embeddings, id_to_row = cond.load_faiss_cache(kg_workspace_dir, print)
+        faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
 
         results, stats = cond.process_sample(
@@ -552,7 +607,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
     driver = None
     try:
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
-        con = duckdb.connect()
+        con = _duckdb_connect()
 
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
@@ -585,7 +640,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
 
         driver, database = cond.connect_neo4j(print)
         kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
-        faiss_index, faiss_ids, faiss_embeddings, id_to_row = cond.load_faiss_cache(kg_workspace_dir, print)
+        faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
 
         results, stats = cond.process_sample(
@@ -742,7 +797,8 @@ RUNNERS: dict[str, Callable[[str, dict[str, Any]], None]] = {
 
 
 def start_run(run_id: str, condition: str, params: dict[str, Any]) -> None:
-    runner = RUNNERS.get(condition.upper())
+    condition = condition.upper()
+    runner = RUNNERS.get(condition)
     if runner is None:
         run_registry.update_run(run_id, status="failed", error=f"Unknown condition '{condition}'")
         return
@@ -751,4 +807,25 @@ def start_run(run_id: str, condition: str, params: dict[str, Any]) -> None:
     # effect for dashboard-triggered runs instead of only ever reading
     # whatever the repo-root .env happened to have at backend startup.
     settings_service.apply_to_environment()
-    runner(run_id, params)
+
+    if condition not in HEAVY_CONDITIONS:
+        # Condition A: no queueing, it's cheap enough to overlap a heavy run.
+        runner(run_id, params)
+        return
+
+    # Condition B/C/D: only one at a time (see module docstring "RESOURCE
+    # BUDGET"). Each is called from its own background thread (routers/
+    # runs.py), so with "Run All Conditions" firing B, C, D nearly
+    # simultaneously, whichever thread acquires _HEAVY_RUN_LOCK first runs
+    # to completion while the other two block here -- genuinely queued, not
+    # just visually queued. The "queued" status is set BEFORE blocking on
+    # the lock so a still-waiting run is visibly distinct from "pending"
+    # (not yet picked up by any thread at all) in the UI.
+    run_registry.update_run(run_id, status="queued")
+    with _HEAVY_RUN_LOCK:
+        if run_registry.is_cancelled(run_id):
+            run_registry.update_run(
+                run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            return
+        runner(run_id, params)
