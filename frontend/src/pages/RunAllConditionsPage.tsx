@@ -35,6 +35,15 @@ const inputClass =
  * left unset (A: n_sample*3, B/C/D: n_sample*4 -- see engine_service.py), so
  * this form always computes and sends ONE explicit oversample_pool value to
  * all four requests rather than letting each condition pick its own.
+ *
+ * NOT actually parallel execution: all four POST /api/runs requests fire at
+ * once, but the backend queues B/C/D behind a shared lock (engine_service.py
+ * `_HEAVY_RUN_LOCK`) so only one of them actually runs at a time -- see the
+ * "RESOURCE BUDGET" note in that file's module docstring for why (a fully
+ * parallel A+B+C+D at n_sample=384 was enough to exhaust memory and hang an
+ * 8GB MacBook M2). Condition A is the exception: it's cheap enough (no
+ * Neo4j/FAISS) to run concurrently with whichever of B/C/D currently holds
+ * the lock. A queued run shows status "queued" until its turn comes up.
  */
 export function RunAllConditionsPage() {
   const navigate = useNavigate()
@@ -126,7 +135,9 @@ export function RunAllConditionsPage() {
     <div>
       <h1 className="text-lg font-semibold text-text-primary mb-1">Run All Conditions (A + B + C + D)</h1>
       <p className="text-sm text-text-secondary mb-4">
-        Runs Condition A, B, C, and D together with identical sampling parameters, for a direct comparison.
+        Runs Condition A, B, C, and D with identical sampling parameters, for a direct comparison. Condition A
+        starts immediately; B, C, and D are queued and run one at a time (not in parallel) to stay within memory
+        limits on a typical local machine — each shows status "queued" until its turn comes up.
       </p>
 
       <div className="border border-border rounded-lg bg-surface p-4">

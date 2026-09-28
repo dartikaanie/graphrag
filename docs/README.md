@@ -418,9 +418,14 @@ wording is identical everywhere a parameter appears), a live
 prompt transcript, retrieved context (ranked, with an explicit "Rank #N" and
 the actual ranking score used), and — for C/D — the real retrieval-path
 subgraph actually touched by that run (not a generic node-centered
-subgraph). **"Run All" (`/experiment/all`)** fires all four conditions in
-parallel with identical sampling parameters for a direct apples-to-apples
-comparison run.
+subgraph). **"Run All" (`/experiment/all`)** fires all four conditions with
+identical sampling parameters for a direct apples-to-apples comparison run
+— **not actually in parallel**: all four `POST /api/runs` requests are sent
+at once, but the backend (`engine_service.py`) queues Condition B, C, and D
+behind a shared lock so only one of them ever executes at a time (Condition
+A, which never touches Neo4j/FAISS, is the one exception and can run
+alongside whichever of B/C/D currently holds the lock). A queued run's
+status shows `"queued"` until its turn comes up. See §8 for why this exists.
 
 **Phase 6 — History / run comparison (done).** `/api/history` reads each
 condition's `run_history.jsonl` directly (CLI runs and dashboard runs are
@@ -487,6 +492,30 @@ are worth keeping visible rather than losing in chat history:
   entries, and `.gitignore` patterns were updated and re-verified by actually
   executing each condition script's import machinery and by running all
   three end-to-end with n=1, not just by reading the diffs.
+- **"Run All Conditions" crashed an 8GB RAM MacBook M2 at n_sample=384.**
+  It originally fired A/B/C/D as four fully-parallel background threads
+  (`threading.Thread` per condition, no coordination) — fine at small pilot
+  sizes, but at n=384 the combined footprint (2x Neo4j driver, 2x FAISS
+  index + embedding memmap loaded independently for C and D even though
+  they read the identical on-disk files, up to 4 concurrent DuckDB
+  connections each free to use unlimited memory/threads, 4x embedding
+  model) was enough to exhaust memory and hang the machine. Fixed three
+  ways in `engine_service.py`, all still allowing B/C/D to be *triggered*
+  together from the UI: (1) a module-level `threading.Lock` serializes
+  actual execution of B/C/D to one at a time (Condition A stays
+  unlocked — it's materially cheaper and doesn't touch Neo4j/FAISS), with
+  the run showing status `"queued"` while it waits; (2) Condition D's
+  `load_faiss_cache()` reads the exact same files as Condition C's (by
+  design — D reuses C's KG), so it's now loaded once via a shared
+  `@lru_cache`-wrapped helper instead of twice; (3) every
+  `duckdb.connect()` in that file now goes through one helper that applies
+  `memory_limit='2GB'`/`threads=2`/`preserve_insertion_order=false`, the
+  same pragmas the standalone analysis scripts already used, instead of
+  defaulting to "use whatever the machine has." Lesson: a background-thread
+  fan-out that's fine to *trigger* concurrently from an API is not
+  automatically fine to *execute* concurrently — those are separate
+  decisions, and on a resource-constrained target machine the second one
+  needs its own explicit bound, not just a for-loop across `RUNNERS`.
 
 ---
 
