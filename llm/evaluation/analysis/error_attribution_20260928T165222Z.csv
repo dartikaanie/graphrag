@@ -1,0 +1,2 @@
+question_id,condition,hallucination_label,hallucinated,retrieval_status,sufficiency,answer_relevance_label,attribution,known_zero_context_case
+38118194,C,,,PARTIAL,SEBAGIAN,MENJAWAB,UNKNOWN,False

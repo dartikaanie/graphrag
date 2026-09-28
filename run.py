@@ -204,6 +204,69 @@ MENU = [
                 "contoh: --input-path llm/c_graphrag/results/condition_c_....jsonl",
         "confirm_cost": False,
     },
+    {
+        "label": "Jalankan Context-Relevance Judge (retrieval relevance + sufficiency)",
+        "desc": "Nilai retrieved_context Kondisi B/C/D dgn LLM-as-judge REFERENCE-FREE per-item (RELEVAN/"
+                "SEBAGIAN/TIDAK_RELEVAN) + context sufficiency reference-aware -- 2 panggilan LLM/pertanyaan.",
+        "script": "llm_judge_context_relevance.py",
+        "cwd": "llm/evaluation",
+        "default_args": [],
+        "note": "--input-path dan --condition WAJIB diisi manual (pilih 'tidak' pakai argumen default), "
+                "contoh: --input-path ../c_graphrag/results/condition_c_....jsonl --condition C "
+                "[--skip-sufficiency] [--kappa-validation --secondary-judge-provider openai "
+                "--secondary-judge-model gpt-4o --kappa-sample-size 5]. Kondisi A tidak berlaku.",
+        "confirm_cost": True,
+    },
+    {
+        "label": "Jalankan Answer-Relevance Judge (reference-free)",
+        "desc": "Nilai jawaban Kondisi A/B/C/D dgn LLM-as-judge REFERENCE-FREE (MENJAWAB/MENJAWAB_SEBAGIAN/"
+                "TIDAK_MENJAWAB) -- HANYA pertanyaan+jawaban, tanpa ground truth/context -- 1 panggilan LLM/pertanyaan.",
+        "script": "llm_judge_answer_relevance.py",
+        "cwd": "llm/evaluation",
+        "default_args": [],
+        "note": "--input-path dan --condition WAJIB diisi manual (pilih 'tidak' pakai argumen default), "
+                "contoh: --input-path ../a_pure_llm/results/condition_a_....jsonl --condition A "
+                "[--kappa-validation --secondary-judge-provider openai --secondary-judge-model gpt-4o "
+                "--kappa-sample-size 5].",
+        "confirm_cost": True,
+    },
+    {
+        "label": "Analisis Error Attribution (retrieval/anchoring/generation)",
+        "desc": "Join hasil judge hallucination + context-relevance + answer-relevance per-pertanyaan, "
+                "terapkan aturan deterministik utk atribusi kegagalan -- TIDAK ADA panggilan LLM.",
+        "script": "analyze_error_attribution.py",
+        "cwd": "llm/evaluation",
+        "default_args": [],
+        "note": "--input-path WAJIB diisi manual (bisa dipakai berkali-kali utk banyak file), contoh: "
+                "--input-path ../c_graphrag/results/condition_c_....jsonl. Sumber judge di-resolve OTOMATIS "
+                "dari manifest (run judge hallucination/context-relevance/answer-relevance dulu).",
+        "confirm_cost": False,
+    },
+    {
+        "label": "Analisis Trust vs Relevance (kontribusi utama Kondisi C)",
+        "desc": "Spearman/Mann-Whitney/Wilcoxon trust_weight vs relevansi (item & question level) + ablasi "
+                "trust_weighted vs uniform (Cliff's delta) -- TIDAK ADA panggilan LLM.",
+        "script": "analyze_trust_vs_relevance.py",
+        "cwd": "llm/evaluation",
+        "default_args": [],
+        "note": "--input-path WAJIB diisi manual, contoh: --input-path ../c_graphrag/results/condition_c_"
+                "..._fw0-7-0-3.jsonl [--uniform-path ../c_graphrag/results/condition_c_..._uniform.jsonl]. "
+                "Butuh Context-Relevance Judge sudah dijalankan lebih dulu utk file yang sama.",
+        "confirm_cost": False,
+    },
+    {
+        "label": "Bandingkan Statistik Antar Kondisi (paired Wilcoxon + Holm)",
+        "desc": "Uji berpasangan (per question_id) cosine similarity, answer relevance, context precision, "
+                "sufficiency, hallucination antar Kondisi A/B/C/D -- TIDAK ADA panggilan LLM.",
+        "script": "compare_conditions_stats.py",
+        "cwd": "llm/evaluation",
+        "default_args": [],
+        "note": "Minimal 2 dari --a-path/--b-path/--c-path/--d-path WAJIB diisi manual, contoh: "
+                "--a-path ../a_pure_llm/results/....jsonl --b-path ../b_rag/results/....jsonl "
+                "--c-path ../c_graphrag/results/....jsonl. Butuh judge hallucination/context-relevance/"
+                "answer-relevance sudah dijalankan utk tiap file.",
+        "confirm_cost": False,
+    },
 ]
 
 

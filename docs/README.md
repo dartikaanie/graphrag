@@ -264,6 +264,114 @@ run (a new "Hasil LLM-as-Judge" table) and on its per-question detail page
 (a "Penilaian Judge" section) — there is no separate results page to
 check.
 
+**Context-Relevance Judge** (`llm/evaluation/llm_judge_context_relevance.py`,
+Condition B/C/D only) and **Answer-Relevance Judge**
+(`llm/evaluation/llm_judge_answer_relevance.py`, all four conditions) fill
+the two remaining dimensions of Kamalipour, Asadi & Amiri Chimeh's (2026,
+*Computer Science Review* 61, 100925, §6.1) four-dimension RAG evaluation
+framework — retrieval relevance and answer relevance — that neither the
+tag-overlap proxy nor the original hallucination judge actually measures
+from text content. Both share small helpers in `llm/evaluation/
+_judge_common.py` (output-path/resume/manifest conventions, HTML
+stripping for question bodies pulled from `QUESTIONS_PARQUET`, Cohen's
+Kappa) without touching `llm_judge_hallucination.py` at all.
+
+- **Why an LLM judge for context relevance, not query↔context cosine
+  similarity**: for Condition B that would be circular — FAISS already
+  ranks its top-k by that exact cosine similarity, so "evaluating" it with
+  the same metric it was optimized for carries no independent
+  information. Conditions C/D aren't purely cosine-ranked either (graph
+  traversal + trust weighting), so a metric usable across all three has
+  to judge the retrieved *text content* against the question, independent
+  of whatever ranking mechanism produced it.
+- Context-Relevance Judge makes **two separate LLM calls per question**:
+  a reference-free per-item call (`RELEVAN` / `SEBAGIAN` / `TIDAK_RELEVAN`
+  for each retrieved chunk, judged only against the question — never
+  shown the reference answer, so per-item labels can't be contaminated by
+  already knowing "the right answer") and a reference-aware sufficiency
+  call (`CUKUP` / `SEBAGIAN` / `TIDAK_CUKUP` — does the retrieved context,
+  taken as a whole, contain what's needed for the reference answer's key
+  solution). The prompt for both calls contains **only `chunk_text`** —
+  never `trust_weight`/`combined_score`/`score`/`relevance_score`/
+  `source_stage`/`hop`/`rel_type`/`is_accepted`, and never which
+  condition/provider/model produced the retrieval — so a judge can never
+  rate an item relevant just because it knows Condition C's trust
+  weighting ranked it highly. Zero-context questions make no LLM call at
+  all (`status: "no_context"`). Derived per-question metrics
+  (`context_precision_strict`/`_lenient`, `first_relevant_rank`,
+  `reciprocal_rank`) are computed from the item labels, not re-judged.
+- **Why a new reference-free Answer-Relevance metric, when
+  `llm_judge_hallucination.py` already returns `answer_relevance_score`**:
+  that existing score is produced in the *same prompt call* that also
+  shows the reference answer and the hallucination rubric — it is
+  reference-conditioned, not an independent relevance measurement. A judge
+  that has already read "the correct answer" can blend "does this address
+  what was asked" with "is this consistent with the reference," which are
+  conceptually different (an answer can be highly relevant yet wrong, or
+  correct yet not actually address the question). Answer-Relevance Judge
+  is given **only the question and the answer** — no reference answer, no
+  retrieved context, no hallucination rubric in the same call — making it
+  the answer-relevance metric this thesis treats as primary;
+  `answer_relevance_score` from the hallucination judge is **not
+  removed or changed** and remains a secondary/complementary signal.
+- Both judges print an explicit **self-judging warning** to stderr (not a
+  hard stop) if the judge model matches the `llm_model` of records being
+  judged, since that risks self-preference bias (a judge rating answers
+  from its own model family more favorably).
+- Output files (`ctxrel__*.jsonl`, `ansrel__*.jsonl`) follow the exact
+  same deterministic-naming / resume / `already_complete` conventions as
+  the hallucination judge, but write to **separate manifests**
+  (`context_relevance_run_history.jsonl`, `answer_relevance_run_history.
+  jsonl`) rather than `judge_run_history.jsonl`, so the existing dashboard
+  join (§7) is completely unaffected by these additions.
+
+**Error Attribution** (`llm/evaluation/analyze_error_attribution.py`) and
+**Trust vs Relevance** (`llm/evaluation/analyze_trust_vs_relevance.py`)
+are pure joins/statistics over already-judged output — zero new LLM
+calls. Error Attribution auto-resolves the latest hallucination/ctxrel/
+ansrel judge output per source file from their manifests (matched on
+resolved `input_path`) and applies deterministic rules (documented in the
+script's own docstring, meant to be quoted directly in Bab III) to
+attribute each hallucinated answer to retrieval failure, entity-
+anchoring/coverage failure, or generation failure — Condition A gets a
+simpler hallucination × answer-relevance outcome only, since it has no
+retrieval stage to attribute anything to. Trust vs Relevance joins
+`item_labels` back to `retrieved_context` on `(question_id, answer_id)`
+and reports Spearman/Mann-Whitney at the **item level**, plus a
+**question-level** Wilcoxon test on the per-question (mean trust of
+relevant items − mean trust of non-relevant items) — the question-level
+view exists specifically because items *within* one question are not
+independent observations, so item-level significance alone would be
+anti-conservative (pseudo-replication). An optional `--uniform-path`
+adds the `--fusion-mode uniform` ablation comparison (paired Wilcoxon +
+Cliff's delta on `context_precision_strict`).
+
+**Compare Conditions Stats** (`llm/evaluation/compare_conditions_stats.py`)
+is the paired statistical design this thesis needed and didn't have
+before: for every pair of supplied conditions, it pairs on the
+`question_id` intersection (reporting the paired *n* explicitly, since
+not every question has every metric) and runs `scipy.stats.wilcoxon`
+(two-sided, `zero_method="wilcox"` — ties/zero-differences are common on
+the small-scale ordinal metrics here, so they're dropped from the test
+rather than rank-included) plus Cliff's delta (Romano et al. bands) per
+metric per pair, with Holm–Bonferroni correction applied **per metric**
+across all its comparisons (both raw and adjusted p-values reported).
+`hallucination_ordinal` (FAKTUAL=0/HALUSINASI_SEBAGIAN=1/
+HALUSINASI_PENUH=2) is the one metric where **lower is better** — the
+opposite direction from every other metric in the same table, called out
+explicitly in the script's output.
+
+Cliff's delta and the Holm correction live in a tiny shared
+`llm/evaluation/_stats_common.py` (no LLM calls), used by both
+Trust vs Relevance and Compare Conditions Stats.
+
+All five new tools are wired into `run.py`'s menu (same
+`--input-path`/manual-args pattern as the existing two). **Dashboard
+integration is future work** — these five tools write to their own
+result files and manifests, so the backend/frontend are completely
+unaffected by their addition; surfacing their output on the dashboard
+(similar to §7's judge-results tables) has not been built yet.
+
 ---
 
 ## 7. Dashboard (`backend/` + `frontend/`)

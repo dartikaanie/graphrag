@@ -59,6 +59,7 @@ export function RunConditionPage() {
   const [nLowLevel, setNLowLevel] = useState(3)
   const [nHighLevel, setNHighLevel] = useState(3)
   const [requireGrounding, setRequireGrounding] = useState(true)
+  const [logFullCandidates, setLogFullCandidates] = useState(false)
   const [questionId, setQuestionId] = useState('')
 
   const isRag = condition === 'B' || condition === 'C' || condition === 'D'
@@ -66,6 +67,7 @@ export function RunConditionPage() {
   const isDualLevel = condition === 'D'
   const isConditionB = condition === 'B'
   const supportsGrounding = isGraph || isDualLevel
+  const supportsLogFullCandidates = isConditionB || isGraph
 
   const handleRun = () => {
     const params: RunCreateParams = {
@@ -90,6 +92,7 @@ export function RunConditionPage() {
           }
         : {}),
       ...(supportsGrounding ? { require_grounding: requireGrounding } : {}),
+      ...(supportsLogFullCandidates ? { log_full_candidates: logFullCandidates } : {}),
       ...(mode === 'batch'
         ? {
             n_sample: nSample,
@@ -262,6 +265,16 @@ export function RunConditionPage() {
               require_citation
               <InfoTooltip text={PARAM_GLOSSARY.require_citation} />
               — same format as Condition C, for NF2 comparison
+            </span>
+          </label>
+        )}
+
+        {supportsLogFullCandidates && (
+          <label className="flex items-center gap-2 text-sm mt-3">
+            <input type="checkbox" checked={logFullCandidates} onChange={(e) => setLogFullCandidates(e.target.checked)} />
+            <span className="text-text-secondary inline-flex items-center gap-1">
+              log_full_candidates (enable Recall@k on this run)
+              <InfoTooltip text={PARAM_GLOSSARY.log_full_candidates} />
             </span>
           </label>
         )}

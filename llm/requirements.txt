@@ -1,0 +1,36 @@
+# llm/requirements.txt
+# =====================================
+# Dependencies for everything under llm/ (Kondisi A/B/C/D generators,
+# client_factory, evaluation/ judges & analyses) and the root-level
+# post-hoc analysis scripts (analyze_retrieval_quality.py). This file did
+# NOT exist before -- previously these packages were only documented ad
+# hoc via `pip install ...` lines inside individual script docstrings
+# (e.g. llm_judge_hallucination.py's "pip install scikit-learn" note).
+# backend/requirements.txt is backend-only (FastAPI dashboard) and is
+# unrelated to this file.
+
+python-dotenv>=1.0
+pandas>=2.0
+numpy>=1.24
+duckdb>=0.10
+
+# LLM providers (client_factory.py)
+openai>=1.0
+anthropic>=0.30
+ollama>=0.3
+transformers>=4.40
+
+# Embeddings / retrieval (Kondisi A/B/C/D, judges)
+sentence-transformers>=2.7
+faiss-cpu>=1.7
+tiktoken>=0.7
+neo4j>=5.23
+
+# Evaluation statistics (llm/evaluation/) -- Cohen's Kappa (judges'
+# --kappa-validation), Spearman/Mann-Whitney/Wilcoxon
+# (analyze_trust_vs_relevance.py, compare_conditions_stats.py)
+scikit-learn>=1.4
+scipy>=1.13
+
+# Tests (llm/evaluation/tests/)
+pytest>=8.0
