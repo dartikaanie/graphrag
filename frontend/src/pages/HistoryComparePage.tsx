@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router-dom'
-import { useHistoryDetail } from '@/api/hooks'
+import { useHistoryDetails } from '@/api/hooks'
 import { fmtDuration } from '@/lib/format'
 import type { RunState } from '@/types/run'
 
@@ -65,24 +65,89 @@ const PARAM_ROWS: ParamRow[] = [
     label: 'Grounding Constraint (C/D)',
     get: (r) => (r.params.require_grounding == null ? '—' : r.params.require_grounding ? 'Yes' : 'No'),
   },
+  {
+    label: 'log_full_candidates (B/C)',
+    get: (r) => (r.params.log_full_candidates == null ? '—' : r.params.log_full_candidates ? 'Yes' : 'No'),
+  },
 ]
+
+// Markdown table cells can't contain a raw "|" or newline -- escape/strip
+// so a stray value (shouldn't happen with these formatters, but defensive)
+// never breaks the table structure.
+function mdEscape(v: string): string {
+  return v.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
+}
+
+function mdTable(header: string[], rows: string[][]): string {
+  const lines = [
+    `| ${header.map(mdEscape).join(' | ')} |`,
+    `|${header.map(() => '---').join('|')}|`,
+    ...rows.map((row) => `| ${row.map(mdEscape).join(' | ')} |`),
+  ]
+  return lines.join('\n')
+}
+
+function columnLabel(run: RunState): string {
+  return `Condition ${run.condition} (${run.run_id})`
+}
+
+function buildComparisonMarkdown(runs: RunState[]): string {
+  const header = ['Parameter', ...runs.map(columnLabel)]
+  const paramRows = PARAM_ROWS.map((row) => [row.label, ...runs.map((r) => row.get(r))])
+
+  const metricHeader = ['Metric', ...runs.map(columnLabel)]
+  const metricRows = ROWS.map((row) => {
+    const values = runs.map((r) => row.get(r))
+    return [row.label, ...values.map((v) => (typeof v === 'number' ? row.fmt(v) : '—'))]
+  })
+
+  const lines = [
+    '# Run Comparison',
+    '',
+    `Generated: ${new Date().toISOString()}`,
+    `Runs compared: ${runs.map((r) => `${r.condition} (${r.run_id})`).join(', ')}`,
+    '',
+    '## Parameters',
+    '',
+    mdTable(header, paramRows),
+    '',
+    '## Metrics',
+    '',
+    mdTable(metricHeader, metricRows),
+    '',
+  ]
+  return lines.join('\n')
+}
+
+function downloadMarkdown(filename: string, content: string): void {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 export function HistoryComparePage() {
   const [searchParams] = useSearchParams()
   const ids = (searchParams.get('ids') ?? '').split(',').filter(Boolean)
 
-  // Hooks must run unconditionally in the same order every render, so we
-  // call useHistoryDetail once per fixed slot (max 4, per HistoryPage's
-  // selection cap -- one per condition, A/B/C/D) rather than inside a
-  // variable-length loop.
-  const q0 = useHistoryDetail(ids[0] ?? '')
-  const q1 = useHistoryDetail(ids[1] ?? '')
-  const q2 = useHistoryDetail(ids[2] ?? '')
-  const q3 = useHistoryDetail(ids[3] ?? '')
-  const runs = [q0.data, q1.data, q2.data, q3.data].filter((r): r is RunState => !!r)
+  // useQueries (not one useHistoryDetail call per id) so the number of runs
+  // compared can vary freely -- History no longer caps selection at 4.
+  const queries = useHistoryDetails(ids)
+  const runs = queries.map((q) => q.data).filter((r): r is RunState => !!r)
 
   if (ids.length === 0) {
-    return <div className="text-sm text-text-muted">No runs selected. Go back to History and select 2-4 runs.</div>
+    return <div className="text-sm text-text-muted">No runs selected. Go back to History and select 2 or more runs.</div>
+  }
+
+  const handleExport = () => {
+    const md = buildComparisonMarkdown(runs)
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    downloadMarkdown(`run-comparison_${runs.map((r) => r.condition).join('')}_${stamp}.md`, md)
   }
 
   return (
@@ -92,7 +157,17 @@ export function HistoryComparePage() {
           ← Back to History
         </Link>
       </div>
-      <h1 className="text-lg font-semibold text-text-primary mb-4">Compare Runs</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-lg font-semibold text-text-primary">Compare Runs</h1>
+        {runs.length > 0 && (
+          <button
+            onClick={handleExport}
+            className="px-3 py-1.5 text-sm border border-border-strong rounded-md text-text-primary hover:bg-bg"
+          >
+            ↓ Export as Markdown
+          </button>
+        )}
+      </div>
 
       {runs.length < ids.length && <div className="text-sm text-text-muted mb-4">Loading...</div>}
 
@@ -136,6 +211,7 @@ export function HistoryComparePage() {
                   {runs.map((r) => (
                     <th key={r.run_id} className="text-left font-medium text-text-secondary px-4 py-2.5">
                       Condition {r.condition}
+                      <div className="text-xs font-normal text-text-muted">{r.run_id}</div>
                     </th>
                   ))}
                 </tr>

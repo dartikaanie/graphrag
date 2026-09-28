@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_BASE, apiDelete, apiGet, apiPost, apiPut } from './client'
 import type {
   AnswerDetail,
@@ -172,6 +172,22 @@ export function useHistoryDetail(historyId: string) {
     queryKey: ['history-detail', historyId],
     queryFn: () => apiGet<RunState>(`/api/history/${historyId}`),
     enabled: !!historyId,
+  })
+}
+
+/** Same data/cache as useHistoryDetail, but for a variable-length list of
+ * ids (HistoryComparePage supports comparing any number of runs, not a
+ * fixed 4 slots) -- useQueries lets the number of queries vary per render
+ * without breaking the rules of hooks the way calling useHistoryDetail in
+ * a loop would. Shares its queryKey shape with useHistoryDetail, so a run
+ * already cached from the History Detail page doesn't get re-fetched. */
+export function useHistoryDetails(historyIds: string[]) {
+  return useQueries({
+    queries: historyIds.map((id) => ({
+      queryKey: ['history-detail', id],
+      queryFn: () => apiGet<RunState>(`/api/history/${id}`),
+      enabled: !!id,
+    })),
   })
 }
 

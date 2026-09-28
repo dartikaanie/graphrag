@@ -47,7 +47,7 @@ export function HistoryPage() {
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
-      else if (next.size < 4) next.add(id)
+      else next.add(id)
       return next
     })
   }
@@ -81,7 +81,7 @@ export function HistoryPage() {
           <option value="C">C</option>
           <option value="D">D</option>
         </select>
-        <span className="text-xs text-text-muted">Select up to 4 runs to compare.</span>
+        <span className="text-xs text-text-muted">Select 2 or more runs to compare (any conditions/mix, no limit).</span>
       </div>
 
       {isError && <div className="text-sm text-danger mb-4">Failed to load history.</div>}
