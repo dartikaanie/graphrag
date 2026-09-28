@@ -5,22 +5,55 @@ export type MetricCategory =
   | 'Retrieval Quality'
   | 'Efficiency'
 
+export type Language = 'id' | 'en'
+
+/** A piece of text authored in both Indonesian and English. All
+ * user-facing content on the metrics reference page goes through this so
+ * the page can be read in either language without maintaining two
+ * parallel content files. */
+export interface LocalizedText {
+  id: string
+  en: string
+}
+
+export const CATEGORY_LABELS: Record<MetricCategory, LocalizedText> = {
+  'Semantic Quality': { id: 'Kualitas Semantik', en: 'Semantic Quality' },
+  'Citation & Grounding': { id: 'Sitasi & Grounding', en: 'Citation & Grounding' },
+  'Hallucination & Faithfulness': { id: 'Halusinasi & Faithfulness', en: 'Hallucination & Faithfulness' },
+  'Retrieval Quality': { id: 'Kualitas Retrieval', en: 'Retrieval Quality' },
+  Efficiency: { id: 'Efisiensi', en: 'Efficiency' },
+}
+
+/** One academic paper cited as the basis/precedent for a metric's design
+ * or interpretation. Bibliographic fields (authors/title/venue/doi) are
+ * transcribed verbatim from the source PDF's title page -- never
+ * guessed -- and are language-agnostic; only `relevance` is localized. */
+export interface PaperReference {
+  authors: string
+  title: string
+  year: number
+  venue: string
+  doi?: string
+  relevance: LocalizedText
+}
+
 export interface EvaluationMetric {
   id: string
   name: string
   category: MetricCategory
   appliesTo: ('A' | 'B' | 'C' | 'D')[]
-  whatItMeasures: string
-  howComputed: string
+  whatItMeasures: LocalizedText
+  howComputed: LocalizedText
   formula?: string
-  interpretationGuide: string
-  limitations: string
+  interpretationGuide: LocalizedText
+  limitations: LocalizedText
   implementedIn: string[]
   relatedTo?: string[]
   /** Not a per-condition output metric -- a process-validation check on
    * the judge itself (inter-rater reliability), shown with a distinct
    * visual treatment on the reference page. */
   isValidationMetric?: boolean
+  references?: PaperReference[]
 }
 
 /**
@@ -39,15 +72,23 @@ export const EVALUATION_METRICS: EvaluationMetric[] = [
     name: 'Cosine Similarity',
     category: 'Semantic Quality',
     appliesTo: ['A', 'B', 'C', 'D'],
-    whatItMeasures:
-      'How semantically close the LLM\'s answer is to the accepted (ground-truth) Stack Overflow answer for that question.',
-    howComputed:
-      'Both the LLM answer and the accepted answer (AcceptedAnswerBody) are embedded with the same sentence-transformers model (all-MiniLM-L6-v2), and cosine similarity is computed between the two embedding vectors. Identical for all four conditions — this is the one metric every condition produces, since it is the baseline metric being improved on. Aggregated per run as mean, median, and % of questions scoring above 0.5.',
+    whatItMeasures: {
+      en: "How semantically close the LLM's answer is to the accepted (ground-truth) Stack Overflow answer for that question.",
+      id: 'Seberapa dekat secara semantik jawaban LLM dengan jawaban yang diterima (ground-truth) dari Stack Overflow untuk pertanyaan tersebut.',
+    },
+    howComputed: {
+      en: 'Both the LLM answer and the accepted answer (AcceptedAnswerBody) are embedded with the same sentence-transformers model (all-MiniLM-L6-v2), and cosine similarity is computed between the two embedding vectors. Identical for all four conditions — this is the one metric every condition produces, since it is the baseline metric being improved on. Aggregated per run as mean, median, and % of questions scoring above 0.5.',
+      id: 'Baik jawaban LLM maupun jawaban yang diterima (AcceptedAnswerBody) di-embed dengan model sentence-transformers yang sama (all-MiniLM-L6-v2), lalu cosine similarity dihitung antara kedua vektor embedding. Identik untuk keempat kondisi — ini satu-satunya metrik yang dihasilkan oleh semua kondisi, karena menjadi metrik baseline yang ditingkatkan. Diagregasi per run sebagai mean, median, dan % pertanyaan yang bernilai di atas 0.5.',
+    },
     formula: 'cosine_similarity = cos_sim(embed(llm_answer), embed(accepted_answer_body))',
-    interpretationGuide:
-      '0.0–1.0, higher is better. In practice, scores cluster well below 1.0 even for good answers (paraphrasing, different code style, extra explanation). Compare relative differences between conditions/runs on the same sample rather than treating any single absolute value as a hard pass/fail threshold.',
-    limitations:
-      'This is a semantic-similarity proxy, NOT a measure of factual correctness. A correct answer that is phrased very differently from the accepted answer (different wording, different but equally valid code) can score low; a wrong answer that reuses a lot of the same vocabulary as the accepted answer can score misleadingly high. It also cannot detect whether an answer is complete, safe, or up to date — only how close its wording/meaning is to one specific accepted answer.',
+    interpretationGuide: {
+      en: '0.0–1.0, higher is better. In practice, scores cluster well below 1.0 even for good answers (paraphrasing, different code style, extra explanation). Compare relative differences between conditions/runs on the same sample rather than treating any single absolute value as a hard pass/fail threshold.',
+      id: '0.0–1.0, semakin tinggi semakin baik. Pada praktiknya, skor cenderung berada jauh di bawah 1.0 bahkan untuk jawaban yang baik (parafrase, gaya kode berbeda, penjelasan tambahan). Bandingkan perbedaan relatif antar kondisi/run pada sampel yang sama, bukan memperlakukan satu nilai absolut sebagai ambang lulus/gagal yang mutlak.',
+    },
+    limitations: {
+      en: 'This is a semantic-similarity proxy, NOT a measure of factual correctness. A correct answer that is phrased very differently from the accepted answer (different wording, different but equally valid code) can score low; a wrong answer that reuses a lot of the same vocabulary as the accepted answer can score misleadingly high. It also cannot detect whether an answer is complete, safe, or up to date — only how close its wording/meaning is to one specific accepted answer.',
+      id: 'Ini adalah proksi kemiripan semantik, BUKAN ukuran kebenaran faktual. Jawaban yang benar tapi diungkapkan sangat berbeda dari jawaban yang diterima (kata-kata berbeda, kode berbeda tapi sama-sama valid) bisa mendapat skor rendah; jawaban yang salah tapi menggunakan banyak kosakata yang sama dengan jawaban yang diterima bisa mendapat skor yang menyesatkan tinggi. Metrik ini juga tidak bisa mendeteksi apakah jawaban lengkap, aman, atau mutakhir — hanya seberapa dekat kata-kata/maknanya dengan satu jawaban yang diterima tertentu.',
+    },
     implementedIn: [
       'llm/a_pure_llm/a_baseline_replication.py',
       'llm/b_rag/b_condition_b_rag.py',
@@ -55,37 +96,91 @@ export const EVALUATION_METRICS: EvaluationMetric[] = [
       'llm/d_lightrag/d_lightrag.py',
     ],
     relatedTo: ['answer-relevance-score'],
+    references: [
+      {
+        authors: 'Kamalipour, A. A.; Asadi, S.; Amiri Chimeh, M. M. —',
+        title:
+          'From vectors to knowledge graphs: A comprehensive analysis of modern retrieval-augmented generation architectures',
+        year: 2026,
+        venue: 'Computer Science Review, 61, Article 100925',
+        doi: '10.1016/j.cosrev.2026.100925',
+        relevance: {
+          id: 'Bagian semantic similarity / BERTScore sebagai landasan metrik similarity embedding.',
+          en: 'The semantic similarity / BERTScore section as the basis for the embedding similarity metric.',
+        },
+      },
+      {
+        authors: 'Da Silva; Samhi; Khomh —',
+        title: 'LLMs and Stack Overflow discussions: Reliability, impact, and challenges',
+        year: 2025,
+        venue: 'TODO_VERIFY — venue/DOI belum terverifikasi (file PDF sumber tidak ditemukan di folder referensi proyek)',
+        relevance: {
+          id: 'Metodologi baseline yang direplikasi di Kondisi A memakai cosine similarity sebagai metrik evaluasi utama.',
+          en: "The baseline methodology replicated in Condition A uses cosine similarity as its primary evaluation metric.",
+        },
+      },
+    ],
   },
   {
     id: 'nf2-citation-validity',
     name: 'NF2 — Citation Validity',
     category: 'Citation & Grounding',
     appliesTo: ['B', 'C', 'D'],
-    whatItMeasures:
-      'Whether the LLM actually cites its sources using the [SO-<id>] format, and — more strictly — whether the ids it cites are real sources that were actually given to it in the retrieved context (rather than invented/hallucinated ids).',
-    howComputed:
-      'A regex (CITATION_PATTERN) scans the LLM answer for citation-like tokens, tolerating minor format variation ([SO-1234], [SO:1234], [SO 1234], [SO thread 1234]) — this loose match produces has_citation/cited_source_ids. Separately, each matched id is cross-checked against the question_id set actually present in that answer\'s retrieved_context; only ids that are really there count toward has_valid_citation/valid_cited_source_ids. Shared by Condition B (only when --require-citation is on), C, and D — the exact same function is reused by all three so the comparison is apples-to-apples.',
-    interpretationGuide:
-      '% of answers with has_valid_citation = true, aggregated per run. Target for the thesis is 100% (every answer cites at least one real source) for conditions where citation is required. A gap between the loose has_citation % and the strict has_valid_citation % specifically indicates hallucinated citation ids (right format, wrong/nonexistent source).',
-    limitations:
-      'Condition A produces no retrieved context at all, so this metric does not apply to it in the same sense — a "citation" from Condition A would necessarily reference nothing real, which is a different failure mode (fabrication from a blank slate) than B/C/D\'s failure mode (fabricating on top of real-but-unused context). That distinction is tracked separately as a "Fabricated Citation Rate" framing rather than as this metric. Also, the regex only detects the specific [SO-<id>] format this project defines — a model could cite sources in free text without matching the pattern, which would be undercounted here as "no citation" even if it named a real source in words.',
+    whatItMeasures: {
+      en: 'Whether the LLM actually cites its sources using the [SO-<id>] format, and — more strictly — whether the ids it cites are real sources that were actually given to it in the retrieved context (rather than invented/hallucinated ids).',
+      id: 'Apakah LLM benar-benar mengutip sumbernya menggunakan format [SO-<id>], dan — lebih ketat lagi — apakah id yang dikutip merupakan sumber nyata yang benar-benar diberikan dalam konteks yang diambil (bukan id yang dikarang/dihalusinasikan).',
+    },
+    howComputed: {
+      en: "A regex (CITATION_PATTERN) scans the LLM answer for citation-like tokens, tolerating minor format variation ([SO-1234], [SO:1234], [SO 1234], [SO thread 1234]) — this loose match produces has_citation/cited_source_ids. Separately, each matched id is cross-checked against the question_id set actually present in that answer's retrieved_context; only ids that are really there count toward has_valid_citation/valid_cited_source_ids. Shared by Condition B (only when --require-citation is on), C, and D — the exact same function is reused by all three so the comparison is apples-to-apples.",
+      id: "Sebuah regex (CITATION_PATTERN) memindai jawaban LLM untuk token mirip-sitasi, dengan toleransi variasi format kecil ([SO-1234], [SO:1234], [SO 1234], [SO thread 1234]) — pencocokan longgar ini menghasilkan has_citation/cited_source_ids. Secara terpisah, setiap id yang cocok diperiksa silang terhadap kumpulan question_id yang benar-benar ada di retrieved_context jawaban tersebut; hanya id yang benar-benar ada yang dihitung sebagai has_valid_citation/valid_cited_source_ids. Dipakai bersama oleh Kondisi B (hanya saat --require-citation aktif), C, dan D — fungsi yang persis sama dipakai ulang oleh ketiganya supaya perbandingannya setara.",
+    },
+    interpretationGuide: {
+      en: '% of answers with has_valid_citation = true, aggregated per run. Target for the thesis is 100% (every answer cites at least one real source) for conditions where citation is required. A gap between the loose has_citation % and the strict has_valid_citation % specifically indicates hallucinated citation ids (right format, wrong/nonexistent source).',
+      id: 'Persentase jawaban dengan has_valid_citation = true, diagregasi per run. Target untuk tesis ini adalah 100% (setiap jawaban mengutip minimal satu sumber nyata) untuk kondisi yang mewajibkan sitasi. Selisih antara persentase has_citation (longgar) dan has_valid_citation (ketat) secara spesifik menunjukkan id sitasi yang dihalusinasikan (format benar, sumber salah/tidak ada).',
+    },
+    limitations: {
+      en: 'Condition A produces no retrieved context at all, so this metric does not apply to it in the same sense — a "citation" from Condition A would necessarily reference nothing real, which is a different failure mode (fabrication from a blank slate) than B/C/D\'s failure mode (fabricating on top of real-but-unused context). That distinction is tracked separately as a "Fabricated Citation Rate" framing rather than as this metric. Also, the regex only detects the specific [SO-<id>] format this project defines — a model could cite sources in free text without matching the pattern, which would be undercounted here as "no citation" even if it named a real source in words.',
+      id: "Kondisi A tidak menghasilkan retrieved context sama sekali, sehingga metrik ini tidak berlaku dengan cara yang sama — sebuah 'sitasi' dari Kondisi A pasti merujuk pada sesuatu yang tidak nyata, yang merupakan mode kegagalan berbeda (karangan dari kekosongan) dibanding mode kegagalan B/C/D (mengarang di atas konteks nyata-tapi-tidak-dipakai). Perbedaan itu dilacak terpisah sebagai kerangka 'Fabricated Citation Rate', bukan sebagai bagian dari metrik ini. Selain itu, regex hanya mendeteksi format [SO-<id>] spesifik yang didefinisikan proyek ini — model bisa saja mengutip sumber dalam teks bebas tanpa cocok dengan pola tersebut, yang akan dihitung salah sebagai 'tidak ada sitasi' meski sebenarnya menyebut sumber nyata dalam kata-kata.",
+    },
     implementedIn: ['llm/citations.py', 'llm/prompts.py'],
     relatedTo: ['faithfulness-score'],
+    references: [
+      {
+        authors: 'Kamalipour, A. A.; Asadi, S.; Amiri Chimeh, M. M. —',
+        title:
+          'From vectors to knowledge graphs: A comprehensive analysis of modern retrieval-augmented generation architectures',
+        year: 2026,
+        venue: 'Computer Science Review, 61, Article 100925',
+        doi: '10.1016/j.cosrev.2026.100925',
+        relevance: {
+          id: 'Konsep attribution/citation-aware generation sebagai dasar validasi sitasi terhadap konteks yang diberikan.',
+          en: 'The attribution / citation-aware generation concept underlying citation validation against the given context.',
+        },
+      },
+    ],
   },
   {
     id: 'nf3-retrieval-latency',
     name: 'NF3 — Retrieval Latency',
     category: 'Efficiency',
     appliesTo: ['C', 'D'],
-    whatItMeasures:
-      'How long the retrieval step (before the LLM is even called) takes per question — a non-functional requirement specifically for the graph-based conditions, since their retrieval involves multiple sequential Neo4j/FAISS round-trips instead of one flat vector search.',
-    howComputed:
-      'Timed from immediately before entity anchoring/low-level retrieval starts to immediately after the fused context is ready (right before the prompt is built) — via time.time() deltas around the retrieval stages only. Explicitly excludes LLM generation time; it measures the graph/vector retrieval pipeline in isolation. Aggregated per run as mean and p95.',
+    whatItMeasures: {
+      en: 'How long the retrieval step (before the LLM is even called) takes per question — a non-functional requirement specifically for the graph-based conditions, since their retrieval involves multiple sequential Neo4j/FAISS round-trips instead of one flat vector search.',
+      id: 'Berapa lama tahap retrieval (sebelum LLM bahkan dipanggil) berlangsung per pertanyaan — kebutuhan non-fungsional khusus untuk kondisi berbasis graf, karena retrieval-nya melibatkan beberapa round-trip Neo4j/FAISS berurutan, bukan satu pencarian vektor datar.',
+    },
+    howComputed: {
+      en: 'Timed from immediately before entity anchoring/low-level retrieval starts to immediately after the fused context is ready (right before the prompt is built) — via time.time() deltas around the retrieval stages only. Explicitly excludes LLM generation time; it measures the graph/vector retrieval pipeline in isolation. Aggregated per run as mean and p95.',
+      id: 'Diukur waktunya mulai tepat sebelum entity anchoring/retrieval tingkat rendah dimulai hingga tepat setelah konteks gabungan siap (sesaat sebelum prompt dibangun) — melalui selisih time.time() di sekitar tahap retrieval saja. Secara eksplisit tidak menghitung waktu generasi LLM; hanya mengukur pipeline retrieval graf/vektor secara terisolasi. Diagregasi per run sebagai mean dan p95.',
+    },
     formula: 'retrieval_latency_sec = t_after_fusion - t_before_anchoring  (LLM call time NOT included)',
-    interpretationGuide:
-      'Target (NF3): average ≤15 seconds per question, checked against both the run-level average and p95. A per-question warning is logged if any single question exceeds 15s, even if the run average still passes.',
-    limitations:
-      'Measured on whatever hardware/network conditions the run happened to execute under (local Neo4j instance, local FAISS index) — not a controlled benchmark, so absolute numbers are not directly comparable across machines. It also only covers retrieval, not the LLM\'s response time, so it says nothing about total end-to-end answer latency a real user would experience.',
+    interpretationGuide: {
+      en: 'Target (NF3): average ≤15 seconds per question, checked against both the run-level average and p95. A per-question warning is logged if any single question exceeds 15s, even if the run average still passes.',
+      id: 'Target (NF3): rata-rata ≤15 detik per pertanyaan, diperiksa terhadap rata-rata tingkat run maupun p95. Peringatan per pertanyaan dicatat jika satu pertanyaan mana pun melebihi 15 detik, meskipun rata-rata run masih lolos.',
+    },
+    limitations: {
+      en: "Measured on whatever hardware/network conditions the run happened to execute under (local Neo4j instance, local FAISS index) — not a controlled benchmark, so absolute numbers are not directly comparable across machines. It also only covers retrieval, not the LLM's response time, so it says nothing about total end-to-end answer latency a real user would experience.",
+      id: 'Diukur pada kondisi hardware/jaringan apa pun yang kebetulan berlaku saat run dijalankan (instance Neo4j lokal, indeks FAISS lokal) — bukan benchmark terkontrol, sehingga angka absolut tidak bisa dibandingkan langsung antar mesin. Metrik ini juga hanya mencakup retrieval, bukan waktu respons LLM, sehingga tidak mengatakan apa-apa tentang total latensi jawaban end-to-end yang dialami pengguna sungguhan.',
+    },
     implementedIn: ['llm/c_graphrag/c_graphrag.py', 'llm/d_lightrag/d_lightrag.py'],
   },
   {
@@ -93,49 +188,140 @@ export const EVALUATION_METRICS: EvaluationMetric[] = [
     name: 'Hallucination Rate (3-class)',
     category: 'Hallucination & Faithfulness',
     appliesTo: ['A', 'B', 'C', 'D'],
-    whatItMeasures:
-      'A post-hoc judgment of how much of the LLM\'s answer is factually sound versus fabricated or contradictory, expressed as one of three categorical labels rather than a single blended score.',
-    howComputed:
-      'Computed entirely separately from the generator run, by llm/evaluation/llm_judge_hallucination.py reading an already-completed result file and sending each question to a second LLM acting as an impartial judge (never told which condition/provider/model produced the answer being judged, to avoid identity-based bias). Two judging modes are selected automatically from --condition: "no_context" for Condition A (no retrieved_context exists, so the judge falls back to its own general knowledge plus the reference answer), and "context_grounded" for B/C/D (the judge checks the answer against the exact retrieved_context that generator run actually used). The label is FAKTUAL, HALUSINASI_SEBAGIAN, or HALUSINASI_PENUH. When --majority-rounds > 1, the judge is called that many times at the same temperature and the majority-vote label is kept (not an average).',
-    interpretationGuide:
-      '% distribution across the three labels per run (pct_faktual / pct_halusinasi_sebagian / pct_halusinasi_penuh). Higher %FAKTUAL and lower %HALUSINASI_PENUH is better. Because mode differs by condition (A vs B/C/D), only compare hallucination rate WITHIN the same mode meaningfully, or note the mode difference explicitly when comparing across it.',
-    limitations:
-      'This is an LLM\'s subjective judgment, not ground truth — it inherits whatever biases the judge model has, including self-enhancement bias (a judge may rate answers from a similar model/family more favorably) and sensitivity to phrasing/position. This is exactly why a secondary judge + Cohen\'s Kappa validation exists: a single judge\'s labels should not be trusted at face value without checking inter-rater agreement (see the Cohen\'s Kappa entry).',
+    whatItMeasures: {
+      en: "A post-hoc judgment of how much of the LLM's answer is factually sound versus fabricated or contradictory, expressed as one of three categorical labels rather than a single blended score.",
+      id: 'Penilaian post-hoc seberapa banyak jawaban LLM yang faktual dibanding yang dikarang atau kontradiktif, dinyatakan sebagai salah satu dari tiga label kategorikal, bukan satu skor gabungan tunggal.',
+    },
+    howComputed: {
+      en: 'Computed entirely separately from the generator run, by llm/evaluation/llm_judge_hallucination.py reading an already-completed result file and sending each question to a second LLM acting as an impartial judge (never told which condition/provider/model produced the answer being judged, to avoid identity-based bias). Two judging modes are selected automatically from --condition: "no_context" for Condition A (no retrieved_context exists, so the judge falls back to its own general knowledge plus the reference answer), and "context_grounded" for B/C/D (the judge checks the answer against the exact retrieved_context that generator run actually used). The label is FAKTUAL, HALUSINASI_SEBAGIAN, or HALUSINASI_PENUH. When --majority-rounds > 1, the judge is called that many times at the same temperature and the majority-vote label is kept (not an average).',
+      id: "Dihitung sepenuhnya terpisah dari run generator, oleh llm/evaluation/llm_judge_hallucination.py yang membaca file hasil yang sudah selesai dan mengirim setiap pertanyaan ke LLM kedua yang bertindak sebagai juri netral (tidak pernah diberi tahu kondisi/provider/model mana yang menghasilkan jawaban yang dinilai, untuk menghindari bias berbasis identitas). Dua mode penilaian dipilih otomatis dari --condition: 'no_context' untuk Kondisi A (tidak ada retrieved_context, sehingga juri kembali ke pengetahuan umumnya plus jawaban referensi), dan 'context_grounded' untuk B/C/D (juri memeriksa jawaban terhadap retrieved_context persis yang dipakai run generator). Labelnya adalah FAKTUAL, HALUSINASI_SEBAGIAN, atau HALUSINASI_PENUH. Saat --majority-rounds > 1, juri dipanggil sebanyak itu pada suhu yang sama dan label mayoritas-suara yang dipakai (bukan rata-rata).",
+    },
+    interpretationGuide: {
+      en: '% distribution across the three labels per run (pct_faktual / pct_halusinasi_sebagian / pct_halusinasi_penuh). Higher %FAKTUAL and lower %HALUSINASI_PENUH is better. Because mode differs by condition (A vs B/C/D), only compare hallucination rate WITHIN the same mode meaningfully, or note the mode difference explicitly when comparing across it.',
+      id: 'Distribusi persentase di antara tiga label per run (pct_faktual / pct_halusinasi_sebagian / pct_halusinasi_penuh). %FAKTUAL lebih tinggi dan %HALUSINASI_PENUH lebih rendah lebih baik. Karena mode berbeda antar kondisi (A vs B/C/D), bandingkan hallucination rate secara bermakna hanya dalam mode yang sama, atau catat perbedaan mode secara eksplisit saat membandingkan lintas mode.',
+    },
+    limitations: {
+      en: "This is an LLM's subjective judgment, not ground truth — it inherits whatever biases the judge model has, including self-enhancement bias (a judge may rate answers from a similar model/family more favorably) and sensitivity to phrasing/position. This is exactly why a secondary judge + Cohen's Kappa validation exists: a single judge's labels should not be trusted at face value without checking inter-rater agreement (see the Cohen's Kappa entry).",
+      id: "Ini adalah penilaian subjektif sebuah LLM, bukan ground truth — mewarisi bias apa pun yang dimiliki model juri, termasuk self-enhancement bias (juri mungkin menilai jawaban dari model/keluarga yang mirip lebih menguntungkan) dan sensitivitas terhadap redaksi/posisi. Inilah sebabnya validasi juri kedua + Cohen's Kappa ada: label dari satu juri saja tidak boleh dipercaya begitu saja tanpa memeriksa kesepakatan antar-penilai (lihat entri Cohen's Kappa).",
+    },
     implementedIn: ['llm/evaluation/llm_judge_hallucination.py'],
     relatedTo: ['faithfulness-score', 'answer-relevance-score', 'cohens-kappa'],
+    references: [
+      {
+        authors:
+          'Gu, J.; Jiang, X.; Shi, Z.; Tan, H.; Zhai, X.; Xu, C.; Li, W.; Shen, Y.; Ma, S.; Liu, H.; Wang, S.; Zhang, K.; Lin, Z.; Zhang, B.; Ni, L.; Gao, W.; Wang, Y.; Guo, J. —',
+        title: 'A survey on LLM-as-a-judge',
+        year: 2026,
+        venue: 'The Innovation, 7(6), Article 101253',
+        doi: '10.1016/j.xinn.2025.101253',
+        relevance: {
+          id: 'Metodologi scoring terstruktur, mitigasi bias evaluator, dan strategi majority voting yang diadopsi di desain judge.',
+          en: "The structured scoring methodology, evaluator bias mitigation, and majority-voting strategy adopted in the judge's design.",
+        },
+      },
+      {
+        authors:
+          'Ji, Z.; Lee, N.; Frieske, R.; Yu, T.; Su, D.; Xu, Y.; Ishii, E.; Bang, Y. J.; Madotto, A.; Fung, P. —',
+        title: 'Survey of Hallucination in Natural Language Generation',
+        year: 2023,
+        venue: 'ACM Computing Surveys, 55(12), Article 248',
+        doi: '10.1145/3571730',
+        relevance: {
+          id: 'Taksonomi kelas hallucination yang jadi dasar skema 3-kelas FAKTUAL/HALUSINASI_SEBAGIAN/HALUSINASI_PENUH.',
+          en: 'The hallucination class taxonomy underlying the 3-class FAKTUAL/HALUSINASI_SEBAGIAN/HALUSINASI_PENUH scheme.',
+        },
+      },
+      {
+        authors:
+          'Huang, L.; Yu, W.; Ma, W.; Zhong, W.; Feng, Z.; Wang, H.; Chen, Q.; Peng, W.; Feng, X.; Qin, B.; Liu, T. —',
+        title:
+          'A Survey on Hallucination in Large Language Models: Principles, Taxonomy, Challenges, and Open Questions',
+        year: 2025,
+        venue: 'ACM Transactions on Information Systems, 43(2), Article 42',
+        doi: '10.1145/3703155',
+        relevance: {
+          id: 'Taksonomi kelas hallucination yang jadi dasar skema 3-kelas FAKTUAL/HALUSINASI_SEBAGIAN/HALUSINASI_PENUH.',
+          en: 'The hallucination class taxonomy underlying the 3-class FAKTUAL/HALUSINASI_SEBAGIAN/HALUSINASI_PENUH scheme.',
+        },
+      },
+    ],
   },
   {
     id: 'faithfulness-score',
     name: 'Faithfulness Score',
     category: 'Hallucination & Faithfulness',
     appliesTo: ['B', 'C', 'D'],
-    whatItMeasures:
-      'The fraction of factual claims in the LLM\'s answer that are actually supported by the context it was given — a groundedness check, independent of whether those claims happen to also match the ground-truth answer.',
-    howComputed:
-      'The same LLM-as-judge call that produces the hallucination label also returns faithfulness_score (0.0–1.0) in "context_grounded" mode: the judge is instructed to check every claim in the answer against the given retrieved_context and report the fraction that is supported. When --majority-rounds > 1, the median across rounds is kept (not the mean).',
+    whatItMeasures: {
+      en: "The fraction of factual claims in the LLM's answer that are actually supported by the context it was given — a groundedness check, independent of whether those claims happen to also match the ground-truth answer.",
+      id: 'Fraksi klaim faktual dalam jawaban LLM yang benar-benar didukung oleh konteks yang diberikan — pemeriksaan groundedness, terlepas dari apakah klaim tersebut juga sesuai dengan jawaban ground-truth.',
+    },
+    howComputed: {
+      en: 'The same LLM-as-judge call that produces the hallucination label also returns faithfulness_score (0.0–1.0) in "context_grounded" mode: the judge is instructed to check every claim in the answer against the given retrieved_context and report the fraction that is supported. When --majority-rounds > 1, the median across rounds is kept (not the mean).',
+      id: "Panggilan LLM-as-judge yang sama yang menghasilkan label hallucination juga mengembalikan faithfulness_score (0.0–1.0) dalam mode 'context_grounded': juri diinstruksikan memeriksa setiap klaim dalam jawaban terhadap retrieved_context yang diberikan dan melaporkan fraksi yang didukung. Saat --majority-rounds > 1, median antar ronde yang dipakai (bukan mean).",
+    },
     formula: 'faithfulness_score ≈ (# claims supported by retrieved_context) / (total # claims in the answer)',
-    interpretationGuide:
-      '0.0–1.0, higher is better; 1.0 means every claim in the answer is traceable to the given context. Mean faithfulness_score is reported per run.',
-    limitations:
-      'Not applicable to Condition A by definition — there is no retrieved_context for A to be faithful to, so this field is always null for Condition A rather than a low score (a null result is a different thing from a bad result and must not be treated as 0). It is also possible for an answer to be highly faithful to its context yet still wrong, if the retrieved context itself was misleading or irrelevant — faithfulness measures grounding, not correctness.',
+    interpretationGuide: {
+      en: '0.0–1.0, higher is better; 1.0 means every claim in the answer is traceable to the given context. Mean faithfulness_score is reported per run.',
+      id: '0.0–1.0, semakin tinggi semakin baik; 1.0 berarti setiap klaim dalam jawaban bisa ditelusuri ke konteks yang diberikan. Mean faithfulness_score dilaporkan per run.',
+    },
+    limitations: {
+      en: 'Not applicable to Condition A by definition — there is no retrieved_context for A to be faithful to, so this field is always null for Condition A rather than a low score (a null result is a different thing from a bad result and must not be treated as 0). It is also possible for an answer to be highly faithful to its context yet still wrong, if the retrieved context itself was misleading or irrelevant — faithfulness measures grounding, not correctness.',
+      id: 'Tidak berlaku untuk Kondisi A menurut definisi — tidak ada retrieved_context bagi A untuk dipatuhi, sehingga field ini selalu null untuk Kondisi A, bukan skor rendah (hasil null adalah hal yang berbeda dari hasil buruk dan tidak boleh diperlakukan sebagai 0). Jawaban juga bisa sangat setia pada konteksnya namun tetap salah, jika konteks yang diambil itu sendiri menyesatkan atau tidak relevan — faithfulness mengukur groundedness, bukan kebenaran.',
+    },
     implementedIn: ['llm/evaluation/llm_judge_hallucination.py'],
     relatedTo: ['nf2-citation-validity', 'hallucination-rate'],
+    references: [
+      {
+        authors: 'Kamalipour, A. A.; Asadi, S.; Amiri Chimeh, M. M. —',
+        title:
+          'From vectors to knowledge graphs: A comprehensive analysis of modern retrieval-augmented generation architectures',
+        year: 2026,
+        venue: 'Computer Science Review, 61, Article 100925',
+        doi: '10.1016/j.cosrev.2026.100925',
+        relevance: {
+          id: 'Dimensi Groundedness/Faithfulness dalam kerangka RAGAS.',
+          en: 'The Groundedness/Faithfulness dimension within the RAGAS framework.',
+        },
+      },
+    ],
   },
   {
     id: 'answer-relevance-score',
     name: 'Answer Relevance Score',
     category: 'Hallucination & Faithfulness',
     appliesTo: ['A', 'B', 'C', 'D'],
-    whatItMeasures:
-      'How directly and completely the answer addresses what the question actually asked — separate from whether the content is factually correct.',
-    howComputed:
-      'Returned by the same LLM-as-judge call (both judging modes) as answer_relevance_score (0.0–1.0), evaluated regardless of the factual-correctness assessment. Mean answer_relevance_score is reported per run.',
-    interpretationGuide:
-      '0.0–1.0, higher is better. A low relevance score with a high faithfulness/FAKTUAL label would flag an answer that is accurate but off-topic or incomplete relative to what was actually asked.',
-    limitations:
-      'Like the hallucination label, this is a judge LLM\'s subjective call, not a deterministic measurement — it is exposed to the same judge-model biases described under Hallucination Rate.',
+    whatItMeasures: {
+      en: 'How directly and completely the answer addresses what the question actually asked — separate from whether the content is factually correct.',
+      id: 'Seberapa langsung dan lengkap jawaban menjawab apa yang sebenarnya ditanyakan — terpisah dari apakah kontennya benar secara faktual.',
+    },
+    howComputed: {
+      en: 'Returned by the same LLM-as-judge call (both judging modes) as answer_relevance_score (0.0–1.0), evaluated regardless of the factual-correctness assessment. Mean answer_relevance_score is reported per run.',
+      id: 'Dikembalikan oleh panggilan LLM-as-judge yang sama (kedua mode penilaian) sebagai answer_relevance_score (0.0–1.0), dinilai terlepas dari penilaian kebenaran faktual. Mean answer_relevance_score dilaporkan per run.',
+    },
+    interpretationGuide: {
+      en: '0.0–1.0, higher is better. A low relevance score with a high faithfulness/FAKTUAL label would flag an answer that is accurate but off-topic or incomplete relative to what was actually asked.',
+      id: '0.0–1.0, semakin tinggi semakin baik. Skor relevansi rendah dengan label faithfulness/FAKTUAL tinggi akan menandai jawaban yang akurat tapi di luar topik atau tidak lengkap relatif terhadap apa yang sebenarnya ditanyakan.',
+    },
+    limitations: {
+      en: "Like the hallucination label, this is a judge LLM's subjective call, not a deterministic measurement — it is exposed to the same judge-model biases described under Hallucination Rate.",
+      id: 'Seperti label hallucination, ini adalah penilaian subjektif LLM juri, bukan pengukuran deterministik — terpapar bias model-juri yang sama seperti yang dijelaskan di Hallucination Rate.',
+    },
     implementedIn: ['llm/evaluation/llm_judge_hallucination.py'],
     relatedTo: ['cosine-similarity', 'hallucination-rate'],
+    references: [
+      {
+        authors: 'Kamalipour, A. A.; Asadi, S.; Amiri Chimeh, M. M. —',
+        title:
+          'From vectors to knowledge graphs: A comprehensive analysis of modern retrieval-augmented generation architectures',
+        year: 2026,
+        venue: 'Computer Science Review, 61, Article 100925',
+        doi: '10.1016/j.cosrev.2026.100925',
+        relevance: {
+          id: 'Dimensi Answer Relevance dalam kerangka RAGAS.',
+          en: 'The Answer Relevance dimension within the RAGAS framework.',
+        },
+      },
+    ],
   },
   {
     id: 'cohens-kappa',
@@ -143,50 +329,115 @@ export const EVALUATION_METRICS: EvaluationMetric[] = [
     category: 'Hallucination & Faithfulness',
     appliesTo: ['A', 'B', 'C', 'D'],
     isValidationMetric: true,
-    whatItMeasures:
-      'Whether the primary judge\'s hallucination-label verdicts are reliable, by checking how much a second, independent judge agrees with them on the same questions — a validation check ON the judging process itself, not a metric of any one condition\'s answer quality.',
-    howComputed:
-      'A random subsample (fixed seed) of already-judged questions is re-judged by a "secondary" judge (a different provider/model, ideally), and Cohen\'s Kappa is computed between the two judges\' hallucination_label values via sklearn\'s cohen_kappa_score over the 3-class label set. If the primary and secondary judge are configured with the identical provider+model, a warning is printed explicitly, since that setup cannot detect self-enhancement bias — it only measures the judge\'s own run-to-run variance.',
+    whatItMeasures: {
+      en: "Whether the primary judge's hallucination-label verdicts are reliable, by checking how much a second, independent judge agrees with them on the same questions — a validation check ON the judging process itself, not a metric of any one condition's answer quality.",
+      id: 'Apakah vonis label-hallucination dari juri utama dapat diandalkan, dengan memeriksa seberapa banyak juri kedua yang independen setuju dengannya pada pertanyaan yang sama — pemeriksaan validasi PADA proses penilaian itu sendiri, bukan metrik kualitas jawaban salah satu kondisi.',
+    },
+    howComputed: {
+      en: "A random subsample (fixed seed) of already-judged questions is re-judged by a \"secondary\" judge (a different provider/model, ideally), and Cohen's Kappa is computed between the two judges' hallucination_label values via sklearn's cohen_kappa_score over the 3-class label set. If the primary and secondary judge are configured with the identical provider+model, a warning is printed explicitly, since that setup cannot detect self-enhancement bias — it only measures the judge's own run-to-run variance.",
+      id: "Subsampel acak (seed tetap) dari pertanyaan yang sudah dinilai dinilai ulang oleh juri 'sekunder' (idealnya provider/model berbeda), dan Cohen's Kappa dihitung antara nilai hallucination_label kedua juri melalui cohen_kappa_score dari sklearn pada set label 3-kelas. Jika juri utama dan sekunder dikonfigurasi dengan provider+model yang identik, peringatan dicetak secara eksplisit, karena pengaturan tersebut tidak bisa mendeteksi self-enhancement bias — hanya mengukur variansi run-ke-run juri itu sendiri.",
+    },
     formula: 'κ computed via sklearn.metrics.cohen_kappa_score(primary_labels, secondary_labels, labels=[FAKTUAL, HALUSINASI_SEBAGIAN, HALUSINASI_PENUH])',
-    interpretationGuide:
-      'Interpreted with 4 bands (a simplified collapse of the original 6-band Landis & Koch 1977 scale, used as-is per this project\'s convention): < 0.4 weak, 0.4–0.6 moderate, 0.6–0.8 substantial, > 0.8 almost perfect agreement.',
-    limitations:
-      'If the primary and secondary judge are the same model, a high kappa only shows the judge is internally consistent with itself — it says nothing about whether its judgments are actually correct or free of self-enhancement bias. Kappa also only validates the categorical hallucination_label, not the numeric faithfulness/relevance scores, and is computed on a small random subsample (kappa_sample_size, default 50) rather than the full dataset, for cost reasons — it is a spot-check, not exhaustive validation.',
+    interpretationGuide: {
+      en: "Interpreted with 4 bands (a simplified collapse of the original 6-band Landis & Koch 1977 scale, used as-is per this project's convention): < 0.4 weak, 0.4–0.6 moderate, 0.6–0.8 substantial, > 0.8 almost perfect agreement.",
+      id: 'Diinterpretasikan dengan 4 pita (penyederhanaan dari skala 6-pita asli Landis & Koch 1977, dipakai apa adanya sesuai konvensi proyek ini): < 0.4 lemah, 0.4–0.6 moderat, 0.6–0.8 kuat, > 0.8 hampir sempurna.',
+    },
+    limitations: {
+      en: "If the primary and secondary judge are the same model, a high kappa only shows the judge is internally consistent with itself — it says nothing about whether its judgments are actually correct or free of self-enhancement bias. Kappa also only validates the categorical hallucination_label, not the numeric faithfulness/relevance scores, and is computed on a small random subsample (kappa_sample_size, default 50) rather than the full dataset, for cost reasons — it is a spot-check, not exhaustive validation. Qualitative kappa interpretation (>0.8 almost perfect, 0.6-0.8 substantial, 0.4-0.6 moderate, <0.4 weak) follows the common convention also used in similar GraphRAG evaluations (see reference).",
+      id: "Jika juri utama dan sekunder adalah model yang sama, kappa yang tinggi hanya menunjukkan juri konsisten secara internal dengan dirinya sendiri — tidak mengatakan apa-apa tentang apakah penilaiannya benar-benar tepat atau bebas dari self-enhancement bias. Kappa juga hanya memvalidasi hallucination_label kategorikal, bukan skor numerik faithfulness/relevance, dan dihitung pada subsampel acak kecil (kappa_sample_size, default 50), bukan seluruh dataset, karena alasan biaya — ini adalah spot-check, bukan validasi menyeluruh. Interpretasi kualitatif kappa (>0.8 sangat kuat, 0.6-0.8 kuat, 0.4-0.6 moderat, <0.4 lemah) mengikuti konvensi umum yang juga dipakai pada evaluasi GraphRAG serupa (lihat referensi).",
+    },
     implementedIn: ['llm/evaluation/llm_judge_hallucination.py'],
     relatedTo: ['hallucination-rate'],
+    references: [
+      {
+        authors: 'Oarga, A.; Hart, M.; Bran, A. M.; Lederbauer, M.; Schwaller, P. —',
+        title: 'Scientific knowledge graph and ontology generation using open large language models',
+        year: 2026,
+        venue: 'Digital Discovery, 5, 1269–1279',
+        doi: '10.1039/d5dd00275c',
+        relevance: {
+          id: "Menggunakan Cohen's Kappa untuk mengukur inter-rater reliability antara evaluasi manusia dan evaluasi LLM pada pipeline GraphRAG (k=0.52, 'moderate agreement') — preseden metodologis langsung untuk desain validasi judge utama vs secondary judge di penelitian ini.",
+          en: "Uses Cohen's Kappa to measure inter-rater reliability between human evaluation and LLM evaluation on a GraphRAG pipeline (k=0.52, 'moderate agreement') — a direct methodological precedent for this study's primary-vs-secondary judge validation design.",
+        },
+      },
+    ],
   },
   {
     id: 'precision-at-k',
     name: 'Precision@k',
     category: 'Retrieval Quality',
     appliesTo: ['B', 'C', 'D'],
-    whatItMeasures:
-      'Of the items actually retrieved for a question (up to top-k), what fraction are judged relevant to that question.',
-    howComputed:
-      'Computed entirely post-hoc from an already-completed result file\'s retrieved_context field, via analyze_retrieval_quality.py — no new retrieval or LLM calls. Relevance is a PROXY: an item is considered relevant if the Jaccard tag overlap between the evaluation question\'s tags and the retrieved item\'s source question\'s tags exceeds --tag-overlap-threshold (default 0.0, i.e. at least one shared tag). Precision is computed over the number of items ACTUALLY retrieved for that question (which can be less than top-k if retrieval came back short), not a fixed denominator.',
+    whatItMeasures: {
+      en: 'Of the items actually retrieved for a question (up to top-k), what fraction are judged relevant to that question.',
+      id: 'Dari item yang benar-benar diambil untuk sebuah pertanyaan (hingga top-k), berapa fraksi yang dinilai relevan terhadap pertanyaan tersebut.',
+    },
+    howComputed: {
+      en: "Computed entirely post-hoc from an already-completed result file's retrieved_context field, via analyze_retrieval_quality.py — no new retrieval or LLM calls. Relevance is a PROXY: an item is considered relevant if the Jaccard tag overlap between the evaluation question's tags and the retrieved item's source question's tags exceeds --tag-overlap-threshold (default 0.0, i.e. at least one shared tag). Precision is computed over the number of items ACTUALLY retrieved for that question (which can be less than top-k if retrieval came back short), not a fixed denominator.",
+      id: 'Dihitung sepenuhnya post-hoc dari field retrieved_context sebuah file hasil yang sudah selesai, melalui analyze_retrieval_quality.py — tanpa retrieval atau panggilan LLM baru. Relevansi adalah PROKSI: sebuah item dianggap relevan jika overlap tag Jaccard antara tag pertanyaan evaluasi dan tag pertanyaan sumber item yang diambil melebihi --tag-overlap-threshold (default 0.0, yaitu minimal satu tag yang sama). Precision dihitung atas jumlah item yang BENAR-BENAR diambil untuk pertanyaan tersebut (yang bisa lebih sedikit dari top-k jika retrieval kembali dengan hasil kurang), bukan penyebut tetap.',
+    },
     formula: 'precision@k = (# retrieved items judged relevant) / (# items actually retrieved, ≤ k)',
-    interpretationGuide:
-      '0.0–1.0, higher is better, reported as mean/median per result file. A precision noticeably below what you\'d expect from the tag-overlap baseline may indicate the retrieval mechanism is surfacing off-topic context.',
-    limitations:
-      'Relevance here is a TAG-OVERLAP PROXY, not a human relevance judgment — two questions can share tags without being substantively related, or be substantively related without sharing any tag, so this number should be read as a rough signal, not ground truth. It also only evaluates within the top-k that was actually returned; it says nothing about relevant items that existed but were never retrieved at all (that is what Recall@k would measure, and Recall@k is explicitly NOT implemented yet — see analyze_retrieval_quality.py\'s docstring for why).',
+    interpretationGuide: {
+      en: "0.0–1.0, higher is better, reported as mean/median per result file. A precision noticeably below what you'd expect from the tag-overlap baseline may indicate the retrieval mechanism is surfacing off-topic context.",
+      id: 'Skala 0.0–1.0, semakin tinggi semakin baik, dilaporkan sebagai mean/median per file hasil. Precision yang jauh di bawah ekspektasi baseline tag-overlap bisa menandakan mekanisme retrieval menampilkan konteks yang tidak relevan.',
+    },
+    limitations: {
+      en: "Relevance here is a TAG-OVERLAP PROXY, not a human relevance judgment — two questions can share tags without being substantively related, or be substantively related without sharing any tag, so this number should be read as a rough signal, not ground truth. It also only evaluates within the top-k that was actually returned; it says nothing about relevant items that existed but were never retrieved at all (that is what Recall@k would measure, and Recall@k is explicitly NOT implemented yet — see analyze_retrieval_quality.py's docstring for why).",
+      id: "Relevansi di sini adalah PROKSI TAG-OVERLAP, bukan penilaian relevansi manusia — dua pertanyaan bisa berbagi tag tanpa benar-benar terkait, atau benar-benar terkait tanpa berbagi tag sama sekali, sehingga angka ini harus dibaca sebagai sinyal kasar, bukan ground truth. Metrik ini juga hanya mengevaluasi dalam top-k yang benar-benar dikembalikan; tidak mengatakan apa-apa tentang item relevan yang ada tapi tidak pernah diambil sama sekali (itulah yang akan diukur Recall@k, dan Recall@k secara eksplisit BELUM diimplementasikan — lihat docstring analyze_retrieval_quality.py untuk alasannya).",
+    },
     implementedIn: ['analyze_retrieval_quality.py'],
     relatedTo: ['mrr-at-k'],
+    references: [
+      {
+        authors: 'Kamalipour, A. A.; Asadi, S.; Amiri Chimeh, M. M. —',
+        title:
+          'From vectors to knowledge graphs: A comprehensive analysis of modern retrieval-augmented generation architectures',
+        year: 2026,
+        venue: 'Computer Science Review, 61, Article 100925',
+        doi: '10.1016/j.cosrev.2026.100925',
+        relevance: {
+          id: 'Bagian 6.1.1 Retrieval Relevance — Precision@K, Recall@K, MRR sebagai metrik standar evaluasi retrieval RAG.',
+          en: 'Section 6.1.1 Retrieval Relevance — Precision@K, Recall@K, MRR as standard RAG retrieval evaluation metrics.',
+        },
+      },
+    ],
   },
   {
     id: 'mrr-at-k',
     name: 'MRR@k (Mean Reciprocal Rank)',
     category: 'Retrieval Quality',
     appliesTo: ['B', 'C', 'D'],
-    whatItMeasures:
-      'How near the top of the ranked retrieved list the FIRST relevant item appears — rewards retrieval that surfaces a good item early, not just eventually.',
-    howComputed:
-      'Also computed post-hoc by analyze_retrieval_quality.py from retrieved_context, using the SAME tag-overlap relevance proxy as Precision@k. Walks the retrieved_context list in its original ranked order (never re-sorted) and takes the reciprocal of the rank (1-indexed) of the first item judged relevant; 0.0 if none of the retrieved items are relevant.',
+    whatItMeasures: {
+      en: 'How near the top of the ranked retrieved list the FIRST relevant item appears — rewards retrieval that surfaces a good item early, not just eventually.',
+      id: 'Seberapa dekat ke puncak daftar hasil retrieval terurut item relevan PERTAMA muncul — memberi nilai lebih pada retrieval yang menampilkan item baik lebih awal, bukan sekadar suatu saat.',
+    },
+    howComputed: {
+      en: 'Also computed post-hoc by analyze_retrieval_quality.py from retrieved_context, using the SAME tag-overlap relevance proxy as Precision@k. Walks the retrieved_context list in its original ranked order (never re-sorted) and takes the reciprocal of the rank (1-indexed) of the first item judged relevant; 0.0 if none of the retrieved items are relevant.',
+      id: 'Juga dihitung post-hoc oleh analyze_retrieval_quality.py dari retrieved_context, menggunakan proksi relevansi tag-overlap yang SAMA seperti Precision@k. Menelusuri daftar retrieved_context dalam urutan ranking aslinya (tidak pernah diurutkan ulang) dan mengambil kebalikan dari rank (berbasis 1) item pertama yang dinilai relevan; 0.0 jika tidak ada item yang diambil yang relevan.',
+    },
     formula: 'mrr@k = 1 / rank_of_first_relevant_item   (0.0 if no relevant item was retrieved at all)',
-    interpretationGuide:
-      '0.0–1.0, higher is better. A value of 1.0 means the very first retrieved item was already relevant; a low value with high Precision@k would suggest relevant items are being retrieved but ranked poorly.',
-    limitations:
-      'Same tag-overlap-proxy caveat as Precision@k applies — relevance is not human-verified. MRR also only cares about the FIRST relevant hit and ignores everything about the rest of the ranking, so two very differently-ranked result sets can have identical MRR if their first relevant item lands at the same rank.',
+    interpretationGuide: {
+      en: '0.0–1.0, higher is better. A value of 1.0 means the very first retrieved item was already relevant; a low value with high Precision@k would suggest relevant items are being retrieved but ranked poorly.',
+      id: 'Skala 0.0–1.0, semakin tinggi semakin baik. Nilai 1.0 berarti item pertama yang diambil sudah relevan; nilai rendah dengan Precision@k tinggi menunjukkan item relevan berhasil diambil tapi rankingnya buruk.',
+    },
+    limitations: {
+      en: 'Same tag-overlap-proxy caveat as Precision@k applies — relevance is not human-verified. MRR also only cares about the FIRST relevant hit and ignores everything about the rest of the ranking, so two very differently-ranked result sets can have identical MRR if their first relevant item lands at the same rank.',
+      id: 'Caveat proksi tag-overlap yang sama seperti Precision@k berlaku — relevansi tidak diverifikasi manusia. MRR juga hanya peduli pada hit relevan PERTAMA dan mengabaikan sisa ranking, sehingga dua hasil dengan ranking yang sangat berbeda bisa memiliki MRR identik jika item relevan pertamanya berada di rank yang sama.',
+    },
     implementedIn: ['analyze_retrieval_quality.py'],
     relatedTo: ['precision-at-k'],
+    references: [
+      {
+        authors: 'Kamalipour, A. A.; Asadi, S.; Amiri Chimeh, M. M. —',
+        title:
+          'From vectors to knowledge graphs: A comprehensive analysis of modern retrieval-augmented generation architectures',
+        year: 2026,
+        venue: 'Computer Science Review, 61, Article 100925',
+        doi: '10.1016/j.cosrev.2026.100925',
+        relevance: {
+          id: 'Bagian 6.1.1 Retrieval Relevance — Precision@K, Recall@K, MRR sebagai metrik standar evaluasi retrieval RAG.',
+          en: 'Section 6.1.1 Retrieval Relevance — Precision@K, Recall@K, MRR as standard RAG retrieval evaluation metrics.',
+        },
+      },
+    ],
   },
 ]
