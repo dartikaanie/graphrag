@@ -109,6 +109,12 @@ class RunCreateRequest(BaseModel):
     # True (default): dual-constraint grounding+citation. False: citation
     # instruction only, no "don't introduce facts outside the context" rule.
     require_grounding: bool | None = True
+    # Condition B and C only -- opt-in, see analyze_retrieval_quality.py's
+    # docstring ("KENAPA TIDAK ADA RECALL@k") for why this exists: persists
+    # all_candidate_question_ids (the full candidate pool BEFORE the top-k
+    # cutoff) into each record, enabling real Recall@k on a FUTURE run of
+    # that analysis script. Does not affect retrieval/ranking/prompt at all.
+    log_full_candidates: bool = False
     # single mode
     question_id: int | None = None
     # shared

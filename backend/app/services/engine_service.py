@@ -307,6 +307,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
     index_pool = 8000
     token_chunk_limit = 400
     embed_model_name = "all-MiniLM-L6-v2"
+    log_full_candidates = bool(params.get("log_full_candidates"))
 
     try:
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
@@ -354,7 +355,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, top_k, model, output_path, already_done,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
-            require_citation=require_citation,
+            require_citation=require_citation, log_full_candidates=log_full_candidates,
         )
 
         cancelled = run_registry.is_cancelled(run_id)
@@ -380,6 +381,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             "n_processed": len(results),
             "seed": seed,
             "require_citation": require_citation,
+            "log_full_candidates": log_full_candidates,
             "index_pool": index_pool,
             "top_k": top_k,
             "output_path": str(output_path),
@@ -420,6 +422,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     require_grounding = True if require_grounding is None else bool(require_grounding)
     enable_semantic_expansion = params.get("enable_semantic_expansion")
     enable_semantic_expansion = True if enable_semantic_expansion is None else bool(enable_semantic_expansion)
+    log_full_candidates = bool(params.get("log_full_candidates"))
     token_chunk_limit = 400
 
     driver = None
@@ -470,6 +473,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
             semantic_expansion_trust_cap=semantic_expansion_trust_cap,
             require_grounding=require_grounding, enable_semantic_expansion=enable_semantic_expansion,
+            log_full_candidates=log_full_candidates,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
         )
 
@@ -506,6 +510,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "semantic_expansion_trust_cap": semantic_expansion_trust_cap,
             "require_grounding": require_grounding,
             "enable_semantic_expansion": enable_semantic_expansion,
+            "log_full_candidates": log_full_candidates,
             "output_path": str(output_path),
             "duration_sec": duration,
             "source": "dashboard",

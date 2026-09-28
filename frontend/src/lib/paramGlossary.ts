@@ -32,6 +32,8 @@ export const PARAM_GLOSSARY = {
     'Whether the LLM is instructed to ground its answer ONLY in the retrieved context, in addition to citing sources. Turning this off keeps the citation instruction but drops the "don’t introduce facts outside the context" constraint — isolating the effect of the grounding constraint itself.',
   enable_semantic_expansion:
     'Whether the semantic expansion stage runs at all. When off, retrieval is limited to entity anchoring + graph traversal only (no second-round vector search from traversal results) — isolating the contribution of the semantic expansion stage itself.',
+  log_full_candidates:
+    'Condition B/C only. Persists the FULL candidate pool (every question considered before the top-k cutoff) into each record as all_candidate_question_ids, in addition to the top-k context actually sent to the LLM. Does not change retrieval, ranking, or the prompt at all — it only adds this extra field, enabling a real Recall@k (not just Precision@k/MRR@k) on this run in analyze_retrieval_quality.py. Off by default since it makes each record slightly larger.',
   judge_condition:
     'Which condition\'s (A/B/C/D) result file to evaluate. Determines the judging mode: Condition A has no retrieved context (faithfulness is not applicable), while B/C/D are judged against the exact context they retrieved.',
   judge_input_file:

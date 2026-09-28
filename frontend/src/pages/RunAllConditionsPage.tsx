@@ -41,7 +41,7 @@ export function RunAllConditionsPage() {
   const createRun = useCreateRun()
 
   const [mode, setMode] = useState<'batch' | 'single'>('batch')
-  const [nSample, setNSample] = useState(30)
+  const [nSample, setNSample] = useState(384)
   const [seed, setSeed] = useState(42)
   const [oversamplePool, setOversamplePool] = useState('')
   const [provider, setProvider] = useState('openai')
@@ -58,6 +58,7 @@ export function RunAllConditionsPage() {
   const [nLowLevel, setNLowLevel] = useState(3)
   const [nHighLevel, setNHighLevel] = useState(3)
   const [requireGrounding, setRequireGrounding] = useState(true)
+  const [logFullCandidates, setLogFullCandidates] = useState(false)
   const [questionId, setQuestionId] = useState('')
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,7 +79,9 @@ export function RunAllConditionsPage() {
     const paramsFor = (condition: 'A' | 'B' | 'C' | 'D'): RunCreateParams => ({
       condition,
       ...shared,
-      ...(condition === 'B' ? { top_k: topK, require_citation: requireCitation } : {}),
+      ...(condition === 'B'
+        ? { top_k: topK, require_citation: requireCitation, log_full_candidates: logFullCandidates }
+        : {}),
       ...(condition === 'C'
         ? {
             top_k: topK,
@@ -90,6 +93,7 @@ export function RunAllConditionsPage() {
             semantic_expansion_trust_cap: semanticExpansionTrustCap,
             enable_semantic_expansion: enableSemanticExpansion,
             require_grounding: requireGrounding,
+            log_full_candidates: logFullCandidates,
           }
         : {}),
       ...(condition === 'D'
@@ -234,6 +238,14 @@ export function RunAllConditionsPage() {
           <span className="text-text-secondary inline-flex items-center gap-1">
             Condition C/D: Grounding constraint
             <InfoTooltip text={PARAM_GLOSSARY.require_grounding} />
+          </span>
+        </label>
+
+        <label className="flex items-center gap-2 text-sm mt-2">
+          <input type="checkbox" checked={logFullCandidates} onChange={(e) => setLogFullCandidates(e.target.checked)} />
+          <span className="text-text-secondary inline-flex items-center gap-1">
+            Condition B/C: log_full_candidates (enable Recall@k on this run)
+            <InfoTooltip text={PARAM_GLOSSARY.log_full_candidates} />
           </span>
         </label>
 

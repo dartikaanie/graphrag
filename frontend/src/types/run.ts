@@ -27,6 +27,7 @@ export interface RunCreateParams {
   n_low_level?: number
   n_high_level?: number
   require_grounding?: boolean
+  log_full_candidates?: boolean
   question_id?: number | null
   provider: string
   model: string
