@@ -23,6 +23,14 @@ def get_history(
     }
 
 
+@router.get("/compare/consistency")
+def get_compare_consistency(ids: str = Query(..., description="Comma-separated history_id list, 2 or more")):
+    history_ids = [i for i in ids.split(",") if i]
+    if len(history_ids) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 history ids are required (comma-separated in `ids`)")
+    return svc.compute_sample_consistency(history_ids)
+
+
 @router.get("/{history_id}")
 def get_history_detail(history_id: str):
     detail = svc.get_history_detail(history_id)

@@ -49,6 +49,9 @@ export interface JudgeRun {
   summary: JudgeRunSummary | null
   error: string | null
   output_path: string | null
+  /** 1-based, only meaningful while status === "queued" -- judge runs are
+   * bounded by a separate semaphore from B/C/D, not the same queue. */
+  queue_position?: number | null
 }
 
 export interface JudgeAvailableInput {

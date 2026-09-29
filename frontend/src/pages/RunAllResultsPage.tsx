@@ -44,6 +44,8 @@ function ConditionColumn({ condition, runId }: { condition: RunCondition; runId:
           results={run.results}
           onStop={() => cancelRun.mutate(run.run_id)}
           stopping={cancelRun.isPending || run.cancel_requested}
+          status={run.status}
+          queuePosition={run.queue_position}
         />
       )}
 
@@ -83,9 +85,21 @@ export function RunAllResultsPage() {
     C: searchParams.get('c') ?? undefined,
     D: searchParams.get('d') ?? undefined,
   }
+  // "condition:message|condition:message" -- set by RunAllConditionsPage
+  // when Promise.allSettled found that SOME conditions failed to even
+  // submit (e.g. a validation error), while the others started fine.
+  const failedParam = searchParams.get('failed')
+  const failures = failedParam
+    ? failedParam.split('|').map((entry) => {
+        const [condition, ...rest] = entry.split(':')
+        return { condition: condition as RunCondition, message: rest.join(':') }
+      })
+    : []
 
-  if (!runIds.A || !runIds.B || !runIds.C || !runIds.D) {
-    return <div className="text-sm text-danger">Missing run ids — start a new comparison from "Run All Conditions".</div>
+  const startedConditions = (['A', 'B', 'C', 'D'] as const).filter((c) => runIds[c])
+
+  if (startedConditions.length === 0) {
+    return <div className="text-sm text-danger">No runs started — start a new comparison from "Run All Conditions".</div>
   }
 
   return (
@@ -95,13 +109,26 @@ export function RunAllResultsPage() {
           ← Back to Run All Conditions
         </Link>
       </div>
-      <h1 className="text-lg font-semibold text-text-primary mb-4">Comparing Condition A / B / C / D</h1>
+      <h1 className="text-lg font-semibold text-text-primary mb-2">Comparing Condition A / B / C / D</h1>
+
+      {failures.length > 0 && (
+        <div className="mb-4 px-3 py-2.5 rounded-md border border-danger/40 bg-white text-danger text-sm">
+          ⚠ {failures.length} of 4 condition{failures.length > 1 ? 's' : ''} failed to start — the others below are
+          still running normally.
+          <ul className="mt-1 ml-4 list-disc">
+            {failures.map((f) => (
+              <li key={f.condition}>
+                Condition {f.condition}: {f.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="flex gap-4 items-start">
-        <ConditionColumn condition="A" runId={runIds.A} />
-        <ConditionColumn condition="B" runId={runIds.B} />
-        <ConditionColumn condition="C" runId={runIds.C} />
-        <ConditionColumn condition="D" runId={runIds.D} />
+        {startedConditions.map((c) => (
+          <ConditionColumn key={c} condition={c} runId={runIds[c]!} />
+        ))}
       </div>
     </div>
   )

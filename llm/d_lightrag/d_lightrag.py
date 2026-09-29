@@ -98,6 +98,44 @@ ada di KG_WORKSPACE_DIR). Skrip ini TIDAK membangun ulang KG maupun edge
 densifikasi -- murni membaca graf & index yang sudah ada.
 
 Resumable, pola sama dgn Kondisi A/B/C.
+
+D_RETRIEVAL_VERSION
+------------------------------------------------------------
+"v1" = retrieve_high_level() HANYA query IS_RELATED_TO|TAG_COOCCUR (bug --
+       docstring fungsi itu sendiri menyatakan pola disalin dari
+       traverse_graph() Kondisi C termasuk EMBED_SIM, tapi EMBED_SIM
+       hilang dari Cypher-nya). Untuk anchor yang HANYA punya edge keluar
+       EMBED_SIM (cukup umum), high-level retrieval selalu kembali 0
+       kandidat meski C berhasil menemukan kandidat relevan via anchor yg
+       sama. Berlaku utk run SEBELUM fix ini -- run lama TIDAK menyimpan
+       field d_retrieval_version sama sekali.
+"v2" = EMBED_SIM ditambahkan ke pattern relationship retrieve_high_level(),
+       menyamakan cakupan edge dgn Kondisi C. TAPI retrieve_high_level()'s
+       ORDER BY relevance_score DESC LIMIT $n_high_level masih diterapkan
+       SEBELUM join ke jawaban -- utk anchor yg kandidatnya banyak berbobot
+       SAMA (EMBED_SIM weight konstan 0.4), LIMIT bisa "beruntungan"
+       memilih N kandidat yg semuanya TIDAK punya jawaban, membuang
+       kandidat lain yg punya jawaban tapi tidak masuk N teratas
+       (ditemukan lewat trace 3882147: 17 kandidat EMBED_SIM tersedia,
+       4 di antaranya punya jawaban, tapi LIMIT 3 SEBELUM join memilih
+       persis 3 yg tidak punya jawaban -> 0 hasil akhir).
+"v3" (D_RETRIEVAL_VERSION saat ini) = DUA fix ditambahkan di atas v2:
+       (a) retrieve_high_level() kini memfilter ke Question yg SUDAH
+           dipastikan punya jawaban (EXISTS {...}) SEBELUM ORDER BY/LIMIT
+           -- retrace 3882147: 0 -> 3 kandidat; 56612920: 2 -> 5 kandidat.
+       (b) SEMUA query ber-ORDER BY+LIMIT (retrieve_high_level) diberi
+           tie-break sekunder (q2.id ASC, a.id ASC); retrieve_low_level()
+           (sebelumnya TANPA ORDER BY sama sekali) diberi ORDER BY a.id ASC;
+           fuse_dual_level()'s Python sort memakai (-relevance_score,
+           answer_id) sbg key, bukan relevance_score saja -- membuat hasil
+           akhir deterministik/reproducible (dibuktikan lewat eksekusi
+           retrieval 2x pada 10 pertanyaan pilot, retrieved_context IDENTIK
+           di kedua run, utk seluruh 10 pertanyaan).
+       Ranking/skor/trust-freedom TIDAK diubah oleh (a) maupun (b) -- (a)
+       hanya mencegah slot LIMIT terbuang ke kandidat tanpa jawaban, (b)
+       hanya menentukan pemenang saat skor benar-benar sama (bukan mengubah
+       skor atau urutan berdasarkan skor berbeda). Direkam sbg field
+       `d_retrieval_version` di run_history.jsonl.
 """
 
 import argparse
@@ -126,9 +164,10 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
-from llm.prompts import build_lightrag_messages
+from llm.prompts import PROMPT_VERSION, build_lightrag_messages
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B/C
+D_RETRIEVAL_VERSION = "v3"  # lihat docstring modul ini bagian "D_RETRIEVAL_VERSION"
 EMBED_DIM = 384  # all-MiniLM-L6-v2, HARUS sama dgn 11_densify_embedding_similarity.py
 
 log = print
@@ -359,6 +398,7 @@ def retrieve_low_level(driver, database, anchors: list, exclude_answer_ids: set)
             RETURN anchor_id AS via_question_id, anchor.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, 1 AS hop,
                    type(r) AS rel_type
+            ORDER BY a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_a=exclude_a,
         )
@@ -371,9 +411,26 @@ def retrieve_low_level(driver, database, anchors: list, exclude_answer_ids: set)
 
 
 # ---------------------------------------------------------------------
-# HIGH-LEVEL RETRIEVAL -- 2-hop via TAG_COOCCUR/IS_RELATED_TO. Skor = skor
-# similarity/Jaccard MENTAH dari edge itu sendiri (r2.weight), TIDAK
+# HIGH-LEVEL RETRIEVAL -- 2-hop via TAG_COOCCUR/IS_RELATED_TO/EMBED_SIM. Skor
+# = skor similarity/Jaccard MENTAH dari edge itu sendiri (r2.weight), TIDAK
 # dikombinasikan dengan trustScore Answer.
+#
+# FIX (bug ditemukan lewat trace read-only Neo4j di dua pertanyaan n=10 pilot
+# yang high-level retrieval-nya kembali 0 kandidat -- 56612920 & 3882147):
+# implementasi SEBELUMNYA hanya query IS_RELATED_TO|TAG_COOCCUR, padahal
+# docstring fungsi ini SEJAK AWAL menyatakan pola disalin dari
+# traverse_graph() Kondisi C "bagian IS_RELATED_TO|TAG_COOCCUR|EMBED_SIM" --
+# EMBED_SIM hilang dari Cypher-nya sendiri, tidak konsisten dengan niat yang
+# didokumentasikan. Untuk kedua pertanyaan itu, ketiga anchor entity-
+# anchoring HANYA punya edge keluar TAGGED_WITH dan EMBED_SIM (nol
+# IS_RELATED_TO/TAG_COOCCUR) -- combined_score/query lama tidak pernah bisa
+# menjangkau EMBED_SIM sama sekali, sehingga high-level retrieval gagal
+# total meski C (yang meng-query EMBED_SIM) berhasil menemukan 5 item
+# relevan pada pertanyaan yang sama. Baris MATCH di bawah sekarang
+# menyertakan EMBED_SIM, menyamakan CAKUPAN edge dengan C -- TIDAK ada
+# perubahan lain: D tetap tanpa trust-weighting (skor tetap r2.weight
+# mentah, bukan dikalikan trustScore Answer), tetap dibatasi N_HIGH_LEVEL,
+# tetap dedup keep-highest-score yang sama seperti sebelumnya.
 # ---------------------------------------------------------------------
 
 def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: set,
@@ -382,7 +439,11 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
     IS_RELATED_TO|TAG_COOCCUR|EMBED_SIM, TAPI skor kandidat = r2.weight
     MENTAH (edge relevansi/tema Question<->Question), bukan hasil kali
     dengan r3.weight/trustScore Answer seperti di Kondisi C. Dibatasi ke
-    N_HIGH_LEVEL Question unik tertinggi skornya."""
+    N_HIGH_LEVEL Question unik tertinggi skornya.
+
+    d_retrieval_version = "v3" (EMBED_SIM + answer-existence-before-LIMIT +
+    deterministic tie-break) -- lihat docstring modul bagian
+    "D_RETRIEVAL_VERSION" untuk riwayat lengkap v1/v2/v3."""
     if not anchors:
         return []
     anchor_ids = [qid for qid, _ in anchors]
@@ -393,16 +454,21 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
         result = session.run(
             """
             UNWIND $anchor_ids AS anchor_id
-            MATCH (anchor:Question {id: anchor_id})-[r2:IS_RELATED_TO|TAG_COOCCUR]->(q2:Question)
+            MATCH (anchor:Question {id: anchor_id})-[r2:IS_RELATED_TO|TAG_COOCCUR|EMBED_SIM]->(q2:Question)
             WHERE NOT q2.id IN $exclude_q
-            WITH DISTINCT q2, r2.weight AS relevance_score
-            ORDER BY relevance_score DESC
+              AND EXISTS {
+                MATCH (q2)-[:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(ax:Answer)
+                WHERE NOT ax.id IN $exclude_a
+              }
+            WITH DISTINCT q2, r2.weight AS relevance_score, type(r2) AS r2_type
+            ORDER BY relevance_score DESC, q2.id ASC
             LIMIT $n_high_level
             MATCH (q2)-[r3:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
             WHERE NOT a.id IN $exclude_a
             RETURN q2.id AS via_question_id, q2.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, 2 AS hop,
-                   'TAG_COOCCUR|IS_RELATED_TO' AS rel_type, relevance_score
+                   r2_type AS rel_type, relevance_score
+            ORDER BY q2.id ASC, a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
             n_high_level=n_high_level,
@@ -439,7 +505,12 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
         if aid not in best_by_answer or c["relevance_score"] > best_by_answer[aid]["relevance_score"]:
             best_by_answer[aid] = c
 
-    ranked = sorted(best_by_answer.values(), key=lambda c: c["relevance_score"], reverse=True)
+    # Secondary key answer_id ASC breaks ties deterministically (relevance_score
+    # can tie -- e.g. EMBED_SIM's constant 0.4 weight) -- without it, Python's
+    # stable sort falls back to `all_candidates` insertion order, which itself
+    # depends on Neo4j's MATCH return order (not guaranteed stable run to run
+    # without an explicit ORDER BY upstream).
+    ranked = sorted(best_by_answer.values(), key=lambda c: (-c["relevance_score"], c["answer_id"]))
     top = ranked[:top_k]
 
     final = []
@@ -776,9 +847,12 @@ def main():
     if not file_exists or file_size == 0:
         log("\n[ERROR] Tidak ada hasil tersimpan sama sekali.")
         history_path = append_run_history({
+            "prompt_version": PROMPT_VERSION,
+            "d_retrieval_version": D_RETRIEVAL_VERSION,
             "run_started_at": run_started_at.isoformat(), "condition": "D", "status": "no_results",
             "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
             "seed": args.seed, "output_path": str(output_path), "log_path": str(log_path),
+            "oversample_pool": oversample_pool,
             "require_grounding": args.require_grounding,
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
@@ -805,10 +879,14 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
+        "prompt_version": PROMPT_VERSION,
+        "d_retrieval_version": D_RETRIEVAL_VERSION,
         "run_started_at": run_started_at.isoformat(), "condition": "D",
         "status": "interrupted" if interrupted else "success",
         "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
         "n_processed": len(results_df), "seed": args.seed,
+        "oversample_pool": oversample_pool,
+        "n_candidates_after_token_filter": len(candidates),
         "top_k": args.top_k, "n_low_level": args.n_low_level,
         "n_high_level": args.n_high_level, "require_grounding": args.require_grounding,
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),

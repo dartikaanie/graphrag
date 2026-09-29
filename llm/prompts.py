@@ -16,7 +16,27 @@ dasarnya):
     3. assistant -> priming/konfirmasi persona (LLM "mengucapkan" perannya
                     sendiri)
     4. user      -> [opsional: konteks retrieval] + pertanyaan + deskripsi
+
+PROMPT_VERSION
+------------------------------------------------------------
+"v1" = versi asli, ID contoh sitasi di instruksi citation NUMERIK
+       ([SO-1234], [SO-5678], dst.) -- ditemukan model (terutama model
+       kecil lokal) kadang menyalin literal angka contoh ini sbg sitasi
+       saat konteks yang diberikan lemah/tidak relevan (lihat docs/README.md
+       §8). Berlaku untuk SEMUA run yang ditulis SEBELUM fix ini masuk --
+       run lama TIDAK menyimpan field prompt_version sama sekali (field ini
+       belum ada saat run itu dibuat).
+"v2" (PROMPT_VERSION saat ini) = ID contoh diganti placeholder non-numerik
+       ([SO-<id>], [SO-<id1>][SO-<id2>]) supaya tidak pernah terlihat
+       seperti ID SO asli yang bisa disalin. TIDAK ADA perubahan wording
+       lain di instruksi. Direkam sbg field `prompt_version` di
+       run_history.jsonl setiap kondisi (CLI maupun dashboard) -- run BARU
+       otomatis "v2"; run LAMA yang tidak punya field ini ditampilkan "v1
+       (inferred)" HANYA kalau run_started_at-nya terverifikasi sebelum
+       tanggal fix ini di-commit, selain itu "--" (tidak ditebak).
 """
+
+PROMPT_VERSION = "v2"
 
 
 def _clean_tags(tags: str) -> str:
@@ -93,20 +113,20 @@ def build_graphrag_messages(title: str, body: str, tags: str, retrieved: list,
             context_section = (
                 f"Here is context retrieved from the Stack Overflow community knowledge "
                 f"graph that may help you answer, each labeled with its source thread id "
-                f"(e.g. [SO-1234]):\n\n{context_block}\n\n"
+                f"(e.g. [SO-<id>]):\n\n{context_block}\n\n"
                 f"IMPORTANT -- follow these two constraints strictly:\n"
                 f"1. Ground your answer ONLY in the context above. Do not introduce facts, "
                 f"APIs, or claims that are not supported by the given context.\n"
                 f"2. For EVERY factual claim or piece of advice in your answer, cite the "
-                f"source thread it came from using its label (e.g. [SO-1234]) immediately "
+                f"source thread it came from using its label (e.g. [SO-<id>]) immediately "
                 f"after the claim. If a claim draws on multiple sources, cite all of them "
-                f"(e.g. [SO-1234][SO-5678]).\n\n"
+                f"(e.g. [SO-<id1>][SO-<id2>]).\n\n"
                 f"Example of the exact citation style required (note the format is always "
                 f"square brackets, the letters SO, a hyphen, then digits -- with NO other "
                 f"variation such as a colon or the word 'thread'):\n"
                 f"\"You can fix this by adding a null check before accessing the array "
-                f"[SO-1234567]. If the error persists after that, verify your build "
-                f"configuration matches the recommended setup [SO-2233445][SO-8899001].\"\n"
+                f"[SO-<id>]. If the error persists after that, verify your build "
+                f"configuration matches the recommended setup [SO-<id1>][SO-<id2>].\"\n"
                 f"(The numbers above are just an example format, not real sources -- "
                 f"always use the actual [SO-<id>] labels from the context given to you "
                 f"above, never invent a number that is not one of those labels.)\n\n"
@@ -117,11 +137,11 @@ def build_graphrag_messages(title: str, body: str, tags: str, retrieved: list,
             context_section = (
                 f"Here is context retrieved from the Stack Overflow community knowledge "
                 f"graph that may help you answer, each labeled with its source thread id "
-                f"(e.g. [SO-1234]):\n\n{context_block}\n\n"
+                f"(e.g. [SO-<id>]):\n\n{context_block}\n\n"
                 f"For EVERY factual claim or piece of advice in your answer, cite the "
-                f"source thread it came from using its label (e.g. [SO-1234]) immediately "
+                f"source thread it came from using its label (e.g. [SO-<id>]) immediately "
                 f"after the claim. If a claim draws on multiple sources, cite all of them "
-                f"(e.g. [SO-1234][SO-5678]). Use ONLY the exact [SO-<id>] labels given "
+                f"(e.g. [SO-<id1>][SO-<id2>]). Use ONLY the exact [SO-<id>] labels given "
                 f"above, never invent a number that is not one of those labels.\n\n"
             )
     else:
@@ -144,10 +164,10 @@ def build_graphrag_messages(title: str, body: str, tags: str, retrieved: list,
                        "programming.")
     if require_grounding:
         system_content += (" When context is provided, you MUST cite the source "
-                            "thread label (e.g. [SO-1234]) for every claim you make.")
+                            "thread label (e.g. [SO-<id>]) for every claim you make.")
     elif retrieved:
         system_content += (" When context is provided, you MUST cite the source thread label "
-                            "(e.g. [SO-1234]) for every claim you make.")
+                            "(e.g. [SO-<id>]) for every claim you make.")
 
     return [
         {"role": "system",
@@ -197,20 +217,20 @@ def build_lightrag_messages(title: str, body: str, tags: str, retrieved: list,
             context_section = (
                 f"Here is context retrieved from the Stack Overflow community knowledge "
                 f"graph that may help you answer, each labeled with its source thread id "
-                f"(e.g. [SO-1234]):\n\n{context_block}\n\n"
+                f"(e.g. [SO-<id>]):\n\n{context_block}\n\n"
                 f"IMPORTANT -- follow these two constraints strictly:\n"
                 f"1. Ground your answer ONLY in the context above. Do not introduce facts, "
                 f"APIs, or claims that are not supported by the given context.\n"
                 f"2. For EVERY factual claim or piece of advice in your answer, cite the "
-                f"source thread it came from using its label (e.g. [SO-1234]) immediately "
+                f"source thread it came from using its label (e.g. [SO-<id>]) immediately "
                 f"after the claim. If a claim draws on multiple sources, cite all of them "
-                f"(e.g. [SO-1234][SO-5678]).\n\n"
+                f"(e.g. [SO-<id1>][SO-<id2>]).\n\n"
                 f"Example of the exact citation style required (note the format is always "
                 f"square brackets, the letters SO, a hyphen, then digits -- with NO other "
                 f"variation such as a colon or the word 'thread'):\n"
                 f"\"You can fix this by adding a null check before accessing the array "
-                f"[SO-1234567]. If the error persists after that, verify your build "
-                f"configuration matches the recommended setup [SO-2233445][SO-8899001].\"\n"
+                f"[SO-<id>]. If the error persists after that, verify your build "
+                f"configuration matches the recommended setup [SO-<id1>][SO-<id2>].\"\n"
                 f"(The numbers above are just an example format, not real sources -- "
                 f"always use the actual [SO-<id>] labels from the context given to you "
                 f"above, never invent a number that is not one of those labels.)\n\n"
@@ -222,11 +242,11 @@ def build_lightrag_messages(title: str, body: str, tags: str, retrieved: list,
                 f"Here is some potentially relevant context from the Stack Overflow "
                 f"community that may help you answer (use your own judgment; not all "
                 f"references may be directly applicable), each labeled with its "
-                f"source thread id (e.g. [SO-1234]):\n\n{context_block}\n\n"
+                f"source thread id (e.g. [SO-<id>]):\n\n{context_block}\n\n"
                 f"For EVERY factual claim or piece of advice in your answer, cite the "
-                f"source thread it came from using its label (e.g. [SO-1234]) immediately "
+                f"source thread it came from using its label (e.g. [SO-<id>]) immediately "
                 f"after the claim. If a claim draws on multiple sources, cite all of them "
-                f"(e.g. [SO-1234][SO-5678]). Use ONLY the exact [SO-<id>] labels given "
+                f"(e.g. [SO-<id1>][SO-<id2>]). Use ONLY the exact [SO-<id>] labels given "
                 f"above, never invent a number that is not one of those labels.\n\n"
             )
     else:
@@ -245,12 +265,12 @@ def build_lightrag_messages(title: str, body: str, tags: str, retrieved: list,
     if require_grounding:
         system_content += (
             " When context is provided, you MUST cite the source "
-            "thread label (e.g. [SO-1234]) for every claim you make."
+            "thread label (e.g. [SO-<id>]) for every claim you make."
         )
     elif retrieved:
         system_content += (
             " When context is provided, you MUST cite the source thread label "
-            "(e.g. [SO-1234]) for every claim you make."
+            "(e.g. [SO-<id>]) for every claim you make."
         )
 
     return [
@@ -301,11 +321,11 @@ def build_rag_messages(title: str, body: str, tags: str, retrieved: list,
             f"Here is some potentially relevant context from the Stack Overflow "
             f"community that may help you answer (use your own judgment; not all "
             f"references may be directly applicable), each labeled with its "
-            f"source thread id (e.g. [SO-1234]):\n\n{context_block}\n\n"
+            f"source thread id (e.g. [SO-<id>]):\n\n{context_block}\n\n"
             f"For EVERY factual claim or piece of advice in your answer, cite the "
-            f"source thread it came from using its label (e.g. [SO-1234]) immediately "
+            f"source thread it came from using its label (e.g. [SO-<id>]) immediately "
             f"after the claim. If a claim draws on multiple sources, cite all of them "
-            f"(e.g. [SO-1234][SO-5678]). Use ONLY the exact [SO-<id>] labels given "
+            f"(e.g. [SO-<id1>][SO-<id2>]). Use ONLY the exact [SO-<id>] labels given "
             f"above, never invent a number that is not one of those labels.\n\n"
         )
     elif retrieved:
@@ -324,7 +344,7 @@ def build_rag_messages(title: str, body: str, tags: str, retrieved: list,
     if require_citation:
         system_content += (
             " When context is provided, you MUST cite the source thread label "
-            "(e.g. [SO-1234]) for every claim you make."
+            "(e.g. [SO-<id>]) for every claim you make."
         )
 
     return [

@@ -29,8 +29,11 @@ def create_judge_run(body: JudgeRunCreateRequest):
 
     # Same pattern as routers/runs.py create_run(): a real background thread
     # (not asyncio.create_task) since judging is I/O-bound (LLM calls) and
-    # can take minutes.
-    thread = threading.Thread(target=engine_service.run_judge_batch_dashboard, args=(run_id, params), daemon=True)
+    # can take minutes. Goes through start_judge_run() (not
+    # run_judge_batch_dashboard() directly) so concurrent judge runs are
+    # bounded by _JUDGE_SEMAPHORE -- see that function's docstring for why
+    # judges get their own limit instead of sharing _HEAVY_RUN_LOCK with B/C/D.
+    thread = threading.Thread(target=engine_service.start_judge_run, args=(run_id, params), daemon=True)
     thread.start()
 
     return JudgeRunCreateResponse(run_id=run_id)

@@ -191,6 +191,26 @@ export function useHistoryDetails(historyIds: string[]) {
   })
 }
 
+export interface SampleConsistencyResult {
+  sample_consistency: 'identical' | 'subset_nested' | 'different'
+  runs: { history_id: string; condition: string; n: number }[]
+  intersection_size: number
+  is_exact_prefix: boolean | null
+  note?: string
+}
+
+/** Phase 3 -- did the selected runs actually evaluate the same questions?
+ * The whole point of a paired comparison. `ids` sorted+joined into the
+ * query key so selection order doesn't create duplicate cache entries. */
+export function useCompareConsistency(historyIds: string[]) {
+  const key = [...historyIds].sort().join(',')
+  return useQuery({
+    queryKey: ['compare-consistency', key],
+    queryFn: () => apiGet<SampleConsistencyResult>('/api/history/compare/consistency', { ids: historyIds.join(',') }),
+    enabled: historyIds.length >= 2,
+  })
+}
+
 export function useHistoryResultDetail(historyId: string, questionId: number | string) {
   return useQuery({
     queryKey: ['history-result-detail', historyId, questionId],
@@ -203,6 +223,31 @@ export function useSettings() {
   return useQuery({
     queryKey: ['settings'],
     queryFn: () => apiGet<SettingsState>('/api/settings'),
+  })
+}
+
+/** Static run defaults (not user-editable, unlike Settings) -- currently
+ * just DEFAULT_OVERSAMPLE_POOL (1536 = MAX_PLANNED_N_SAMPLE*4), so the
+ * frontend has one place to read it from instead of hard-coding it. */
+export function useConfigDefaults() {
+  return useQuery({
+    queryKey: ['config-defaults'],
+    queryFn: () => apiGet<{ default_oversample_pool: number; max_planned_n_sample: number }>('/api/config/defaults'),
+    staleTime: Infinity, // static backend constant -- never refetch mid-session
+  })
+}
+
+export interface ReleaseFaissCacheResult {
+  released: boolean
+  rss_before_mb: number | null
+  rss_after_mb: number | null
+}
+
+/** Frees the ~4GB shared FAISS index + embedding memmap Condition C/D keep
+ * cached between runs -- see Settings page "Release cached FAISS index". */
+export function useReleaseFaissCache() {
+  return useMutation({
+    mutationFn: () => apiPost<ReleaseFaissCacheResult>('/api/config/release-faiss-cache'),
   })
 }
 

@@ -18,11 +18,11 @@ mean 4x embedding model + 2x Neo4j driver + 2x FAISS/embedding-cache memmap
 + 4x DuckDB connection alive AT ONCE, on top of n_sample now defaulting to
 384 (see RunAllConditionsPage.tsx). That was enough to exhaust memory and
 hang/crash the machine. Three mitigations, all in this file:
-  1. `_HEAVY_RUN_LOCK` -- B/C/D (the conditions that touch Neo4j/FAISS/a
-     real retrieval pipeline) now run ONE AT A TIME, never concurrently.
-     Condition A stays unlocked (it's just LLM calls + one small
-     embedding step, materially lighter) and can still overlap with
-     whichever heavy condition currently holds the lock.
+  1. `_HEAVY_RUN_LOCK` -- A/B/C/D all run ONE AT A TIME, never concurrently.
+     Condition A also runs its own DuckDB sampling query (oversample_pool
+     rows, capped by `_duckdb_connect()`'s pragmas below) and must not
+     overlap C/D's ~4GB FAISS footprint on an 8GB machine, so it shares
+     this lock too rather than being exempted from it.
   2. `_faiss_cache()` -- Condition C and D read the EXACT SAME on-disk
      FAISS index + embedding memmap (see d_lightrag.py's docstring: "SAME
      KG & FAISS cache as Condition C"); loading it twice doubled that
@@ -64,10 +64,92 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-# Only one of B/C/D actually running at a time -- see module docstring
-# ("RESOURCE BUDGET"). Condition A is deliberately NOT gated by this lock.
+# Only one of A/B/C/D actually running at a time -- see module docstring
+# ("RESOURCE BUDGET"). Condition A also runs a DuckDB sampling query and
+# must not overlap C/D's ~4GB FAISS footprint on an 8GB machine, so it
+# shares this lock with B/C/D rather than being exempted from it.
 _HEAVY_RUN_LOCK = threading.Lock()
-HEAVY_CONDITIONS = {"B", "C", "D"}
+HEAVY_CONDITIONS = {"A", "B", "C", "D"}
+
+# Judge runs (llm_judge_hallucination/context_relevance/answer_relevance,
+# via run_judge_batch_dashboard()) do NOT share _HEAVY_RUN_LOCK's mutual
+# exclusion by default -- they never touch the two actual causes of the
+# original crash (the ~4GB FAISS/embedding memmap, the Neo4j driver). A
+# judge run is LLM-API-call-bound (mostly waiting on network) plus, for the
+# context-relevance judge, ONE batched DuckDB query already capped by the
+# same 2GB/2-thread pragma as everywhere else (llm/evaluation/
+# _judge_common.py's load_question_bodies()). Forcing a judge to queue
+# behind a 384-question A/B/C/D run (which can take tens of minutes and
+# shares none of its resources) would be a real UX regression for no
+# memory-safety benefit in the common case. A small SEPARATE semaphore
+# bounds how many judges run at once -- 2 concurrent judges means at most
+# ~4GB of DuckDB headroom used (2 x 2GB), leaving room for whatever else is
+# running, without serializing judges behind generators.
+#
+# That said, on an 8GB machine a judge run's own DuckDB usage stacking on
+# top of a live A/B/C/D run's FAISS/Neo4j footprint is still real headroom
+# pressure. The "judges_wait_for_heavy_run" Settings toggle (default ON,
+# see settings_service.DEFAULTS) lets a judge run ALSO wait for
+# _HEAVY_RUN_LOCK to be free before proceeding, on top of -- not instead of
+# -- _JUDGE_SEMAPHORE's own limit of 2 concurrent judges. See
+# start_judge_run() below.
+_JUDGE_CONCURRENCY_LIMIT = 2
+_JUDGE_SEMAPHORE = threading.Semaphore(_JUDGE_CONCURRENCY_LIMIT)
+
+# Best-effort FIFO queue-position bookkeeping -- threading.Lock/Semaphore
+# don't expose "how many are waiting," so this list is maintained alongside
+# them purely for the "queued (position N)" UI. Not itself used for mutual
+# exclusion (the Lock/Semaphore above still do that); "best-effort" because
+# Python doesn't guarantee FIFO wake order for blocked acquire() calls, so
+# the displayed position can occasionally be off by one -- it's informational,
+# not a scheduling guarantee.
+_HEAVY_QUEUE_LOCK = threading.Lock()
+_HEAVY_QUEUE: list[str] = []
+_JUDGE_QUEUE_LOCK = threading.Lock()
+_JUDGE_QUEUE: list[str] = []
+
+
+def _enter_queue(queue_lock: threading.Lock, queue: list[str], run_id: str) -> None:
+    with queue_lock:
+        queue.append(run_id)
+        snapshot = list(queue)
+    for i, rid in enumerate(snapshot, start=1):
+        run_registry.update_run(rid, queue_position=i)
+
+
+def _leave_queue(queue_lock: threading.Lock, queue: list[str], run_id: str) -> None:
+    with queue_lock:
+        if run_id in queue:
+            queue.remove(run_id)
+        snapshot = list(queue)
+    run_registry.update_run(run_id, queue_position=None)
+    for i, rid in enumerate(snapshot, start=1):
+        run_registry.update_run(rid, queue_position=i)
+
+# Single source of truth for the "auto" oversample_pool fallback -- MUST
+# equal MAX_PLANNED_N_SAMPLE * 4, where MAX_PLANNED_N_SAMPLE (384) is the
+# CLI scripts' own constant (a_baseline_replication.py, c_graphrag.py,
+# d_lightrag.py all define it locally as the size of the official n=384
+# thesis run). Nested sampling -- the property that an n=10 pilot sample is
+# an exact PREFIX of the n=384 sample -- requires the SAME oversample_pool
+# (and seed) on every run regardless of n_sample, which is why this is one
+# constant reused by all four conditions instead of each condition computing
+# its own multiple of n_sample (previously A used n_sample*3, B/C/D used
+# n_sample*4 -- neither matches the CLI's own MAX_PLANNED_N_SAMPLE*4
+# convention, and neither keeps smaller pilot runs nested inside the n=384
+# sample the way a fixed pool does). Exposed to the frontend via
+# GET /api/config/defaults (routers/config.py) so 1536 isn't hard-coded in
+# multiple places in the UI.
+MAX_PLANNED_N_SAMPLE = 384
+DEFAULT_OVERSAMPLE_POOL = MAX_PLANNED_N_SAMPLE * 4
+
+
+def resolve_oversample_pool(params: dict[str, Any]) -> int:
+    """The ONE place all four run_condition_x() functions get their
+    effective oversample_pool from -- pulled out as its own pure function
+    (rather than the same inline expression repeated 4x) so it's directly
+    unit-testable without mocking DuckDB/Neo4j/an LLM client."""
+    return int(params.get("oversample_pool") or DEFAULT_OVERSAMPLE_POOL)
 
 
 def _duckdb_connect() -> duckdb.DuckDBPyConnection:
@@ -82,6 +164,17 @@ def _duckdb_connect() -> duckdb.DuckDBPyConnection:
     return con
 
 
+def _process_memory_mb() -> float | None:
+    """Current process RSS in MB via psutil, or None if psutil isn't
+    installed -- callers must handle None (log nothing) rather than crash,
+    per "using psutil if it is already available; otherwise skip this."""
+    try:
+        import psutil
+    except ImportError:
+        return None
+    return psutil.Process().memory_info().rss / (1024 * 1024)
+
+
 @lru_cache
 def _faiss_cache(kg_workspace_dir_str: str):
     """Shared FAISS index + embedding-cache loader for Condition C AND D --
@@ -92,9 +185,42 @@ def _faiss_cache(kg_workspace_dir_str: str):
     memmap-ing the embeddings file and reading the FAISS index a second
     time. Uses Condition C's module to do the actual reading (D's version
     is byte-for-byte the same function) -- an implementation detail, not a
-    behavior difference for D."""
+    behavior difference for D.
+
+    Logs process RSS before/after (psutil, if installed) so a memory-tight
+    run can see exactly how much this one load step cost -- this is the
+    single largest allocation in the whole crash story (module docstring
+    "RESOURCE BUDGET": ~4GB for the embeddings memmap + FAISS index).
+    release_faiss_cache() below clears this LRU cache on demand (Settings
+    page button / admin endpoint) so that memory can be given back without
+    restarting the backend process."""
+    before = _process_memory_mb()
+    if before is not None:
+        print(f"      [faiss-cache] RSS before load: {before:.0f} MB")
     cond = _condition_c_module()
-    return cond.load_faiss_cache(Path(kg_workspace_dir_str), print)
+    result = cond.load_faiss_cache(Path(kg_workspace_dir_str), print)
+    after = _process_memory_mb()
+    if after is not None:
+        print(f"      [faiss-cache] RSS after load: {after:.0f} MB (+{after - before:.0f} MB)")
+    return result
+
+
+def release_faiss_cache() -> dict[str, Any]:
+    """Clears the @lru_cache on _faiss_cache() -- the NEXT Condition C/D run
+    re-reads the FAISS index + embedding memmap from disk (a few seconds)
+    instead of reusing the in-memory copy. Frees ~4GB of RSS immediately
+    (Python's allocator returns large mmap'd/numpy-backed buffers to the OS
+    promptly on dereference, unlike small-object heap fragmentation) -- use
+    this between a heavy C/D session and something else memory-hungry
+    (e.g. a big judge batch) without restarting the whole backend."""
+    before = _process_memory_mb()
+    _faiss_cache.cache_clear()
+    after = _process_memory_mb()
+    return {
+        "released": True,
+        "rss_before_mb": round(before, 1) if before is not None else None,
+        "rss_after_mb": round(after, 1) if after is not None else None,
+    }
 
 
 @lru_cache
@@ -275,6 +401,16 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
     provider = params["provider"]
     model = params["model"]
 
+    # Recorded into run_history regardless of mode -- None for single-question
+    # mode, where there's no candidate pool to speak of. oversample_pool is
+    # the EFFECTIVE value actually passed to get_candidate_questions() (not
+    # just whatever the request happened to say), so a paired comparison can
+    # trust it; n_candidates_after_token_filter is a cheap sanity signal that
+    # the pool was actually large enough to draw n_sample from without
+    # running dry (see DEFAULT_OVERSAMPLE_POOL in Phase 2).
+    oversample_pool: int | None = None
+    n_candidates_after_token_filter: int | None = None
+
     try:
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
 
@@ -284,12 +420,13 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
-            oversample_pool = int(params.get("oversample_pool") or n_sample * 3)
+            oversample_pool = resolve_oversample_pool(params)
             con = _duckdb_connect()
             candidates = cond.get_candidate_questions(
                 con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
             )
             candidates = cond.filter_by_token_limit(candidates)
+            n_candidates_after_token_filter = len(candidates)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
@@ -319,6 +456,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
         cond.append_run_history({
+            "prompt_version": cond.PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "status": "cancelled" if cancelled else ("success" if results else "no_results"),
             "provider": provider,
@@ -326,6 +464,13 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             "n_sample_target": params.get("n_sample", 1),
             "n_processed": len(results),
             "seed": params.get("seed"),
+            "oversample_pool": oversample_pool,
+            "n_candidates_after_token_filter": n_candidates_after_token_filter,
+            # Condition A never retrieves anything, so log_full_candidates has
+            # no effect here -- recorded anyway (honestly reflecting whatever
+            # was submitted) purely so History/Compare shows the SAME field
+            # across all four conditions rather than omitting it for A alone.
+            "log_full_candidates": bool(params.get("log_full_candidates")),
             "output_path": str(output_path),
             "duration_sec": duration,
             "source": "dashboard",
@@ -363,6 +508,8 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
     token_chunk_limit = 400
     embed_model_name = "all-MiniLM-L6-v2"
     log_full_candidates = bool(params.get("log_full_candidates"))
+    oversample_pool: int | None = None
+    n_candidates_after_token_filter: int | None = None
 
     try:
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
@@ -376,11 +523,12 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
-            oversample_pool = int(params.get("oversample_pool") or n_sample * 4)
+            oversample_pool = resolve_oversample_pool(params)
             candidates = cond.get_candidate_questions(
                 con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
             )
             candidates = cond.filter_by_token_limit(candidates)
+            n_candidates_after_token_filter = len(candidates)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
@@ -427,6 +575,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
         cond.append_run_history({
+            "prompt_version": cond.PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "condition": "B",
             "status": "cancelled" if cancelled else ("success" if results else "no_results"),
@@ -435,6 +584,8 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             "n_sample_target": params.get("n_sample", 1),
             "n_processed": len(results),
             "seed": seed,
+            "oversample_pool": oversample_pool,
+            "n_candidates_after_token_filter": n_candidates_after_token_filter,
             "require_citation": require_citation,
             "log_full_candidates": log_full_candidates,
             "index_pool": index_pool,
@@ -479,6 +630,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     enable_semantic_expansion = True if enable_semantic_expansion is None else bool(enable_semantic_expansion)
     log_full_candidates = bool(params.get("log_full_candidates"))
     token_chunk_limit = 400
+    oversample_pool: int | None = None
+    n_candidates_after_token_filter: int | None = None
 
     driver = None
     try:
@@ -491,11 +644,12 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
-            oversample_pool = int(params.get("oversample_pool") or n_sample * 4)
+            oversample_pool = resolve_oversample_pool(params)
             candidates = cond.get_candidate_questions(
                 con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
             )
             candidates = cond.filter_by_token_limit(candidates)
+            n_candidates_after_token_filter = len(candidates)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
@@ -548,6 +702,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         summary["require_grounding"] = require_grounding
         summary["enable_semantic_expansion"] = enable_semantic_expansion
         cond.append_run_history({
+            "prompt_version": cond.PROMPT_VERSION,
+            "c_retrieval_version": cond.C_RETRIEVAL_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "condition": "C",
             "status": "cancelled" if cancelled else ("success" if results else "no_results"),
@@ -556,6 +712,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "n_sample_target": params.get("n_sample", 1),
             "n_processed": len(results),
             "seed": params.get("seed"),
+            "oversample_pool": oversample_pool,
+            "n_candidates_after_token_filter": n_candidates_after_token_filter,
             "top_k": top_k,
             "n_anchor": n_anchor,
             "n_semantic_expansion": n_semantic_expansion,
@@ -603,6 +761,8 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
     require_grounding = params.get("require_grounding")
     require_grounding = True if require_grounding is None else bool(require_grounding)
     token_chunk_limit = 400
+    oversample_pool: int | None = None
+    n_candidates_after_token_filter: int | None = None
 
     driver = None
     try:
@@ -615,11 +775,12 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
-            oversample_pool = int(params.get("oversample_pool") or n_sample * 4)
+            oversample_pool = resolve_oversample_pool(params)
             candidates = cond.get_candidate_questions(
                 con, _questions_parquet(), _answers_parquet(), oversample_pool, seed
             )
             candidates = cond.filter_by_token_limit(candidates)
+            n_candidates_after_token_filter = len(candidates)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
@@ -666,6 +827,8 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         summary["duration_sec"] = duration
         summary["require_grounding"] = require_grounding
         cond.append_run_history({
+            "prompt_version": cond.PROMPT_VERSION,
+            "d_retrieval_version": cond.D_RETRIEVAL_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "condition": "D",
             "status": "cancelled" if cancelled else ("success" if results else "no_results"),
@@ -674,10 +837,17 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             "n_sample_target": params.get("n_sample", 1),
             "n_processed": len(results),
             "seed": params.get("seed"),
+            "oversample_pool": oversample_pool,
+            "n_candidates_after_token_filter": n_candidates_after_token_filter,
             "top_k": top_k,
             "n_low_level": n_low_level,
             "n_high_level": n_high_level,
             "require_grounding": require_grounding,
+            # Condition D's process_sample() doesn't accept/use
+            # log_full_candidates at all (only B/C do) -- recorded anyway
+            # (honestly reflecting whatever was submitted) for the same
+            # cross-condition-consistency reason as Condition A above.
+            "log_full_candidates": bool(params.get("log_full_candidates")),
             "output_path": str(output_path),
             "duration_sec": duration,
             "source": "dashboard",
@@ -788,6 +958,52 @@ def run_judge_batch_dashboard(run_id: str, params: dict[str, Any]) -> None:
         )
 
 
+def start_judge_run(run_id: str, params: dict[str, Any]) -> None:
+    """Entry point routers/judge.py's background thread calls (instead of
+    run_judge_batch_dashboard() directly) -- bounds concurrent judge runs to
+    _JUDGE_CONCURRENCY_LIMIT via _JUDGE_SEMAPHORE, independent of
+    _HEAVY_RUN_LOCK/A/B/C/D by default (see the semaphore's own comment for
+    why). A judge run waiting for a free slot shows status "queued" +
+    `queue_position`, same as a queued A/B/C/D run, and can be cancelled
+    while still queued.
+
+    When the "judges_wait_for_heavy_run" setting is on (default), this ALSO
+    blocks until _HEAVY_RUN_LOCK is free before even trying for a semaphore
+    slot -- a plain acquire-then-immediately-release gate, not a claim held
+    for the judge run's whole duration, since a heavy run may start again
+    right after the gate opens. That's an accepted, inherent race in "wait
+    until no heavy run is executing" as stated (it bounds the *chance* of
+    overlap, not a hard guarantee), and still layers under the semaphore:
+    the 2-judges-at-once cap applies regardless of this setting.
+    """
+    settings_service.apply_to_environment()
+    wait_for_heavy_run = bool(settings_service.get_raw_settings().get("judges_wait_for_heavy_run", True))
+    run_registry.update_run(run_id, status="queued")
+    _enter_queue(_JUDGE_QUEUE_LOCK, _JUDGE_QUEUE, run_id)
+    try:
+        if wait_for_heavy_run:
+            with _HEAVY_RUN_LOCK:
+                pass
+            if run_registry.is_cancelled(run_id):
+                run_registry.update_run(
+                    run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                return
+        _JUDGE_SEMAPHORE.acquire()
+        try:
+            _leave_queue(_JUDGE_QUEUE_LOCK, _JUDGE_QUEUE, run_id)
+            if run_registry.is_cancelled(run_id):
+                run_registry.update_run(
+                    run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                return
+            run_judge_batch_dashboard(run_id, params)
+        finally:
+            _JUDGE_SEMAPHORE.release()
+    finally:
+        _leave_queue(_JUDGE_QUEUE_LOCK, _JUDGE_QUEUE, run_id)
+
+
 RUNNERS: dict[str, Callable[[str, dict[str, Any]], None]] = {
     "A": run_condition_a,
     "B": run_condition_b,
@@ -808,24 +1024,26 @@ def start_run(run_id: str, condition: str, params: dict[str, Any]) -> None:
     # whatever the repo-root .env happened to have at backend startup.
     settings_service.apply_to_environment()
 
-    if condition not in HEAVY_CONDITIONS:
-        # Condition A: no queueing, it's cheap enough to overlap a heavy run.
-        runner(run_id, params)
-        return
-
-    # Condition B/C/D: only one at a time (see module docstring "RESOURCE
-    # BUDGET"). Each is called from its own background thread (routers/
-    # runs.py), so with "Run All Conditions" firing B, C, D nearly
-    # simultaneously, whichever thread acquires _HEAVY_RUN_LOCK first runs
-    # to completion while the other two block here -- genuinely queued, not
-    # just visually queued. The "queued" status is set BEFORE blocking on
-    # the lock so a still-waiting run is visibly distinct from "pending"
-    # (not yet picked up by any thread at all) in the UI.
+    # All of A/B/C/D are HEAVY_CONDITIONS now (see module docstring
+    # "RESOURCE BUDGET") and run ONE AT A TIME. Each is called from its own
+    # background thread (routers/runs.py), so with "Run All Conditions"
+    # firing A, B, C, D nearly simultaneously, whichever thread acquires
+    # _HEAVY_RUN_LOCK first runs to completion while the others block here
+    # -- genuinely queued, not just visually queued. The "queued" status is
+    # set BEFORE blocking on the lock so a still-waiting run is visibly
+    # distinct from "pending" (not yet picked up by any thread at all) in
+    # the UI. `runner is None` above already rejects any condition outside
+    # RUNNERS/HEAVY_CONDITIONS, so every reachable condition takes this path.
     run_registry.update_run(run_id, status="queued")
-    with _HEAVY_RUN_LOCK:
-        if run_registry.is_cancelled(run_id):
-            run_registry.update_run(
-                run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat(),
-            )
-            return
-        runner(run_id, params)
+    _enter_queue(_HEAVY_QUEUE_LOCK, _HEAVY_QUEUE, run_id)
+    try:
+        with _HEAVY_RUN_LOCK:
+            _leave_queue(_HEAVY_QUEUE_LOCK, _HEAVY_QUEUE, run_id)
+            if run_registry.is_cancelled(run_id):
+                run_registry.update_run(
+                    run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                return
+            runner(run_id, params)
+    finally:
+        _leave_queue(_HEAVY_QUEUE_LOCK, _HEAVY_QUEUE, run_id)

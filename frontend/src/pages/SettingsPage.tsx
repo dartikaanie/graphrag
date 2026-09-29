@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { useSettings, useTestConnection, useUpdateSettings } from '@/api/hooks'
+import { useReleaseFaissCache, useSettings, useTestConnection, useUpdateSettings } from '@/api/hooks'
 import { InfoTooltip } from '@/components/InfoTooltip'
 import { PARAM_GLOSSARY } from '@/lib/paramGlossary'
 
@@ -104,6 +104,7 @@ export function SettingsPage() {
   const { data, isLoading } = useSettings()
   const updateSettings = useUpdateSettings()
   const testConnection = useTestConnection()
+  const releaseFaissCache = useReleaseFaissCache()
 
   const [provider, setProvider] = useState('openai')
   const [model, setModel] = useState('')
@@ -125,6 +126,7 @@ export function SettingsPage() {
   const [secondaryJudgeModel, setSecondaryJudgeModel] = useState('')
   const [kappaSampleSize, setKappaSampleSize] = useState(50)
   const [judgeMajorityRounds, setJudgeMajorityRounds] = useState(1)
+  const [judgesWaitForHeavyRun, setJudgesWaitForHeavyRun] = useState(true)
 
   useEffect(() => {
     if (!data) return
@@ -143,6 +145,7 @@ export function SettingsPage() {
     setSecondaryJudgeModel(data.secondary_judge_model)
     setKappaSampleSize(data.kappa_sample_size)
     setJudgeMajorityRounds(data.judge_majority_rounds)
+    setJudgesWaitForHeavyRun(data.judges_wait_for_heavy_run)
   }, [data])
 
   if (isLoading || !data) return <div className="text-sm text-text-muted">Loading...</div>
@@ -363,6 +366,57 @@ export function SettingsPage() {
           >
             Save
           </button>
+        </div>
+      </section>
+
+      <section className="mt-8 border border-border rounded-lg bg-surface p-4">
+        <h2 className="text-sm font-semibold text-text-primary mb-1">System</h2>
+        <p className="text-sm text-text-secondary mb-3">
+          Condition C and D share one cached copy of the FAISS index + embedding memmap (~4GB) between runs,
+          loaded once and kept in memory for speed. Release it to free that memory immediately — the next C/D
+          run reloads it from disk (a few seconds), no restart needed.
+        </p>
+        <button
+          onClick={() => releaseFaissCache.mutate()}
+          disabled={releaseFaissCache.isPending}
+          className="px-4 py-2 text-sm border border-border-strong rounded-md text-text-primary hover:bg-bg disabled:opacity-50"
+        >
+          {releaseFaissCache.isPending ? 'Releasing…' : 'Release cached FAISS index'}
+        </button>
+        {releaseFaissCache.data && (
+          <div className="mt-2 text-xs text-text-secondary">
+            ✓ Released.
+            {releaseFaissCache.data.rss_before_mb != null && releaseFaissCache.data.rss_after_mb != null && (
+              <>
+                {' '}
+                Process RSS: {releaseFaissCache.data.rss_before_mb.toFixed(0)} MB → {releaseFaissCache.data.rss_after_mb.toFixed(0)} MB.
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 pt-4 border-t border-border">
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={judgesWaitForHeavyRun}
+              onChange={(e) => {
+                const next = e.target.checked
+                setJudgesWaitForHeavyRun(next)
+                updateSettings.mutate({ judges_wait_for_heavy_run: next })
+              }}
+            />
+            <span className="text-text-primary">
+              Judges wait while a heavy run is active
+              <span className="block text-xs text-text-secondary mt-0.5">
+                A/B/C/D generator runs already serialize one at a time on this machine. When on (default), a
+                judge run also waits until no A/B/C/D run is executing before it starts, on top of — not
+                instead of — the limit of 2 concurrent judge runs. Turn off to let judges start immediately
+                even while a generator run is in progress.
+              </span>
+            </span>
+          </label>
         </div>
       </section>
 

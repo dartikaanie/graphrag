@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useCreateRun } from '@/api/hooks'
+import { useConfigDefaults, useCreateRun } from '@/api/hooks'
 import { InfoTooltip } from '@/components/InfoTooltip'
 import { PARAM_GLOSSARY } from '@/lib/paramGlossary'
 import type { RunCondition, RunCreateParams } from '@/types/run'
@@ -40,6 +40,8 @@ export function RunConditionPage() {
   const condition = conditionParam.toUpperCase() as RunCondition
   const navigate = useNavigate()
   const createRun = useCreateRun()
+  const { data: defaults } = useConfigDefaults()
+  const defaultOversamplePool = defaults?.default_oversample_pool ?? 1536
 
   const [mode, setMode] = useState<'batch' | 'single'>('batch')
   const [nSample, setNSample] = useState(30)
@@ -138,7 +140,12 @@ export function RunConditionPage() {
               <input type="number" className={inputClass} value={seed} onChange={(e) => setSeed(Number(e.target.value))} />
             </Field>
             <Field label="oversample_pool (optional)" glossaryKey="oversample_pool">
-              <input className={inputClass} placeholder="auto (3-4x n_sample)" value={oversamplePool} onChange={(e) => setOversamplePool(e.target.value)} />
+              <input
+                className={inputClass}
+                placeholder={`${defaultOversamplePool} (default — keeps samples nested across n)`}
+                value={oversamplePool}
+                onChange={(e) => setOversamplePool(e.target.value)}
+              />
             </Field>
             <Field label="provider" glossaryKey="provider">
               <select className={inputClass} value={provider} onChange={(e) => setProvider(e.target.value)}>
@@ -279,11 +286,13 @@ export function RunConditionPage() {
           </label>
         )}
 
-        {(seed !== 42 || (oversamplePool && oversamplePool !== '')) && mode === 'batch' && (
-          <div className="mt-2 text-xs text-warning bg-white border border-warning/40 rounded-md px-2 py-1.5">
-            ⚠ seed/oversample_pool differ from the default (42 / auto) — use the same values across A/B/C/D for a fair comparison.
-          </div>
-        )}
+        {(seed !== 42 || (oversamplePool !== '' && Number(oversamplePool) !== defaultOversamplePool)) &&
+          mode === 'batch' && (
+            <div className="mt-2 text-xs text-warning bg-white border border-warning/40 rounded-md px-2 py-1.5">
+              ⚠ seed/oversample_pool differ from the default (42 / {defaultOversamplePool}) — this run's sample will
+              differ from other runs using the default, and won't be a nested subset of the planned n=384 sample.
+            </div>
+          )}
 
         <div className="mt-4 flex items-center gap-3">
           <button

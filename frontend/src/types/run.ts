@@ -15,6 +15,12 @@ export interface RunCreateParams {
   n_sample?: number
   seed?: number
   oversample_pool?: number | null
+  /** Response-only derived field (never sent in a request): how many
+   * candidates survived filter_by_token_limit() out of oversample_pool --
+   * a cheap sanity signal the pool was large enough. null on old records
+   * that predate this field. */
+  n_candidates_after_token_filter?: number | null
+  index_pool?: number | null
   top_k?: number
   n_anchor?: number
   n_semantic_expansion?: number
@@ -27,7 +33,15 @@ export interface RunCreateParams {
   n_low_level?: number
   n_high_level?: number
   require_grounding?: boolean
-  log_full_candidates?: boolean
+  log_full_candidates?: boolean | null
+  /** Response-only. "v2" (current), "v1 (inferred)" when reliably inferable
+   * from the record's date, or null ("--") otherwise. Never sent in a
+   * request. */
+  prompt_version?: string | null
+  /** Response-only, Condition D only -- null for every other condition. */
+  d_retrieval_version?: string | null
+  /** Response-only, Condition C only -- null for every other condition. */
+  c_retrieval_version?: string | null
   question_id?: number | null
   provider: string
   model: string
@@ -71,6 +85,9 @@ export interface RunState {
   output_path: string | null
   cancel_requested?: boolean
   judge_evaluations?: JudgeEvaluationSummary[]
+  /** 1-based, only meaningful while status === "queued" -- best-effort (not
+   * a scheduling guarantee), see engine_service.py's queue bookkeeping. */
+  queue_position?: number | null
 }
 
 export interface RetrievedContextItem {

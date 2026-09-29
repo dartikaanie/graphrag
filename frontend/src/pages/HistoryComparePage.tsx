@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router-dom'
-import { useHistoryDetails } from '@/api/hooks'
+import { useCompareConsistency, useHistoryDetails, type SampleConsistencyResult } from '@/api/hooks'
 import { fmtDuration } from '@/lib/format'
 import type { RunState } from '@/types/run'
 
@@ -32,9 +32,23 @@ interface ParamRow {
 const PARAM_ROWS: ParamRow[] = [
   { label: 'Mode', get: (r) => r.mode },
   { label: 'Provider / Model', get: (r) => `${r.params.provider ?? '—'} / ${r.params.model ?? '—'}` },
+  { label: 'Prompt Version', get: (r) => r.params.prompt_version ?? '—' },
+  {
+    label: 'C Retrieval Version',
+    get: (r) => (r.condition === 'C' ? r.params.c_retrieval_version ?? '—' : '—'),
+  },
+  {
+    label: 'D Retrieval Version',
+    get: (r) => (r.condition === 'D' ? r.params.d_retrieval_version ?? '—' : '—'),
+  },
   { label: 'Seed', get: (r) => (r.params.seed != null ? String(r.params.seed) : '—') },
   { label: 'N Sample', get: (r) => (r.params.n_sample != null ? String(r.params.n_sample) : '—') },
   { label: 'Oversample Pool', get: (r) => (r.params.oversample_pool != null ? String(r.params.oversample_pool) : '—') },
+  {
+    label: 'Candidates After Token Filter',
+    get: (r) =>
+      r.params.n_candidates_after_token_filter != null ? String(r.params.n_candidates_after_token_filter) : '—',
+  },
   { label: 'Top K', get: (r) => (r.params.top_k != null ? String(r.params.top_k) : '—') },
   { label: 'N Anchor', get: (r) => (r.params.n_anchor != null ? String(r.params.n_anchor) : '—') },
   { label: 'N Semantic Expansion', get: (r) => (r.params.n_semantic_expansion != null ? String(r.params.n_semantic_expansion) : '—') },
@@ -91,7 +105,36 @@ function columnLabel(run: RunState): string {
   return `Condition ${run.condition} (${run.run_id})`
 }
 
-function buildComparisonMarkdown(runs: RunState[]): string {
+interface ConsistencyBanner {
+  tone: 'success' | 'primary' | 'danger'
+  text: string
+}
+
+// Same 3-way verdict the backend computes (history_service.compute_sample_
+// consistency) rendered as plain text -- shared between the on-page banner
+// and the markdown export so the two never say something different.
+function consistencyBanner(result: SampleConsistencyResult | undefined): ConsistencyBanner | null {
+  if (!result) return null
+  const n = result.runs.map((r) => r.n).join('/')
+  if (result.sample_consistency === 'identical') {
+    return { tone: 'success', text: `All runs evaluated the same ${result.runs[0]?.n ?? '?'} questions.` }
+  }
+  if (result.sample_consistency === 'subset_nested') {
+    const prefixNote =
+      result.is_exact_prefix === true
+        ? 'smaller runs are an exact PREFIX of the larger run(s) (n=10 nested inside n=384-style).'
+        : result.is_exact_prefix === false
+          ? 'smaller runs are a SUBSET of the larger run(s), but NOT in the same first-N order — same underlying pool, different sampling order.'
+          : 'smaller runs are a subset of the larger run(s).'
+    return { tone: 'primary', text: `Nested samples (n=${n}): ${prefixNote}` }
+  }
+  return {
+    tone: 'danger',
+    text: `Runs evaluated DIFFERENT questions (n=${n}, intersection=${result.intersection_size}). Metric comparison below is NOT paired — treat it as informational only.`,
+  }
+}
+
+function buildComparisonMarkdown(runs: RunState[], consistency: SampleConsistencyResult | undefined): string {
   const header = ['Parameter', ...runs.map(columnLabel)]
   const paramRows = PARAM_ROWS.map((row) => [row.label, ...runs.map((r) => row.get(r))])
 
@@ -101,12 +144,15 @@ function buildComparisonMarkdown(runs: RunState[]): string {
     return [row.label, ...values.map((v) => (typeof v === 'number' ? row.fmt(v) : '—'))]
   })
 
+  const banner = consistencyBanner(consistency)
+
   const lines = [
     '# Run Comparison',
     '',
     `Generated: ${new Date().toISOString()}`,
     `Runs compared: ${runs.map((r) => `${r.condition} (${r.run_id})`).join(', ')}`,
     '',
+    ...(banner ? [`**Sample consistency**: ${banner.text}`, ''] : []),
     '## Parameters',
     '',
     mdTable(header, paramRows),
@@ -139,13 +185,15 @@ export function HistoryComparePage() {
   // compared can vary freely -- History no longer caps selection at 4.
   const queries = useHistoryDetails(ids)
   const runs = queries.map((q) => q.data).filter((r): r is RunState => !!r)
+  const { data: consistency } = useCompareConsistency(ids)
+  const banner = consistencyBanner(consistency)
 
   if (ids.length === 0) {
     return <div className="text-sm text-text-muted">No runs selected. Go back to History and select 2 or more runs.</div>
   }
 
   const handleExport = () => {
-    const md = buildComparisonMarkdown(runs)
+    const md = buildComparisonMarkdown(runs, consistency)
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
     downloadMarkdown(`run-comparison_${runs.map((r) => r.condition).join('')}_${stamp}.md`, md)
   }
@@ -170,6 +218,21 @@ export function HistoryComparePage() {
       </div>
 
       {runs.length < ids.length && <div className="text-sm text-text-muted mb-4">Loading...</div>}
+
+      {banner && (
+        <div
+          className={`mb-4 px-3 py-2.5 rounded-md border text-sm ${
+            banner.tone === 'success'
+              ? 'bg-white text-success border-success/40'
+              : banner.tone === 'primary'
+                ? 'bg-primary-soft text-primary border-primary-border'
+                : 'bg-white text-danger border-danger/40'
+          }`}
+        >
+          {banner.tone === 'success' ? '✓ ' : banner.tone === 'primary' ? 'ℹ ' : '⚠ '}
+          {banner.text}
+        </div>
+      )}
 
       {runs.length > 0 && (
         <>

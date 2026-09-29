@@ -49,6 +49,14 @@ DEFAULTS: dict[str, Any] = {
     "secondary_judge_model": "gpt-4o",
     "kappa_sample_size": 50,
     "judge_majority_rounds": 1,
+    # Whether start_judge_run() (engine_service.py) also waits for
+    # _HEAVY_RUN_LOCK to be free (no A/B/C/D run currently executing)
+    # before a judge run proceeds, on top of _JUDGE_SEMAPHORE's own limit
+    # of 2 concurrent judges. Default ON: a judge run sharing the machine
+    # with a 384-question generator run is the same 8GB-RAM contention this
+    # module's "RESOURCE BUDGET" docstring describes, just from the judge
+    # side instead of the generator side.
+    "judges_wait_for_heavy_run": True,
 }
 
 

@@ -131,7 +131,7 @@ load_dotenv()
 # terduplikasi/berisiko diam-diam berbeda antar file kondisi.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
-from llm.prompts import build_base_messages
+from llm.prompts import PROMPT_VERSION, build_base_messages
 
 TOKEN_LIMIT = 2048  # sesuai batasan paper asli
 
@@ -545,6 +545,7 @@ def main():
               "panggilan API gagal (cek pesan [FAIL] di atas, sering karena API key "
               "tidak valid/kehabisan credit/rate limit). Tidak ada ringkasan untuk ditampilkan.")
         history_path = append_run_history({
+            "prompt_version": PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "status": "no_results",
             "provider": args.provider,
@@ -564,6 +565,7 @@ def main():
         log("\n[ERROR] File hasil ada tapi tidak berisi record valid -- cek pesan "
               "[FAIL] di atas untuk penyebabnya.")
         history_path = append_run_history({
+            "prompt_version": PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "status": "no_valid_records",
             "provider": args.provider,
@@ -589,6 +591,7 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
+        "prompt_version": PROMPT_VERSION,
         "run_started_at": run_started_at.isoformat(),
         "status": "success",
         "provider": args.provider,
@@ -597,6 +600,7 @@ def main():
         "n_processed": len(results_df),
         "seed": args.seed,
         "oversample_pool": oversample_pool,
+        "n_candidates_after_token_filter": len(candidates),
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),

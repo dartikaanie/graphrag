@@ -190,6 +190,7 @@ class SettingsUpdate(BaseModel):
     secondary_judge_model: str | None = None
     kappa_sample_size: int | None = None
     judge_majority_rounds: int | None = None
+    judges_wait_for_heavy_run: bool | None = None
 
 
 class TestConnectionRequest(BaseModel):
