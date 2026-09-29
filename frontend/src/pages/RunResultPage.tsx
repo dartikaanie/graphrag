@@ -52,6 +52,8 @@ export function RunResultPage() {
           results={run.results}
           onStop={() => cancelRun.mutate(run.run_id)}
           stopping={cancelRun.isPending || run.cancel_requested}
+          status={run.status}
+          queuePosition={run.queue_position}
         />
       )}
 

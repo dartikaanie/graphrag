@@ -38,7 +38,10 @@ export function HistoryDetailPage() {
       </h1>
       <p className="text-sm text-text-secondary mb-4">
         {new Date(run.created_at).toLocaleString()} · Mode: {run.mode} · Provider: {run.params.provider} · Model:{' '}
-        {run.params.model} · Status: <Badge tone={run.status === 'success' || run.status === 'completed' ? 'success' : 'warning'}>{run.status}</Badge>
+        {run.params.model} · Prompt: {run.params.prompt_version ?? '—'}
+        {run.condition === 'C' && <> · C retrieval: {run.params.c_retrieval_version ?? '—'}</>}
+        {run.condition === 'D' && <> · D retrieval: {run.params.d_retrieval_version ?? '—'}</>} · Status:{' '}
+        <Badge tone={run.status === 'success' || run.status === 'completed' ? 'success' : 'warning'}>{run.status}</Badge>
       </p>
 
       {run.summary && (

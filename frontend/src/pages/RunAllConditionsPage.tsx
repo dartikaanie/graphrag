@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useCreateRun } from '@/api/hooks'
+import { useConfigDefaults, useCreateRun } from '@/api/hooks'
 import { InfoTooltip } from '@/components/InfoTooltip'
 import { PARAM_GLOSSARY } from '@/lib/paramGlossary'
 import type { RunCreateParams } from '@/types/run'
@@ -48,6 +48,8 @@ const inputClass =
 export function RunAllConditionsPage() {
   const navigate = useNavigate()
   const createRun = useCreateRun()
+  const { data: defaults } = useConfigDefaults()
+  const defaultOversamplePool = defaults?.default_oversample_pool ?? 1536
 
   const [mode, setMode] = useState<'batch' | 'single'>('batch')
   const [nSample, setNSample] = useState(384)
@@ -72,7 +74,7 @@ export function RunAllConditionsPage() {
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const effectiveOversamplePool = oversamplePool ? Number(oversamplePool) : nSample * 4
+  const effectiveOversamplePool = oversamplePool ? Number(oversamplePool) : defaultOversamplePool
 
   const handleRunAll = async () => {
     setError(null)
@@ -115,18 +117,41 @@ export function RunAllConditionsPage() {
         : {}),
     })
 
-    try {
-      const [a, b, c, d] = await Promise.all([
-        createRun.mutateAsync(paramsFor('A')),
-        createRun.mutateAsync(paramsFor('B')),
-        createRun.mutateAsync(paramsFor('C')),
-        createRun.mutateAsync(paramsFor('D')),
-      ])
-      navigate(`/experiment/all/runs?a=${a.run_id}&b=${b.run_id}&c=${c.run_id}&d=${d.run_id}`)
-    } catch (e) {
-      setError((e as Error).message)
+    // Promise.allSettled (NOT Promise.all): each condition's POST /api/runs
+    // is submitted independently, so one condition failing validation (e.g.
+    // a bad param) doesn't prevent the OTHER three from being submitted --
+    // Promise.all would reject as soon as the FIRST one failed, silently
+    // dropping the rest. Actual execution was already independent (each
+    // condition gets its own run_id/background thread/queue slot), this
+    // just makes the SUBMISSION step match that independence.
+    const conditions = ['A', 'B', 'C', 'D'] as const
+    const settled = await Promise.allSettled(conditions.map((c) => createRun.mutateAsync(paramsFor(c))))
+
+    const runIds: Partial<Record<'A' | 'B' | 'C' | 'D', string>> = {}
+    const failures: { condition: 'A' | 'B' | 'C' | 'D'; message: string }[] = []
+    settled.forEach((result, i) => {
+      const condition = conditions[i]
+      if (result.status === 'fulfilled') {
+        runIds[condition] = result.value.run_id
+      } else {
+        failures.push({ condition, message: (result.reason as Error)?.message ?? String(result.reason) })
+      }
+    })
+
+    if (Object.keys(runIds).length === 0) {
+      setError(`All four conditions failed to start: ${failures.map((f) => `${f.condition} (${f.message})`).join('; ')}`)
       setStarting(false)
+      return
     }
+
+    const idParams = (['a', 'b', 'c', 'd'] as const)
+      .map((key, i) => [key, runIds[conditions[i]]] as const)
+      .filter(([, id]) => id)
+      .map(([key, id]) => `${key}=${id}`)
+    const failedParam = failures.length > 0
+      ? `&failed=${encodeURIComponent(failures.map((f) => `${f.condition}:${f.message}`).join('|'))}`
+      : ''
+    navigate(`/experiment/all/runs?${idParams.join('&')}${failedParam}`)
   }
 
   const runDisabled = starting || (mode === 'single' && !questionId)
@@ -166,7 +191,7 @@ export function RunAllConditionsPage() {
             <Field label="oversample_pool (shared across A/B/C/D)" glossaryKey="oversample_pool">
               <input
                 className={inputClass}
-                placeholder={`auto (${nSample * 4})`}
+                placeholder={`${defaultOversamplePool} (default — keeps samples nested across n)`}
                 value={oversamplePool}
                 onChange={(e) => setOversamplePool(e.target.value)}
               />

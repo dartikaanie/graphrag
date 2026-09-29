@@ -26,6 +26,37 @@ HISTORY_PATHS: dict[str, Path] = {
     "D": REPO_ROOT / "llm" / "d_lightrag" / "logs" / "run_history.jsonl",
 }
 
+# The moment PROMPT_VERSION="v2" (llm/prompts.py) and D_RETRIEVAL_VERSION="v2"
+# (llm/d_lightrag.py, the EMBED_SIM fix) were introduced -- see docs/README.md
+# §8. Neither field existed in run_history.jsonl before this instant, so a
+# record with run_started_at strictly before this cutoff and MISSING the
+# field can be reliably inferred as "v1"; a record after the cutoff but
+# still missing the field is genuinely ambiguous (could be a stale cached
+# .pyc, a manually edited record, etc.) and must show "--", never a guess.
+PROMPT_V2_CUTOFF = "2026-09-28T19:06:21+00:00"
+
+# The moment the SEPARATE determinism fix landed: D_RETRIEVAL_VERSION "v2"
+# -> "v3" (LIMIT-before-answer-join fix + deterministic tie-breaks
+# everywhere in D), and C_RETRIEVAL_VERSION "v2" introduced for the first
+# time (C's retrieved_context changed for 7/10 pilot questions once
+# deterministic tie-breaks were added -- see docs/README.md §8). A record
+# missing c_retrieval_version/d_retrieval_version entirely and dated before
+# THIS cutoff used the old non-deterministic-tie-break code, regardless of
+# whether it also predates PROMPT_V2_CUTOFF.
+C_D_RETRIEVAL_FIX_CUTOFF = "2026-09-28T22:08:24+00:00"
+
+
+def _infer_version(record: dict[str, Any], field: str, cutoff: str = PROMPT_V2_CUTOFF) -> str | None:
+    """value if the record has `field`; "v1 (inferred)" if it predates
+    `cutoff` and doesn't; None (-> "--" in the UI) otherwise."""
+    value = record.get(field)
+    if value is not None:
+        return value
+    started_at = record.get("run_started_at")
+    if started_at and str(started_at) < cutoff:
+        return "v1 (inferred)"
+    return None
+
 
 def _history_id(condition: str, record: dict[str, Any]) -> str:
     """Stable synthetic id: CLI runs never had a run_id, so derive one
@@ -134,10 +165,17 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
             "n_sample": record.get("n_sample_target"),
             "seed": record.get("seed"),
             "oversample_pool": record.get("oversample_pool"),
+            "n_candidates_after_token_filter": record.get("n_candidates_after_token_filter"),
             "top_k": record.get("top_k"),
             "n_anchor": record.get("n_anchor"),
             "n_semantic_expansion": record.get("n_semantic_expansion"),
             "require_citation": record.get("require_citation"),
+            # Was silently dropped before -- present in run_history.jsonl for
+            # B/C (see engine_service.py) since it was first wired, but never
+            # surfaced here, so Compare/History always showed "--" for it
+            # regardless of what was actually used.
+            "log_full_candidates": record.get("log_full_candidates"),
+            "index_pool": record.get("index_pool"),
             "fusion_mode": record.get("fusion_mode"),
             "fusion_w_path_trust": record.get("fusion_w_path_trust"),
             "fusion_w_intrinsic": record.get("fusion_w_answer_intrinsic_trust"),
@@ -146,6 +184,15 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
             "n_low_level": record.get("n_low_level"),
             "n_high_level": record.get("n_high_level"),
             "require_grounding": record.get("require_grounding"),
+            # "v1 (inferred)" only when reliably inferable from run_started_at
+            # vs. PROMPT_V2_CUTOFF above -- never guessed otherwise ("--").
+            "prompt_version": _infer_version(record, "prompt_version"),
+            "d_retrieval_version": (
+                _infer_version(record, "d_retrieval_version", C_D_RETRIEVAL_FIX_CUTOFF) if condition == "D" else None
+            ),
+            "c_retrieval_version": (
+                _infer_version(record, "c_retrieval_version", C_D_RETRIEVAL_FIX_CUTOFF) if condition == "C" else None
+            ),
         },
         "created_at": started_at,
         "started_at": started_at,
@@ -222,3 +269,120 @@ def delete_history_record(history_id: str) -> bool:
 
 def total_pages(total: int, page_size: int) -> int:
     return max(1, math.ceil(total / page_size))
+
+
+# ---------------------------------------------------------------------
+# Phase 3 -- sample-consistency check for History -> Compare. The whole
+# point of a paired comparison (this thesis's design) is that every
+# condition evaluated the SAME question_ids -- this answers "did it
+# actually?" directly from the result files, instead of trusting that
+# seed/oversample_pool were entered identically (Phase 1/2 make that
+# easier to get right, but this is the check that PROVES it per comparison).
+# ---------------------------------------------------------------------
+
+# (output_path -> (mtime, [question_id, ...])), process-lifetime, invalidated
+# by mtime so a re-run of the same file (resume/force) is picked up.
+#
+# Reads the TOP-LEVEL "question_id" via json.loads(line)["question_id"] --
+# NOT a regex over the raw line. A regex matching the first `"question_id":`
+# substring would rely on it always being the first key in the dict, which
+# is true of every condition script's record={...} literal TODAY but is not
+# a contract anything enforces, and every record ALSO has one or more
+# NESTED "question_id" keys inside retrieved_context items (a different
+# field entirely -- the source thread id of that retrieved chunk, not the
+# question being evaluated). A regex is one refactor away from silently
+# reading the wrong number. json.loads() costs more per line than a regex
+# would, but correctness here matters more than the difference at n<=384.
+_QID_CACHE: dict[str, tuple[float, list[int]]] = {}
+
+
+def _read_question_ids_cached(output_path: str) -> list[int]:
+    path = Path(output_path)
+    if not path.exists():
+        return []
+    mtime = path.stat().st_mtime
+    cached = _QID_CACHE.get(output_path)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
+    ids: list[int] = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            qid = record.get("question_id")
+            if qid is not None:
+                ids.append(int(qid))
+    _QID_CACHE[output_path] = (mtime, ids)
+    return ids
+
+
+def compute_sample_consistency(history_ids: list[str]) -> dict[str, Any]:
+    """`sample_consistency`:
+      - "identical"     : every run's question_id SET is exactly the same.
+      - "subset_nested"  : not identical, but every run's set is a subset of
+        the largest run's set (nested sampling -- e.g. an n=10 pilot inside
+        the planned n=384 sample). Also reports `is_exact_prefix`: whether
+        each smaller run's question_ids, IN ORDER, equal the first N
+        entries of the largest run's question_ids (true nested sampling,
+        not just "happens to be a subset").
+      - "different"      : at least one run has a question_id the others
+        (or the largest run) don't -- NOT a valid paired comparison.
+    Runs whose output_path is missing/unreadable are silently excluded from
+    the returned `runs` list (not fatal) -- fewer than 2 resolvable runs
+    yields "different" with a `note` explaining why, so a caller always gets
+    a directly-usable verdict rather than a crash.
+    """
+    runs: list[dict[str, Any]] = []
+    for hid in history_ids:
+        detail = get_history_detail(hid)
+        if not detail or not detail.get("output_path"):
+            continue
+        qids = _read_question_ids_cached(detail["output_path"])
+        runs.append({
+            "history_id": hid,
+            "condition": detail.get("condition"),
+            "n": len(qids),
+            "_question_ids": qids,
+        })
+
+    if len(runs) < 2:
+        return {
+            "sample_consistency": "different",
+            "runs": [{k: v for k, v in r.items() if k != "_question_ids"} for r in runs],
+            "intersection_size": len(runs[0]["_question_ids"]) if runs else 0,
+            "is_exact_prefix": None,
+            "note": "Fewer than 2 runs had a readable output_path -- cannot compare.",
+        }
+
+    sets = [set(r["_question_ids"]) for r in runs]
+    intersection = set.intersection(*sets)
+    identical = all(s == sets[0] for s in sets)
+
+    is_exact_prefix = None
+    if identical:
+        consistency = "identical"
+    else:
+        largest_set = max(sets, key=len)
+        nested = all(s <= largest_set for s in sets)
+        if nested:
+            consistency = "subset_nested"
+            by_size = sorted(runs, key=lambda r: r["n"])
+            largest_run = by_size[-1]
+            is_exact_prefix = all(
+                r["_question_ids"] == largest_run["_question_ids"][: r["n"]] for r in by_size[:-1]
+            )
+        else:
+            consistency = "different"
+
+    return {
+        "sample_consistency": consistency,
+        "runs": [{k: v for k, v in r.items() if k != "_question_ids"} for r in runs],
+        "intersection_size": len(intersection),
+        "is_exact_prefix": is_exact_prefix,
+    }

@@ -414,7 +414,14 @@ export function RunJudgePage() {
 
           {connectionError && !isTerminal && <div className="text-xs text-warning mb-2">Polling disconnected, retrying…</div>}
 
-          {run && !isTerminal && (
+          {run && !isTerminal && run.status === 'queued' && (
+            <div className="text-sm text-text-secondary mb-2">
+              Queued{run.queue_position != null ? ` (position ${run.queue_position})` : ''} — at most 2 judge runs
+              execute at once; this one starts automatically once a slot is free.
+            </div>
+          )}
+
+          {run && !isTerminal && run.status !== 'queued' && (
             <div className="text-sm text-text-secondary mb-2">
               Progress: {run.progress.current} / {run.progress.total} ({nCached} from cache, {nEvaluated} newly evaluated
               {nFailed > 0 ? `, ${nFailed} failed` : ''})

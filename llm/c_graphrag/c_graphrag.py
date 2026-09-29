@@ -149,7 +149,7 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
-from llm.prompts import build_graphrag_messages
+from llm.prompts import PROMPT_VERSION, build_graphrag_messages
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B
 EMBED_DIM = 384  # all-MiniLM-L6-v2, HARUS sama dgn 11_densify_embedding_similarity.py
@@ -166,6 +166,27 @@ EMBED_DIM = 384  # all-MiniLM-L6-v2, HARUS sama dgn 11_densify_embedding_similar
 # dengan perilaku sebelum fitur ini ada.
 DEFAULT_FUSION_W_PATH_TRUST = 0.7
 DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST = 0.3
+
+# C_RETRIEVAL_VERSION
+# ------------------------------------------------------------
+# "v1" = traverse_graph()/semantic_expansion() punya ORDER BY tanpa tie-break
+#        (1-hop malah TIDAK ADA ORDER BY sama sekali), dan fuse_and_rank()'s
+#        Python sort (mode trust_weighted) memakai combined_score SAJA sbg
+#        key -- pada combined_score yang SAMA PERSIS (ties memang terjadi,
+#        dikonfirmasi lewat perbandingan langsung thd file n=10 pilot: 7/10
+#        pertanyaan berubah retrieved_context-nya setelah fix ini, beberapa
+#        bukan cuma re-order tapi item BERBEDA yg lolos dedup by-answer_id),
+#        hasil akhir bergantung pada urutan return Neo4j yang TIDAK dijamin
+#        stabil antar eksekusi query yang identik.
+# "v2" (C_RETRIEVAL_VERSION saat ini) = SEMUA query Cypher ber-ORDER BY+LIMIT
+#        (2-hop traverse_graph) diberi tie-break sekunder (a.id ASC), 1-hop
+#        traverse_graph()/semantic_expansion() diberi ORDER BY eksplisit
+#        (a.id ASC, sebelumnya tidak ada sama sekali), dan fuse_and_rank()'s
+#        sort trust_weighted memakai (-combined_score, answer_id) sbg key.
+#        RANKING/TRUST LOGIC TIDAK DIUBAH -- ini murni membuat urutan akhir
+#        deterministik/reproducible, bukan mengubah kriteria pemeringkatan.
+#        Direkam sbg field `c_retrieval_version` di run_history.jsonl.
+C_RETRIEVAL_VERSION = "v2"
 # Proxy trust utk kandidat yang HANYA ditemukan lewat semantic expansion
 # (tidak lewat edge graf eksplisit) -- disamakan dgn tier EMBED_SIM
 # (trust "terendah" di antara 3 sumber densifikasi, lihat
@@ -406,6 +427,7 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
                    a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
                    a.isAccepted AS is_accepted, r.weight AS edge_weight, 1 AS hop,
                    type(r) AS rel_type
+            ORDER BY a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_a=exclude_a,
         )
@@ -422,7 +444,7 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
             MATCH (q2)-[r3:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
             WHERE NOT a.id IN $exclude_a
             WITH q2, a, r2, r3, (r2.weight * r3.weight) AS edge_weight
-            ORDER BY edge_weight DESC
+            ORDER BY edge_weight DESC, a.id ASC
             LIMIT 50
             RETURN q2.id AS via_question_id, q2.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
@@ -484,6 +506,7 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
                    a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
                    a.isAccepted AS is_accepted, r.weight AS edge_weight, 'semantic' AS hop,
                    type(r) AS rel_type
+            ORDER BY a.id ASC
             """,
             qids=list(expansion_qids), exclude_a=exclude_a,
         )
@@ -559,7 +582,12 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
             if aid not in best_by_answer or c["combined_score"] > best_by_answer[aid]["combined_score"]:
                 best_by_answer[aid] = c
 
-        ranked = sorted(best_by_answer.values(), key=lambda c: c["combined_score"], reverse=True)
+        # Secondary key answer_id ASC breaks ties deterministically (combined_score
+        # can tie -- e.g. identical edge_weight/trustScore candidates) -- without it,
+        # Python's stable sort falls back to `all_candidates` insertion order, which
+        # itself depends on Neo4j's MATCH return order (not guaranteed stable run to
+        # run without an explicit ORDER BY upstream).
+        ranked = sorted(best_by_answer.values(), key=lambda c: (-c["combined_score"], c["answer_id"]))
         top = ranked[:top_k]
 
     final = []
@@ -1056,9 +1084,13 @@ def main():
     if not file_exists or file_size == 0:
         log("\n[ERROR] Tidak ada hasil tersimpan sama sekali.")
         history_path = append_run_history({
+            "prompt_version": PROMPT_VERSION,
+            "c_retrieval_version": C_RETRIEVAL_VERSION,
             "run_started_at": run_started_at.isoformat(), "condition": "C", "status": "no_results",
             "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
             "seed": args.seed, "output_path": str(output_path), "log_path": str(log_path),
+            "oversample_pool": oversample_pool,
+            "log_full_candidates": args.log_full_candidates,
             "fusion_mode": args.fusion_mode,
             "fusion_w_path_trust": args.fusion_w_path_trust,
             "fusion_w_answer_intrinsic_trust": args.fusion_w_intrinsic,
@@ -1093,10 +1125,15 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
+        "prompt_version": PROMPT_VERSION,
+        "c_retrieval_version": C_RETRIEVAL_VERSION,
         "run_started_at": run_started_at.isoformat(), "condition": "C",
         "status": "interrupted" if interrupted else "success",
         "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
         "n_processed": len(results_df), "seed": args.seed,
+        "oversample_pool": oversample_pool,
+        "n_candidates_after_token_filter": len(candidates),
+        "log_full_candidates": args.log_full_candidates,
         "top_k": args.top_k, "n_anchor": args.n_anchor,
         "n_semantic_expansion": args.n_semantic_expansion,
         "fusion_mode": args.fusion_mode,

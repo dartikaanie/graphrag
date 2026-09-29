@@ -357,6 +357,19 @@ POST /api/runs/{run_id}/cancel     → stop a running job (optional but recommen
 - For Condition C: NF2 compliance rate (% of answers with ≥1 `[SO-<id>]` citation)
 - Total duration, model & provider used, parameters (seed, pool, n)
 
+**Current implementation note (post-Phase-4, see `docs/README.md` §7/§8):**
+this spec's original run flow assumed each `POST /api/runs` executes
+immediately; on the actual 8GB target machine, A/B/C/D all now serialize
+through one lock (`engine_service._HEAVY_RUN_LOCK`) so only one condition
+executes at a time — a run can come back with `status: "queued"` and a
+`queue_position` field before it starts, which `GET /api/runs/{run_id}` and
+the SSE stream both surface. Also added since this section was written:
+`oversample_pool` defaults to a shared constant (`GET /api/config/defaults`
+→ `default_oversample_pool: 1536`) instead of each condition computing its
+own multiple of `n_sample`, so pilot and full runs stay nested samples of
+each other; and `POST /api/config/release-faiss-cache` frees the C/D
+FAISS/embedding memmap on demand.
+
 ### 5.5 Endpoints — History / Transactions
 
 ```
@@ -371,6 +384,8 @@ The backend reads `.jsonl` files (path configured in Settings), parses each line
 - Skip (not crash on) lines that fail `json.loads()`, so any stray non-JSONL file in the same folder doesn't take down the endpoint.
 - Show the currently active path explicitly in the Settings UI, so during a demo it's clear which data is being displayed.
 
+**Added since this section was written:** `GET /api/history/compare/consistency?ids=<history_id>,<history_id>,...` (2–4 ids) returns whether the selected runs' `question_id` sets are `identical`, `subset_nested` (one is an exact prefix of another — the expected relationship between a pilot and a full run drawn from the same seed/`oversample_pool`), or `different`, plus `intersection_size`/`is_exact_prefix`. History Compare renders this as a banner and includes it in the page's Markdown export.
+
 ### 5.6 Endpoints — Settings
 
 ```
@@ -381,6 +396,7 @@ Body: { "provider": "ollama"|"openai"|"anthropic"|"local", "model": "...", "api_
 - **Never** return `api_key`/`neo4j_password` raw in a `GET` response — mask it (`sk-...abcd`) or return an `is_set: true` flag.
 - **Important, from the repo audit (§1.5):** this repo previously had a `.env` with a live API key committed to git, not yet fully remediated. To avoid the dashboard reopening the same leak path, config **must** be stored in a file **outside the Git repo folder** (e.g. `~/.graphrag-dashboard/config.json`, lightly encrypted with `cryptography.fernet`) — **never** written to an `.env` inside any repo root that could be accidentally committed.
 - Provide connection validation: `POST /api/settings/test-connection` to check Neo4j and the LLM provider are reachable before saving.
+- **Added since this section was written:** `judges_wait_for_heavy_run` (bool, default `true`) — when on, a judge run (`POST /api/judge/runs`) also waits for `_HEAVY_RUN_LOCK` to be free (no A/B/C/D run executing) before starting, on top of the separate 2-concurrent-judge semaphore that always applies regardless of this setting. Surfaced as a checkbox in the Settings page's "System" section, alongside "Release cached FAISS index."
 
 ### 5.7 Engine Wrapper (`engine_service.py`)
 

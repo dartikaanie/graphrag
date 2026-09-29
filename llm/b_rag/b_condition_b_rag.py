@@ -145,7 +145,7 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.citations import extract_citations
 from llm.client_factory import get_llm_client
-from llm.prompts import build_rag_messages
+from llm.prompts import PROMPT_VERSION, build_rag_messages
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, sama dgn Kondisi A
 
@@ -761,6 +761,7 @@ def main():
     if not file_exists or file_size == 0:
         log("\n[ERROR] Tidak ada hasil tersimpan sama sekali -- cek pesan [FAIL]/[FAIL-WRITE] di atas.")
         history_path = append_run_history({
+            "prompt_version": PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "condition": "B",
             "status": "no_results",
@@ -768,6 +769,8 @@ def main():
             "model": args.model,
             "n_sample_target": args.n_sample,
             "seed": args.seed,
+            "oversample_pool": oversample_pool,
+            "log_full_candidates": args.log_full_candidates,
             "index_pool": args.index_pool,
             "top_k": args.top_k,
             "output_path": str(output_path),
@@ -781,6 +784,7 @@ def main():
     if "cosine_similarity" not in results_df.columns or len(results_df) == 0:
         log("\n[ERROR] File hasil ada tapi tidak berisi record valid.")
         history_path = append_run_history({
+            "prompt_version": PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "condition": "B",
             "status": "no_valid_records",
@@ -788,6 +792,8 @@ def main():
             "model": args.model,
             "n_sample_target": args.n_sample,
             "seed": args.seed,
+            "oversample_pool": oversample_pool,
+            "log_full_candidates": args.log_full_candidates,
             "index_pool": args.index_pool,
             "top_k": args.top_k,
             "output_path": str(output_path),
@@ -825,6 +831,7 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
+        "prompt_version": PROMPT_VERSION,
         "run_started_at": run_started_at.isoformat(),
         "condition": "B",
         "status": "success",
@@ -833,6 +840,9 @@ def main():
         "n_sample_target": args.n_sample,
         "n_processed": len(results_df),
         "seed": args.seed,
+        "oversample_pool": oversample_pool,
+        "n_candidates_after_token_filter": len(candidates),
+        "log_full_candidates": args.log_full_candidates,
         "index_pool": args.index_pool,
         "top_k": args.top_k,
         "token_chunk_limit": args.token_chunk_limit,

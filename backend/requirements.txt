@@ -6,3 +6,5 @@ neo4j>=5.23
 duckdb>=1.5
 python-dotenv>=1.0
 cryptography>=42.0
+pytest>=8.0
+psutil>=6.0  # optional at runtime (engine_service._process_memory_mb() no-ops if missing), used for FAISS-cache-load memory logging

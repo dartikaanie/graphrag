@@ -163,14 +163,67 @@ its own `logs/run_history.jsonl`.
   weighting itself), `--no-require-grounding` (isolates the grounding
   constraint from the citation constraint), and
   `--no-enable-semantic-expansion` (isolates the semantic-expansion stage).
+  **`c_retrieval_version`** in `run_history.jsonl`: `"v2"` (current) once
+  deterministic tie-breaks were added (see below); absent entirely on
+  records predating this field (equivalent to unversioned "v1").
 - **Condition D**: same sampling and KG/FAISS cache as Condition C, but a
   dual-level retrieval mechanism (adapted from LightRAG, Guo et al.) instead
   of trust-weighted fusion — low-level (1-hop from vector-search anchors) +
-  high-level (2-hop via tag/relatedness edges), ranked purely by relevance
-  score, never trust. Shares Condition C's `--require-grounding` ablation
-  switch so the grounding-constraint experiment can be run identically on
-  both graph-based conditions; semantic expansion is not implemented here
-  (only two retrieval levels, by design).
+  high-level (2-hop via tag/relatedness/embedding-similarity edges), ranked
+  purely by relevance score, never trust. Shares Condition C's
+  `--require-grounding` ablation switch so the grounding-constraint
+  experiment can be run identically on both graph-based conditions; semantic
+  expansion is not implemented here (only two retrieval levels, by design).
+  **`d_retrieval_version`** in `run_history.jsonl`: `"v1"` (buggy, see
+  below), `"v2"` (EMBED_SIM added, LIMIT-before-join bug still present),
+  `"v3"` (current — both retrieval fixes below); absent entirely on records
+  predating the field.
+
+  **Bug fix 1 — missing EMBED_SIM (found during n=10 pilot diagnosis, before
+  the real n=384 run):** `retrieve_high_level()`'s 2-hop Cypher only matched
+  `IS_RELATED_TO|TAG_COOCCUR` — its own docstring said the pattern was
+  copied from Condition C's `traverse_graph()` "bagian
+  IS_RELATED_TO|TAG_COOCCUR|EMBED_SIM", but `EMBED_SIM` was missing from
+  the actual query. For any anchor whose only outgoing Question↔Question
+  edges are `EMBED_SIM` (common — `TAGGED_WITH`/`EMBED_SIM` are frequently
+  an anchor's *only* edges), high-level retrieval silently returned zero
+  candidates even when Condition C, querying the same anchors with
+  `EMBED_SIM` included, found several relevant ones.
+
+  **Bug fix 2 — LIMIT before the answer join:** even with fix 1,
+  `retrieve_high_level()`'s `ORDER BY relevance_score DESC LIMIT
+  $n_high_level` still ran *before* the join that checks whether a
+  candidate actually has an answer — and `EMBED_SIM` edges all carry the
+  same flat weight (0.4), so with scores tied, `LIMIT` could pick
+  candidates that happen to have zero answers while candidates ranked just
+  outside the limit did have one. Fixed by restricting to
+  answer-having questions (`EXISTS { ... }`) *before* `ORDER BY`/`LIMIT`.
+  Traced read-only against live Neo4j (no LLM calls) on the two n=10 pilot
+  questions that hit both bugs: before either fix, 56612920 → 0 candidates
+  and 3882147 → 0 candidates; after fix 1 alone, 56612920 → 2 and 3882147
+  → 0 (still broken by bug 2); after both fixes, 56612920 → 5 and 3882147
+  → 3.
+
+  **Determinism fix — deterministic tie-breaking:** every Cypher query with
+  `ORDER BY`/`LIMIT` in both C (`traverse_graph`'s 2-hop) and D
+  (`retrieve_high_level`), plus the two 1-hop queries that had no `ORDER
+  BY` at all (C's `traverse_graph` 1-hop, D's `retrieve_low_level`), now
+  sort on an explicit secondary key (`a.id ASC`, or `q2.id ASC, a.id ASC`
+  for D's high-level). The Python-side final-ranking sorts
+  (`fuse_and_rank()` in C, `fuse_dual_level()` in D) now use
+  `(-score, answer_id)` as the sort key instead of score alone — without
+  this, Python's *stable* sort falls back to whatever order Neo4j happened
+  to return matching rows in, which is not guaranteed stable across
+  identical query executions. **Proven, not assumed**: each condition's
+  full retrieval pipeline was run twice, read-only, on the 10 n=10 pilot
+  `question_id`s, with no LLM calls — `retrieved_context` came back
+  byte-identical across both runs, for all 10 questions, both conditions.
+  **This changed C's retrieved context for 7 of the 10 pilot questions**
+  (some just reordered, some with a genuinely different item surviving the
+  by-`answer_id` dedup step on a tied score) even though C had no
+  correctness bug — ties were simply resolved by an undefined Neo4j return
+  order before, and by `answer_id` now. Ranking/trust logic itself was not
+  changed in either condition.
 
 See the dashboard's **Methodology** page (`/methodology`) for the full
 design write-up per condition and a side-by-side comparison table, or read
@@ -406,7 +459,14 @@ directly rather than re-implementing retrieval/generation logic — one
 `run_condition_x()` per condition, all registered in a `RUNNERS` dict.
 `POST /api/runs` (batch or single-question, any condition A–D)
 + `GET /api/runs/{id}/stream` (SSE progress, polls run state so a page
-refresh mid-run recovers cleanly) + cancel support.
+refresh mid-run recovers cleanly) + cancel support. All four conditions
+share one `oversample_pool` constant (`DEFAULT_OVERSAMPLE_POOL = 1536`,
+exposed via `GET /api/config/defaults` so the frontend never hard-codes it)
+so a smaller pilot `n_sample` is always an exact prefix of the official
+n=384 sample rather than an independently-drawn one — see §8. A
+"Release cached FAISS index" action (Settings page → System,
+`POST /api/config/release-faiss-cache`) frees the shared C/D FAISS/
+embedding memmap (~4GB) on demand without a backend restart.
 
 **Phase 5 — Frontend Run pages (done).** One `RunConditionPage` per
 condition (batch/single mode, all condition-specific parameters — top_k,
@@ -421,11 +481,20 @@ subgraph actually touched by that run (not a generic node-centered
 subgraph). **"Run All" (`/experiment/all`)** fires all four conditions with
 identical sampling parameters for a direct apples-to-apples comparison run
 — **not actually in parallel**: all four `POST /api/runs` requests are sent
-at once, but the backend (`engine_service.py`) queues Condition B, C, and D
-behind a shared lock so only one of them ever executes at a time (Condition
-A, which never touches Neo4j/FAISS, is the one exception and can run
-alongside whichever of B/C/D currently holds the lock). A queued run's
-status shows `"queued"` until its turn comes up. See §8 for why this exists.
+at once, but the backend (`engine_service.py`) queues all of A, B, C, and D
+behind one shared lock (`_HEAVY_RUN_LOCK`) so only one condition ever
+executes at a time — Condition A also runs a DuckDB sampling query and must
+not overlap C/D's ~4GB FAISS footprint on an 8GB machine, so it is not
+exempted from this lock. A queued run's status shows `"queued"` (with its
+position in the queue) until its turn comes up; submission still uses
+`Promise.allSettled` so one condition failing to even start (e.g. a bad
+parameter) doesn't block the others from starting. Judge runs
+(`POST /api/judge/runs`) use a *separate* bound — up to 2 concurrent judges
+via a semaphore, independent of `_HEAVY_RUN_LOCK` by default — plus an
+opt-out Settings toggle ("Judges wait while a heavy run is active", default
+on) that makes a judge run ALSO wait for the A/B/C/D lock to be free before
+starting, on top of the 2-judge cap. See §8 for the full resource-budget
+reasoning.
 
 **Phase 6 — History / run comparison (done).** `/api/history` reads each
 condition's `run_history.jsonl` directly (CLI runs and dashboard runs are
@@ -433,7 +502,16 @@ indistinguishable to this UI) into one unified, paginated, filterable table;
 select 2–4 runs (any mix of conditions) to compare parameters and metrics
 side by side, with a per-row delete action (removes the transaction-log
 entry only — the underlying results `.jsonl` on disk is never touched by a
-UI delete). A dedicated **Methodology page** (`/methodology`) documents each
+UI delete). Compare also computes and displays a **sample-consistency
+banner** (`GET /api/history/compare/consistency?ids=...`, backed by
+`history_service.compute_sample_consistency()`) — green "identical" when
+every selected run's `question_id` set matches exactly, blue "nested" when
+they're prefixes of each other at different `n` (the expected relationship
+for pilot vs. full runs drawn from the same `oversample_pool`/seed), or red
+"different" when they aren't comparable samples at all — included in the
+page's Markdown export too, so a comparison can't be read at face value
+without knowing whether the underlying samples actually match. A dedicated
+**Methodology page** (`/methodology`) documents each
 condition's design/retrieval mechanism/leakage-prevention approach and a
 full A/B/C/D comparison table, so the dashboard is self-documenting rather
 than requiring this file to be read alongside it. LLM-as-Judge results
@@ -500,10 +578,13 @@ are worth keeping visible rather than losing in chat history:
   they read the identical on-disk files, up to 4 concurrent DuckDB
   connections each free to use unlimited memory/threads, 4x embedding
   model) was enough to exhaust memory and hang the machine. Fixed three
-  ways in `engine_service.py`, all still allowing B/C/D to be *triggered*
+  ways in `engine_service.py`, all still allowing A/B/C/D to be *triggered*
   together from the UI: (1) a module-level `threading.Lock` serializes
-  actual execution of B/C/D to one at a time (Condition A stays
-  unlocked — it's materially cheaper and doesn't touch Neo4j/FAISS), with
+  actual execution of A/B/C/D to one at a time — Condition A was initially
+  left unlocked on the theory that it's materially cheaper and doesn't
+  touch Neo4j/FAISS, but it still runs its own DuckDB sampling query and
+  was later folded into the same lock so it can't overlap C/D's ~4GB FAISS
+  footprint on an 8GB machine either — with
   the run showing status `"queued"` while it waits; (2) Condition D's
   `load_faiss_cache()` reads the exact same files as Condition C's (by
   design — D reuses C's KG), so it's now loaded once via a shared
@@ -516,10 +597,88 @@ are worth keeping visible rather than losing in chat history:
   automatically fine to *execute* concurrently — those are separate
   decisions, and on a resource-constrained target machine the second one
   needs its own explicit bound, not just a for-loop across `RUNNERS`.
+- **Condition D's `retrieve_high_level()` had a docstring/implementation
+  mismatch that silently zeroed out retrieval for some questions.** The
+  docstring said the 2-hop Cypher pattern was copied from Condition C's
+  `traverse_graph()` including `EMBED_SIM`; the actual `MATCH` clause only
+  had `IS_RELATED_TO|TAG_COOCCUR`. Found by tracing two n=10 pilot
+  questions (56612920, 3882147) where D returned zero context but B and C
+  both retrieved 5 relevant items for the exact same questions — reading
+  D's own comments literally (rather than assuming the code matched them)
+  is what surfaced it. Lesson: when a docstring says "copied from X",
+  diff the actual query against X, don't just trust the sentence — and
+  when a condition scores worse than a baseline on a metric it shouldn't
+  structurally lose on, check whether it's a real methodological gap
+  before writing it up as one in Bab V.
+- **The `[SO-1234]` "hallucinated" citation wasn't a fabrication — it was
+  the model copying the prompt's own worked example.** `llm/prompts.py`'s
+  citation instructions for B/C/D use `[SO-1234]`/`[SO-5678]`/
+  `[SO-1234567]` etc. as illustrative example IDs; when retrieved context
+  was too weak/irrelevant to actually cite, especially with smaller local
+  models, the model sometimes echoed the example number verbatim instead
+  of refusing to cite or citing nothing. A scan of all existing result
+  files found 8/772 answers doing this (7 from small local Ollama models,
+  1 from gpt-4o-mini). Fixed by making every example ID in the prompt
+  non-numeric (`[SO-<id>]`) so it can never look like a real, copyable
+  citation — see `PROMPT_VERSION` below. Lesson: any illustrative example
+  embedded in a prompt is something the model can and eventually will
+  copy literally, especially under instruction pressure ("cite EVERY
+  claim") when it has nothing good to actually cite.
+- **"Ranking unchanged" is not the same as "reproducible."** Fixing
+  Condition D's `LIMIT`-before-answer-join bug (§5) surfaced a second,
+  broader issue: several Cypher `ORDER BY ... LIMIT` queries in both C and
+  D had no tie-break, and the Python sorts consuming their results used
+  score alone as the sort key. None of that is wrong *logic* — Python's
+  `sorted()` is stable and the scores are computed correctly — but Neo4j
+  doesn't guarantee a stable row order for an unordered `MATCH`, so on a
+  tie (common: `EMBED_SIM` edges all carry the same flat 0.4 weight),
+  which candidate "won" depended on Neo4j's internal, run-to-run-unstable
+  return order rather than on any criterion in the code. This had been
+  running unnoticed since C was first built — measured directly:
+  re-running C's retrieval (post-fix) against the existing n=10 pilot file
+  changed the retrieved context for 6 of the 10 questions (4 re-ordered
+  only: 20443560, 411756, 2617170, 56612920; 2 with genuinely different
+  retrieved items: 26406581, 51061836; the other 4 — 38118194, 76224221,
+  3882147, 11118023 — were unchanged), despite zero change to what
+  "better" means. Lesson: whenever a ranking step's key can tie, add an
+  explicit secondary key (e.g. `answer_id ASC`) even if the primary
+  criterion is "obviously" correct — a stable sort over an unordered
+  upstream source is not itself a source of determinism, and the gap only
+  shows up as run-to-run variance that's easy to mistake for noise rather
+  than a reproducibility bug. Verified with an actual double-run test (not
+  just code review) — run each condition's retrieval twice, read-only, no
+  LLM calls, and diff the IDs. Bumped `C_RETRIEVAL_VERSION` to `"v2"` and
+  `D_RETRIEVAL_VERSION` to `"v3"` so History can tell which fix era a
+  stored result belongs to instead of silently comparing pre-fix and
+  post-fix runs as if they used the same method.
+- **A regex reading a JSONL field by pattern-matching text is fragile even
+  when it "always" matches the first occurrence today.**
+  `history_service._read_question_ids_cached()` originally used
+  `re.compile(r'"question_id"\s*:\s*(-?\d+)').search(line)`, relying on
+  `question_id` happening to be the first key serialized in every record —
+  true in practice, but never a guaranteed contract, and every record also
+  has *nested* `question_id` keys inside `retrieved_context` items that a
+  naive `.search()` could just as easily have matched instead. Replaced
+  with `json.loads(line)["question_id"]`, which reads the actual top-level
+  key regardless of key order or nesting, and added a regression test
+  (`test_question_id_reader_uses_top_level_key_not_first_key_or_nested`)
+  with `question_id` deliberately placed after other keys and multiple
+  nested `question_id` values inside `retrieved_context` that must NOT be
+  picked up. Lesson: a regex over already-structured data (JSON, in this
+  case) is a bet on a formatting convention holding forever; parsing the
+  actual structure costs one line and removes the bet entirely.
 
 ---
 
 ## 9. Local setup quick reference
+
+Start **Neo4j Desktop** (the local DB the dashboard/Condition C/D connect
+to) before running Condition C or D, or "Run All Conditions" — the backend
+does not start it for you, and a C/D run will fail immediately without it.
+On an 8GB machine, remember that "Run All Conditions" *submits* A/B/C/D
+together but *executes* them one at a time (§7/§8) — a run showing
+`"queued"` is expected and not stuck; check its queue position rather than
+assuming it hung.
 
 ```bash
 # Backend
