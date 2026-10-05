@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useConfigDefaults, useCreateRun } from '@/api/hooks'
 import { InfoTooltip } from '@/components/InfoTooltip'
 import { PARAM_GLOSSARY } from '@/lib/paramGlossary'
+import { FactorialBatchPage } from '@/pages/FactorialBatchPage'
 import type { RunCreateParams } from '@/types/run'
 
 function Field({
@@ -45,11 +46,19 @@ const inputClass =
  * Neo4j/FAISS) to run concurrently with whichever of B/C/D currently holds
  * the lock. A queued run shows status "queued" until its turn comes up.
  */
+const PAGE_TABS = ['factorial', 'all'] as const
+type PageTab = (typeof PAGE_TABS)[number]
+
 export function RunAllConditionsPage() {
   const navigate = useNavigate()
   const createRun = useCreateRun()
   const { data: defaults } = useConfigDefaults()
   const defaultOversamplePool = defaults?.default_oversample_pool ?? 1536
+
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const activeTab: PageTab = PAGE_TABS.includes(tabParam as PageTab) ? (tabParam as PageTab) : 'factorial'
+  const setActiveTab = (tab: PageTab) => setSearchParams(tab === 'factorial' ? {} : { tab }, { replace: true })
 
   const [mode, setMode] = useState<'batch' | 'single'>('batch')
   const [nSample, setNSample] = useState(384)
@@ -91,7 +100,13 @@ export function RunAllConditionsPage() {
       condition,
       ...shared,
       ...(condition === 'B'
-        ? { top_k: topK, require_citation: requireCitation, log_full_candidates: logFullCandidates }
+        ? {
+            top_k: topK, require_citation: requireCitation, log_full_candidates: logFullCandidates,
+            // Only meaningful when require_citation is also on ("B-plain"
+            // vs "B-grounded") -- backend ignores it otherwise, same as
+            // RunConditionPage.tsx's supportsGrounding gating.
+            ...(requireCitation ? { require_grounding: requireGrounding } : {}),
+          }
         : {}),
       ...(condition === 'C'
         ? {
@@ -159,16 +174,40 @@ export function RunAllConditionsPage() {
   return (
     <div>
       <h1 className="text-lg font-semibold text-text-primary mb-1">Run All Conditions (A + B + C + D)</h1>
-      <p className="text-sm text-text-secondary mb-4">
-        Runs Condition A, B, C, and D with identical sampling parameters, for a direct comparison. Condition A
-        starts immediately; B, C, and D are queued and run one at a time (not in parallel) to stay within memory
-        limits on a typical local machine — each shows status "queued" until its turn comes up.
-      </p>
 
-      <div className="border border-border rounded-lg bg-surface p-4">
-        <div className="flex gap-1 mb-4 border-b border-border">
-          {(['batch', 'single'] as const).map((m) => (
-            <button
+      <div className="flex gap-1 mb-4 border-b border-border">
+        {(
+          [
+            { key: 'factorial' as const, label: 'Factorial Batch (9 runs)' },
+            { key: 'all' as const, label: 'All Conditions (4)' },
+          ]
+        ).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`px-3 py-2 text-sm border-b-2 -mb-px ${
+              activeTab === t.key ? 'border-primary text-primary font-medium' : 'border-transparent text-text-secondary'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'factorial' && <FactorialBatchPage />}
+
+      {activeTab === 'all' && (
+        <>
+          <p className="text-sm text-text-secondary mb-4">
+            Runs Condition A, B, C, and D with identical sampling parameters, for a direct comparison. Condition A
+            starts immediately; B, C, and D are queued and run one at a time (not in parallel) to stay within memory
+            limits on a typical local machine — each shows status "queued" until its turn comes up.
+          </p>
+
+          <div className="border border-border rounded-lg bg-surface p-4">
+            <div className="flex gap-1 mb-4 border-b border-border">
+              {(['batch', 'single'] as const).map((m) => (
+                <button
               key={m}
               onClick={() => setMode(m)}
               className={`px-3 py-2 text-sm border-b-2 -mb-px ${
@@ -272,8 +311,9 @@ export function RunAllConditionsPage() {
         <label className="flex items-center gap-2 text-sm mt-2">
           <input type="checkbox" checked={requireGrounding} onChange={(e) => setRequireGrounding(e.target.checked)} />
           <span className="text-text-secondary inline-flex items-center gap-1">
-            Condition C/D: Grounding constraint
+            Condition B/C/D: Grounding constraint
             <InfoTooltip text={PARAM_GLOSSARY.require_grounding} />
+            {' '}(B only if require_citation is also on)
           </span>
         </label>
 
@@ -346,7 +386,9 @@ export function RunAllConditionsPage() {
           </button>
           {error && <span className="text-sm text-danger">{error}</span>}
         </div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

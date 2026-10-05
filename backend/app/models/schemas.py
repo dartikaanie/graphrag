@@ -104,11 +104,18 @@ class RunCreateRequest(BaseModel):
     # Condition C (no trust weighting at all).
     n_low_level: int | None = None
     n_high_level: int | None = None
-    # Condition C AND D -- grounding constraint toggle (see
-    # build_graphrag_messages()/build_lightrag_messages() in llm/prompts.py).
-    # True (default): dual-constraint grounding+citation. False: citation
-    # instruction only, no "don't introduce facts outside the context" rule.
-    require_grounding: bool | None = True
+    # Condition B, C, AND D -- grounding constraint toggle (see
+    # build_rag_messages()/build_graphrag_messages()/build_lightrag_messages()
+    # in llm/prompts.py; prompt-parity v3, docs/PROMPT_PARITY_V3.md). True:
+    # dual-constraint grounding+citation, BYTE-IDENTICAL text across B/C/D.
+    # False: citation instruction only, no "don't introduce facts outside
+    # the context" rule. Default is None (not True) so the PER-CONDITION
+    # default in engine_service.py applies when the client omits this field:
+    # True for C/D (their original behavior, unchanged), False for B
+    # ("B-plain" -- B never had a grounding constraint before this field
+    # existed, so an old/unaware client must keep getting that, not
+    # silently switch to "B-grounded").
+    require_grounding: bool | None = None
     # Condition B and C only -- opt-in, see analyze_retrieval_quality.py's
     # docstring ("KENAPA TIDAK ADA RECALL@k") for why this exists: persists
     # all_candidate_question_ids (the full candidate pool BEFORE the top-k
@@ -117,6 +124,14 @@ class RunCreateRequest(BaseModel):
     log_full_candidates: bool = False
     # single mode
     question_id: int | None = None
+    # Factorial Batch page only -- shared by every run in one "Confirm &
+    # Launch" click, generated client-side once per batch (see
+    # FactorialBatchPage.tsx). Recorded verbatim into run_history.jsonl so
+    # the Hallucination Judge page's run picker can group runs launched
+    # together without having to re-infer it (inference is a FALLBACK for
+    # older runs that predate this field, see batch_grouping_service.py).
+    batch_id: str | None = None
+    batch_launched_at: str | None = None
     # shared
     provider: str = "openai"
     model: str = "gpt-4o-mini"
@@ -124,6 +139,24 @@ class RunCreateRequest(BaseModel):
 
 class RunCreateResponse(BaseModel):
     run_id: str
+
+
+class CheckCompletedRequest(BaseModel):
+    """One entry per factorial run the Factorial Batch page is about to
+    (maybe) launch -- same shape as RunCreateRequest, so the SAME params
+    the page would actually submit are what gets hashed, mode="single"
+    always resolves to not-already-completed (see
+    engine_service.compute_run_config_hash's docstring)."""
+    runs: list[RunCreateRequest]
+
+
+class CheckCompletedResult(BaseModel):
+    config_hash: str
+    already_completed: bool
+
+
+class CheckCompletedResponse(BaseModel):
+    results: list[CheckCompletedResult]
 
 
 class JudgeRunCreateRequest(BaseModel):
@@ -191,6 +224,35 @@ class SettingsUpdate(BaseModel):
     kappa_sample_size: int | None = None
     judge_majority_rounds: int | None = None
     judges_wait_for_heavy_run: bool | None = None
+
+
+class ArchiveRequest(BaseModel):
+    dest: str | None = None  # defaults to GRAPHRAG_ARCHIVE_DIR (.env) when omitted
+    dry_run: bool = False
+
+
+class JudgeV1PlanRequest(BaseModel):
+    run_ids: list[str]
+    judge_ids: list[str]
+    workers: dict[str, int] = {}
+
+
+class JudgeV1LaunchRequest(BaseModel):
+    run_ids: list[str]
+    judge_ids: list[str]
+    workers: dict[str, int] = {}
+
+
+class JudgeV1ExportHumanCsvRequest(BaseModel):
+    run_ids: list[str]
+    n: int = 60
+    min_per_label: int = 5
+    seed: int = 42
+
+
+class JudgeV1ImportHumanCsvRequest(BaseModel):
+    csv_path: str
+    mapping_path: str
 
 
 class TestConnectionRequest(BaseModel):

@@ -12,26 +12,21 @@ For each, builds 3 SYNTHETIC candidates by hand:
   3. an "insufficient context" refusal, built from the EXACT empty-
      context instruction text in llm/prompts.py                -> expect ABSTAIN
 
-CATATAN SOAL CASE #3: tidak ada contoh ASLI dari output C/D yang berupa
-abstention/refusal semacam ini di sample n=10 yang ada sekarang -- sudah
-dicek (lihat laporan Step 0): retrieved_context tidak pernah kosong utk
-10 pertanyaan pilot ini, dan grep atas SEMUA file hasil tidak menemukan
-frasa "no community context"/"insufficient context" di jawaban manapun.
-Instruksi grounding-constraint utk context kosong di llm/prompts.py
-(build_graphrag_messages()/build_lightrag_messages(), require_grounding
-branch -- lihat konstanta EMPTY_CONTEXT_INSTRUCTION di bawah, disalin
-PERSIS dari sana) SEBENARNYA menyuruh model TETAP MENJAWAB (hanya
-menandai "tidak grounded"), bukan menolak menjawab sama sekali -- kalau
-diikuti harfiah, itu TIDAK akan memicu ABSTAIN (Decision Rule 0:
-"the candidate does NOT attempt an answer"). Case #3 di bawah karena itu
-memakai KLAUSA PERSIS dari instruksi asli ("No relevant context was
-found...", "NOT grounded in retrieved sources") sbg dasar teksnya, lalu
-MENAMBAHKAN kalimat penolakan eksplisit di atasnya supaya benar-benar
-jadi non-answer -- ini tetap teks SINTETIK yang ditulis manual (bukan
-disalin dari output model manapun), menguji apakah judge mengenali pola
-abstain secara umum (sesuai Decision Rule 0), bukan mereplikasi perilaku
-C/D yang sebenarnya (yang, sejauh data yang ada, tidak pernah benar-benar
-menolak menjawab).
+CATATAN SOAL CASE #3 (update sejak prompt-parity v3, docs/
+PROMPT_PARITY_V3.md): tidak ada contoh ASLI dari output B/C/D yang berupa
+abstention/refusal semacam ini di sample n=10 yang ada sekarang -- belum
+pernah di-generate ulang dengan prompt v3. TAPI instruksi empty-context
+(grounded) di llm/prompts.py SEKARANG SUDAH literal meminta non-answer
+("state no relevant sources were found... do not attempt to answer from
+your own general knowledge" -- lihat GROUNDED_EMPTY_CONTEXT_INSTRUCTION
+di bawah, disalin PERSIS dari llm/prompts.py.GROUNDED_EMPTY_CONTEXT),
+BEDA dari instruksi v2 lama yang justru menyuruh TETAP MENJAWAB (itu dulu
+sempat bertentangan dgn Decision Rule 0 ABSTAIN sama sekali). Case #3 di
+bawah SEKARANG adalah KEPATUHAN LITERAL thd instruksi v3 itu sendiri --
+masih ditulis manual (bukan disalin dari output model manapun, karena
+belum ada generation dgn v3), tapi sudah tidak perlu "menambahkan kalimat
+penolakan di atas instruksi" lagi seperti sebelumnya, karena instruksi v3
+itu sendiri sudah berupa permintaan utk TIDAK menjawab.
 
 Exit code: 0 kalau semua (question x variant x judge) sesuai ekspektasi,
 1 kalau ada yang tidak -- supaya bisa dipakai sbg gate di CI/pra-run
@@ -95,48 +90,40 @@ FABRICATED_OVERRIDES = {
     ),
 }
 
-# Copied verbatim from llm/prompts.py's empty-context instruction (the
-# `require_grounding` branch of build_graphrag_messages()/
-# build_lightrag_messages(), used when retrieval returns zero items):
-#   "No relevant context was found in the Stack Overflow community
-#    knowledge graph for this question. Answer based on your own
-#    knowledge, but explicitly state at the start of your answer that no
-#    community context was retrieved, so this answer is NOT grounded in
-#    retrieved sources."
-# That instruction tells the model to STILL ANSWER (just flagged as
-# ungrounded) -- it is not itself a refusal. ABSTAIN_CANDIDATE below
-# reuses its exact clauses as the factual basis, then adds an explicit
-# non-answering sentence on top, so the result is an actual abstention
-# (Decision Rule 0: "does not attempt an answer") rather than a flagged-
-# but-still-attempted answer. See module docstring for why this is
-# synthetic rather than a real C/D output.
-EMPTY_CONTEXT_INSTRUCTION = (
-    "No relevant context was found in the Stack Overflow community knowledge graph for this "
-    "question. Answer based on your own knowledge, but explicitly state at the start of your "
-    "answer that no community context was retrieved, so this answer is NOT grounded in "
-    "retrieved sources."
+# Copied verbatim from llm/prompts.py's GROUNDED_EMPTY_CONTEXT constant
+# (used by build_rag_messages()/build_graphrag_messages()/
+# build_lightrag_messages() when require_grounding=True and retrieval
+# returns zero items -- prompt-parity v3, docs/PROMPT_PARITY_V3.md):
+#   "No relevant context was found in the Stack Overflow community for
+#    this question. State clearly that no relevant sources were found
+#    for this question, and do not attempt to answer from your own
+#    general knowledge."
+# Unlike the pre-v3 wording, this instruction ITSELF asks for a non-
+# answer -- ABSTAIN_CANDIDATE below is now literal compliance with it,
+# not an embellishment on top of a still-answering instruction.
+GROUNDED_EMPTY_CONTEXT_INSTRUCTION = (
+    "No relevant context was found in the Stack Overflow community for this question. State "
+    "clearly that no relevant sources were found for this question, and do not attempt to "
+    "answer from your own general knowledge."
 )
 
 ABSTAIN_CANDIDATE = (
-    "No relevant context was found in the Stack Overflow community knowledge graph for this "
-    "question, so this answer is NOT grounded in retrieved sources. I do not have enough "
-    "reliable information to answer this question, and I am not able to provide a solution here."
+    "No relevant sources were found for this question in the Stack Overflow community. I am "
+    "not able to provide a reliable answer without relevant source material."
 )
 
-# 4th case: the SAME disclaimer clause as ABSTAIN_CANDIDATE (also copied
-# from the exact prompt instruction), but -- unlike ABSTAIN_CANDIDATE --
-# followed by a full, correct answer rather than a refusal. This is what
-# literal compliance with llm/prompts.py's instruction actually produces
-# ("explicitly state... this answer is NOT grounded", then "answer based
-# on your own knowledge" anyway) -- Decision Rule 0 requires the
-# candidate to NOT attempt an answer for ABSTAIN, and this one clearly
-# does, so the correct verdict is FAKTUAL, not ABSTAIN. Exercises the
-# judge's ability to tell "flagged as ungrounded" apart from "declined
-# to answer" -- a model naively matching on disclaimer language alone
-# would wrongly call this ABSTAIN.
+# 4th case: disclaimer-sounding language followed by a full, correct
+# answer anyway -- under prompt v3 this is a DEVIATION from
+# GROUNDED_EMPTY_CONTEXT_INSTRUCTION (which now explicitly forbids
+# answering from general knowledge), not literal compliance with it. Kept
+# as a case regardless, because its purpose is independent of what the
+# instruction says: it exercises whether the judge can tell "disclaimer
+# language present" apart from "the candidate actually declined to
+# answer" (Decision Rule 0) -- a judge that pattern-matches on disclaimer
+# wording alone would wrongly call this ABSTAIN even though a complete
+# answer follows it.
 DISCLAIMER_PREFIX = (
-    "No community context was retrieved for this question, so this answer is NOT grounded "
-    "in retrieved sources. "
+    "No relevant sources were found for this question in the Stack Overflow community. "
 )
 
 QUESTION_IDS = list(FABRICATED_OVERRIDES)

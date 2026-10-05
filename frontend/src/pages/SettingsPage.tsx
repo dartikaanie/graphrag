@@ -1,5 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { useReleaseFaissCache, useSettings, useTestConnection, useUpdateSettings } from '@/api/hooks'
+import {
+  useArchiveDest,
+  useArchiveResults,
+  useReleaseFaissCache,
+  useSettings,
+  useTestConnection,
+  useUpdateSettings,
+} from '@/api/hooks'
 import { InfoTooltip } from '@/components/InfoTooltip'
 import { PARAM_GLOSSARY } from '@/lib/paramGlossary'
 
@@ -105,6 +112,8 @@ export function SettingsPage() {
   const updateSettings = useUpdateSettings()
   const testConnection = useTestConnection()
   const releaseFaissCache = useReleaseFaissCache()
+  const { data: archiveDest } = useArchiveDest()
+  const archiveResults = useArchiveResults()
 
   const [provider, setProvider] = useState('openai')
   const [model, setModel] = useState('')
@@ -394,6 +403,57 @@ export function SettingsPage() {
             )}
           </div>
         )}
+
+        <div className="mt-4 pt-4 border-t border-border">
+          <h3 className="text-sm font-medium text-text-primary mb-1">Archive results</h3>
+          <p className="text-sm text-text-secondary mb-2">
+            Copies every condition's results/logs/manifests (plus judge outputs) to a backup destination --
+            preserves folder structure, writes SHA256SUMS, and verifies every checksum after copying. Never
+            modifies or deletes anything in this repo -- same logic as <code>archive_results.py</code> run from
+            the CLI menu.
+          </p>
+          <p className="text-xs text-text-secondary mb-3">
+            Destination (<code>GRAPHRAG_ARCHIVE_DIR</code>):{' '}
+            <span className="font-medium">{archiveDest?.dest ?? '— not set in .env —'}</span>
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => archiveResults.mutate(false)}
+              disabled={archiveResults.isPending || !archiveDest?.dest}
+              className="px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary-hover disabled:opacity-50"
+            >
+              {archiveResults.isPending ? 'Archiving…' : 'Archive all results'}
+            </button>
+            <button
+              onClick={() => archiveResults.mutate(true)}
+              disabled={archiveResults.isPending || !archiveDest?.dest}
+              className="px-3 py-2 text-sm border border-border-strong rounded-md text-text-primary hover:bg-bg disabled:opacity-50"
+            >
+              Dry run
+            </button>
+          </div>
+          {archiveResults.data && (
+            <div className="mt-2 text-xs text-text-secondary">
+              {archiveResults.data.dry_run ? (
+                <>✓ Dry run: {archiveResults.data.would_copy} file(s) would be copied to {archiveResults.data.dest}. Nothing was written.</>
+              ) : (
+                <>
+                  ✓ Copied {archiveResults.data.copied} file(s) to {archiveResults.data.dest}.
+                  {archiveResults.data.mismatches && archiveResults.data.mismatches.length > 0 ? (
+                    <span className="text-danger"> Checksum MISMATCH for: {archiveResults.data.mismatches.join(', ')}</span>
+                  ) : (
+                    ' All checksums verified OK.'
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          {archiveResults.isError && (
+            <div className="mt-2 text-xs text-danger">
+              {archiveResults.error instanceof Error ? archiveResults.error.message : 'Archive failed.'}
+            </div>
+          )}
+        </div>
 
         <div className="mt-4 pt-4 border-t border-border">
           <label className="flex items-start gap-2 text-sm cursor-pointer">

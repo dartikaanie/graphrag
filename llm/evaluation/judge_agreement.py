@@ -61,15 +61,41 @@ ALL_LABELS = list(LABELS)  # FAKTUAL, HALUSINASI_SEBAGIAN, HALUSINASI_PENUH, ABS
 # Shared loading
 # ---------------------------------------------------------------------------
 
+class MixedJudgeVersionError(ValueError):
+    """Raised by load_judge_records() -- a judge output file (or set of
+    files given together) contains more than one DISTINCT prompt_version
+    or blinding_version. This is the chokepoint EVERY reader (summary,
+    agreement, disagreements, human-export, human-kappa, the CLI
+    subcommands) goes through, so the check only needs to live here
+    once. A future judge-v2 writes to its own filename (see
+    engine_service.judge_v1_output_paths's docstring) so this should
+    only ever fire for a manually-overridden --out path that got reused
+    across versions."""
+
+
+def _assert_single_judge_version(records: list[dict], field: str, source_label: str) -> None:
+    values = {r.get(field) for r in records if r.get(field)}
+    if len(values) > 1:
+        raise MixedJudgeVersionError(
+            f"{source_label}: records have {len(values)} different {field} values {sorted(values)} -- "
+            f"this file mixes judge outputs from different {field}s and must not be read/aggregated as "
+            f"one judge run. Investigate and split or regenerate it before reading."
+        )
+
+
 def load_judge_records(paths: list[str]) -> list[dict]:
     records = []
     for path in paths:
         with open(path) as f:
+            path_records = []
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
-                records.append(json.loads(line))
+                path_records.append(json.loads(line))
+        _assert_single_judge_version(path_records, "prompt_version", path)
+        _assert_single_judge_version(path_records, "blinding_version", path)
+        records.extend(path_records)
     return records
 
 
@@ -88,21 +114,30 @@ def index_by_key(records: list[dict]) -> dict:
 # agreement -- pure logic (testable without touching sklearn/CLI/files)
 # ---------------------------------------------------------------------------
 
-def pair_primary_secondary(records: list[dict]) -> list[tuple]:
-    """(run_id, question_id) pairs that have BOTH a primary and a
-    secondary record, neither of which had a failed API call."""
+def pair_two_judges(records: list[dict], judge_id_a: str, judge_id_b: str) -> list[tuple]:
+    """(run_id, question_id) pairs that have records from BOTH given
+    judge_ids, neither with a failed API call -- generalizes
+    pair_primary_secondary() to any two judge_ids (the dashboard's
+    Agreement panel lets a user pick any two that have judged the same
+    items, defaulting to primary vs secondary)."""
     index = index_by_key(records)
     seen_keys = {(r["run_id"], r["question_id"]) for r in records}
     pairs = []
     for run_id, question_id in seen_keys:
-        p = index.get((run_id, question_id, "primary"))
-        s = index.get((run_id, question_id, "secondary"))
-        if p is None or s is None:
+        a = index.get((run_id, question_id, judge_id_a))
+        b = index.get((run_id, question_id, judge_id_b))
+        if a is None or b is None:
             continue
-        if p.get("call_failed") or s.get("call_failed"):
+        if a.get("call_failed") or b.get("call_failed"):
             continue
-        pairs.append((p, s))
+        pairs.append((a, b))
     return pairs
+
+
+def pair_primary_secondary(records: list[dict]) -> list[tuple]:
+    """(run_id, question_id) pairs that have BOTH a primary and a
+    secondary record, neither of which had a failed API call."""
+    return pair_two_judges(records, "primary", "secondary")
 
 
 def build_confusion_matrix(pairs: list[tuple]) -> dict:
@@ -399,14 +434,20 @@ def cmd_export_human_csv(args):
 # human-kappa
 # ---------------------------------------------------------------------------
 
-def cmd_human_kappa(args):
+def compute_human_kappa(human_csv_path: str, mapping_path: str, judge_output_paths: list[str],
+                         judge_ids: tuple[str, ...] = ("primary", "secondary")) -> dict[str, dict]:
+    """Pure version of cmd_human_kappa()'s math -- returns a dict keyed by
+    judge_id (only for judge_ids that have >=1 comparable pair; a judge_id
+    with none is simply absent, with its n_missing_human/n_missing_judge
+    counts still reported via a sibling "insufficient_data" dict) instead
+    of printing, so the dashboard backend can call this directly."""
     from sklearn.metrics import cohen_kappa_score
 
-    with open(args.human_csv, newline="", encoding="utf-8") as f:
+    with open(human_csv_path, newline="", encoding="utf-8") as f:
         human_rows = list(csv.DictReader(f))
 
     mapping = {}
-    with open(args.mapping) as f:
+    with open(mapping_path) as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -414,10 +455,11 @@ def cmd_human_kappa(args):
             m = json.loads(line)
             mapping[m["item_id"]] = (m["run_id"], m["question_id"])
 
-    judge_records = load_judge_records(args.judge_output)
+    judge_records = load_judge_records(judge_output_paths)
     judge_index = index_by_key(judge_records)
 
-    for judge_id in ("primary", "secondary"):
+    results: dict[str, dict] = {}
+    for judge_id in judge_ids:
         human_labels, judge_labels = [], []
         n_missing_human, n_missing_judge = 0, 0
         for row in human_rows:
@@ -439,51 +481,94 @@ def cmd_human_kappa(args):
             judge_labels.append(judge_record["label"])
 
         if not human_labels:
-            log(f"{judge_id}: no comparable (human, judge) pairs yet "
-                f"(missing human_label: {n_missing_human}, missing/ABSTAIN judge label: {n_missing_judge})")
+            results[judge_id] = {
+                "insufficient_data": True, "n_paired": 0,
+                "n_missing_human": n_missing_human, "n_missing_judge": n_missing_judge,
+            }
             continue
 
         weighted = cohen_kappa_score(human_labels, judge_labels, labels=ORDINAL_LABELS, weights="linear")
         unweighted = cohen_kappa_score(human_labels, judge_labels, labels=ORDINAL_LABELS)
-        log(f"{judge_id}: n={len(human_labels)} paired, weighted kappa={weighted:.3f}, "
-            f"unweighted kappa={unweighted:.3f}")
+        results[judge_id] = {
+            "insufficient_data": False, "n_paired": len(human_labels),
+            "weighted_kappa": round(float(weighted), 3), "unweighted_kappa": round(float(unweighted), 3),
+        }
+    return results
+
+
+def cmd_human_kappa(args):
+    results = compute_human_kappa(args.human_csv, args.mapping, args.judge_output)
+    for judge_id, r in results.items():
+        if r["insufficient_data"]:
+            log(f"{judge_id}: no comparable (human, judge) pairs yet "
+                f"(missing human_label: {r['n_missing_human']}, missing/ABSTAIN judge label: {r['n_missing_judge']})")
+        else:
+            log(f"{judge_id}: n={r['n_paired']} paired, weighted kappa={r['weighted_kappa']:.3f}, "
+                f"unweighted kappa={r['unweighted_kappa']:.3f}")
 
 
 # ---------------------------------------------------------------------------
 # summary
 # ---------------------------------------------------------------------------
 
-def cmd_summary(args):
-    records = [r for r in load_judge_records(args.judge_output) if r["judge_id"] == args.judge_id]
-    if not records:
-        log(f"[ERROR] no records found for judge_id='{args.judge_id}' in the given files")
-        sys.exit(1)
-
+def compute_run_label_summary(records: list[dict], judge_id: str) -> dict[str, dict]:
+    """Pure version of cmd_summary()'s per-run_label math -- returns a
+    dict keyed by run_label instead of printing, so the dashboard backend
+    (judge-v1 Results UI) can call this directly rather than parsing CLI
+    output. Each value: n, abstention_rate, hall_rate_excl_abstain,
+    hall_rate_incl_abstain, label_distribution, parse_error_rate,
+    consistency_rate. Already filters `records` to `judge_id` internally,
+    same as cmd_summary()."""
+    records = [r for r in records if r["judge_id"] == judge_id]
     by_run_label: dict[str, list[dict]] = defaultdict(list)
     for r in records:
         by_run_label[r["run_label"]].append(r)
 
-    log(f"\nPer-run_label hallucination (reference-based) summary (judge_id={args.judge_id}):")
-    for run_label in sorted(by_run_label):
-        recs = by_run_label[run_label]
+    out: dict[str, dict] = {}
+    for run_label, recs in by_run_label.items():
         n = len(recs)
         n_abstain = sum(1 for r in recs if r.get("label") == "ABSTAIN")
         n_hallucinated = sum(1 for r in recs if r.get("label") in ("HALUSINASI_SEBAGIAN", "HALUSINASI_PENUH"))
         n_non_abstain = n - n_abstain
+        n_parse_error = sum(1 for r in recs if r.get("parse_error"))
+        # `consistent` (label vs derived_label agreement, see judge_prompt_v1)
+        # is None for a record that never got that far (call_failed/parse
+        # error) -- excluded from the denominator rather than counted as
+        # "inconsistent", same exclusion style as kappa's ABSTAIN handling.
+        consistent_values = [r.get("consistent") for r in recs if r.get("consistent") is not None]
 
-        abstention_rate = round(n_abstain / n, 3)
-        hall_rate_excl_abstain = round(n_hallucinated / n_non_abstain, 3) if n_non_abstain else None
-        hall_rate_incl_abstain = round((n_hallucinated + n_abstain) / n, 3)
-
-        distribution = defaultdict(int)
+        distribution: dict[str, int] = defaultdict(int)
         for r in recs:
             distribution[r.get("label") or "CALL_FAILED/PARSE_ERROR"] += 1
 
-        log(f"\n  {run_label} (n={n}):")
-        log(f"    Abstention rate: {abstention_rate}")
-        log(f"    Hallucination (reference-based) rate (excluding ABSTAIN): {hall_rate_excl_abstain}")
-        log(f"    Hallucination (reference-based) rate (ABSTAIN counted as non-factual): {hall_rate_incl_abstain}")
-        log(f"    Label distribution: {dict(distribution)}")
+        out[run_label] = {
+            "n": n,
+            "abstention_rate": round(n_abstain / n, 3) if n else None,
+            "hall_rate_excl_abstain": round(n_hallucinated / n_non_abstain, 3) if n_non_abstain else None,
+            "hall_rate_incl_abstain": round((n_hallucinated + n_abstain) / n, 3) if n else None,
+            "label_distribution": dict(distribution),
+            "parse_error_rate": round(n_parse_error / n, 3) if n else None,
+            "consistency_rate": round(sum(1 for v in consistent_values if v) / len(consistent_values), 3)
+            if consistent_values else None,
+        }
+    return out
+
+
+def cmd_summary(args):
+    records = load_judge_records(args.judge_output)
+    summary = compute_run_label_summary(records, args.judge_id)
+    if not summary:
+        log(f"[ERROR] no records found for judge_id='{args.judge_id}' in the given files")
+        sys.exit(1)
+
+    log(f"\nPer-run_label hallucination (reference-based) summary (judge_id={args.judge_id}):")
+    for run_label in sorted(summary):
+        s = summary[run_label]
+        log(f"\n  {run_label} (n={s['n']}):")
+        log(f"    Abstention rate: {s['abstention_rate']}")
+        log(f"    Hallucination (reference-based) rate (excluding ABSTAIN): {s['hall_rate_excl_abstain']}")
+        log(f"    Hallucination (reference-based) rate (ABSTAIN counted as non-factual): {s['hall_rate_incl_abstain']}")
+        log(f"    Label distribution: {s['label_distribution']}")
 
 
 # ---------------------------------------------------------------------------

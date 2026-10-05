@@ -131,6 +131,7 @@ load_dotenv()
 # terduplikasi/berisiko diam-diam berbeda antar file kondisi.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
+from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_base_messages
 
 TOKEN_LIMIT = 2048  # sesuai batasan paper asli
@@ -335,7 +336,7 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 
 def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, model: str,
                     output_path: Path, already_done: set | None = None, on_progress=None,
-                    check_cancel=None) -> list[dict]:
+                    check_cancel=None, config: dict | None = None, config_hash: str | None = None) -> list[dict]:
     """Proses satu-per-satu sample_df: panggil LLM, hitung cosine similarity,
     tulis ke output_path (append, resumable via `already_done`). Diekstrak
     dari main() supaya SATU-SATUNYA implementasi loop generasi dipakai baik
@@ -363,7 +364,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
             messages = build_base_messages(row["Title"], row["Body"], row["Tags"])
             try:
-                llm_answer = call_llm_fn(llm_client, messages, model)
+                call_result = call_llm_fn(llm_client, messages, model)
+                llm_answer = call_result["content"]
             except Exception as e:
                 log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
                 if on_progress:
@@ -386,8 +388,17 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 "llm_answer": llm_answer,
                 "llm_model": model,
                 "cosine_similarity": similarity,
+                "response_id": call_result.get("response_id"),
+                "response_model": call_result.get("response_model"),
+                "response_created": call_result.get("response_created"),
+                "system_fingerprint": call_result.get("system_fingerprint"),
+                "finish_reason": call_result.get("finish_reason"),
+                "usage_full": call_result.get("usage_full"),
+                "request_params": call_result.get("request_params"),
+                "config": config,
+                "config_hash": config_hash,
             }
-            f_out.write(json.dumps(record) + "\n")
+            f_out.write(json.dumps(record, default=str) + "\n")
             f_out.flush()
             results.append(record)
             log(f"      [{i+1}/{total}] Id={qid} similarity={similarity:.3f}")
@@ -402,9 +413,23 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 # Main
 # ---------------------------------------------------------------------
 
-def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int) -> Path:
-    """Nama file JSONL otomatis dari provider+model+n_sample+seed -- format:
-    condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl.
+def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None) -> dict:
+    """The full set of parameters that affect Condition A's answers --
+    stored in every record/manifest AND hashed (see
+    llm.manifest.compute_config_hash) into the output filename. A never
+    has a retrieval/grounding axis, so this is deliberately smaller than
+    B/C/D's config() -- see each module's own build_config()."""
+    return {
+        "condition": "A", "provider": provider, "model": model,
+        "n_sample": n_sample, "seed": seed, "oversample_pool": oversample_pool,
+    }
+
+
+def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
+                       oversample_pool: int | None = None) -> Path:
+    """Nama file JSONL otomatis dari provider+model+n_sample+seed+
+    prompt_version+config_hash -- format:
+    condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}_{prompt_version}_{hash}.jsonl.
 
     PENTING: n_sample & seed WAJIB ada di nama file (bukan cuma provider+
     model). Kalau tidak, dua run dengan ukuran sample BERBEDA (mis. pilot
@@ -413,9 +438,20 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     menambahkan sample baru ke situ -- hasilnya file JSONL berisi
     campuran dua sample yang tidak koheren (pernah kejadian: n=5 + n=30
     tercampur jadi 35 baris yang tidak merepresentasikan sample manapun
-    secara valid)."""
+    secara valid).
+
+    `prompt_version`/config_hash SAMA PENTING: tanpa keduanya, sebuah file
+    lama dari prompt_version/config BERBEDA (mis. v2 sebelum axis grounding
+    ada) bisa berbagi nama file YANG SAMA dgn run baru, dan fitur resume di
+    atas akan mengira semua pertanyaan "sudah diproses" dari file lama itu
+    -- nol generasi baru terjadi sama sekali, tanpa error (postmortem
+    pilot 2026-10-05, lihat llm.manifest.read_already_done)."""
+    from llm.manifest import compute_config_hash
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
-    return Path(output_dir) / f"condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl"
+    config_hash = compute_config_hash(build_config(provider, model, n_sample, seed, oversample_pool))
+    return Path(output_dir) / (
+        f"condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}_{PROMPT_VERSION}_{config_hash}.jsonl"
+    )
 
 
 def main():
@@ -477,7 +513,7 @@ def main():
         log(f"[config] --output diisi manual -- auto-naming provider/model diabaikan.")
     else:
         args.output = str(build_output_path(args.output_dir, args.provider, args.model,
-                                             args.n_sample, args.seed))
+                                             args.n_sample, args.seed, oversample_pool=oversample_pool))
         log(f"[config] output auto-generated dari provider='{args.provider}' "
               f"model='{args.model}' -> '{args.output}'")
 
@@ -492,7 +528,7 @@ def main():
     log(f"[config] n_sample={args.n_sample} seed={args.seed} "
           f"provider={args.provider} model={args.model}")
 
-    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
+    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log, with_meta=True)
 
     con = duckdb.connect()
 
@@ -518,16 +554,13 @@ def main():
     sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
 
     # --- Resume support: baca Id yang sudah pernah diproses ---
+    from llm.manifest import compute_config_hash
+    config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool)
+    config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    already_done = set()
-    if output_path.exists():
-        with open(output_path) as f:
-            for line in f:
-                try:
-                    already_done.add(json.loads(line)["question_id"])
-                except Exception:
-                    continue
+    already_done = read_already_done(output_path, PROMPT_VERSION, config_hash)
+    if already_done:
         log(f"      [resume] {len(already_done)} pertanyaan sudah diproses sebelumnya, akan dilewati")
 
     log(f"[5/6] Load model embedding untuk similarity scoring...")
@@ -537,7 +570,8 @@ def main():
     log(f"[6/6] Prompting {args.model} untuk {len(sample_df)} pertanyaan "
           f"(1 panggilan per pertanyaan, konfigurasi default)...")
 
-    process_sample(sample_df, llm_client, call_llm_fn, embed_model, args.model, output_path, already_done)
+    process_sample(sample_df, llm_client, call_llm_fn, embed_model, args.model, output_path, already_done,
+                    config=config, config_hash=config_hash)
 
     # --- Ringkasan akhir ---
     if not output_path.exists() or output_path.stat().st_size == 0:
@@ -553,11 +587,25 @@ def main():
             "n_sample_target": args.n_sample,
             "seed": args.seed,
             "oversample_pool": oversample_pool,
+            "config_hash": config_hash,
             "output_path": str(output_path),
             "log_path": str(log_path),
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
+        finished_at = datetime.now(timezone.utc)
+        manifest_path = write_manifest(
+            output_path,
+            run_label="A",
+            status="failed",
+            config=config,
+            config_hash=config_hash,
+            log_path=str(log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
+            item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
+            prompt_version=PROMPT_VERSION,
+        )
+        log(f"[logging] Manifest (gagal) ditulis -> {manifest_path}")
         return
 
     results_df = pd.read_json(output_path, lines=True)
@@ -573,11 +621,25 @@ def main():
             "n_sample_target": args.n_sample,
             "seed": args.seed,
             "oversample_pool": oversample_pool,
+            "config_hash": config_hash,
             "output_path": str(output_path),
             "log_path": str(log_path),
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
+        finished_at = datetime.now(timezone.utc)
+        manifest_path = write_manifest(
+            output_path,
+            run_label="A",
+            status="failed",
+            config=config,
+            config_hash=config_hash,
+            log_path=str(log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
+            item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
+            prompt_version=PROMPT_VERSION,
+        )
+        log(f"[logging] Manifest (gagal) ditulis -> {manifest_path}")
         return
 
     log("\n" + "=" * 70)
@@ -601,6 +663,7 @@ def main():
         "seed": args.seed,
         "oversample_pool": oversample_pool,
         "n_candidates_after_token_filter": len(candidates),
+        "config_hash": config_hash,
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
@@ -609,6 +672,22 @@ def main():
         "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
     })
     log(f"[logging] Ringkasan run dicatat -> {history_path}")
+
+    finished_at = datetime.now(timezone.utc)
+    manifest_path = write_manifest(
+        output_path,
+        run_label="A",
+        config=config,
+        config_hash=config_hash,
+        log_path=str(log_path),
+        started_at_utc=run_started_at.isoformat(),
+        finished_at_utc=finished_at.isoformat(),
+        item_counts={"attempted": args.n_sample, "succeeded": len(results_df),
+                     "failed": args.n_sample - len(results_df)},
+        prompt_version=PROMPT_VERSION,
+        total_tokens=sum_usage_tokens(results_df.to_dict("records")),
+    )
+    log(f"[logging] Manifest ditulis -> {manifest_path}")
 
 
 if __name__ == "__main__":

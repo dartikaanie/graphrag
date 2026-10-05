@@ -20,3 +20,22 @@ llm/b_rag/logs/*
 
 # Dashboard run-registry persistence (ephemeral job state, not source of truth)
 backend/.runs/
+
+# Step 5 data retention (docs/Agent prompt grounding factor ui.md) -- new
+# file types that did not exist before this round of work. Large at
+# n=384 scale (manifests duplicate response metadata already in the
+# output file; failures/resolution logs can grow across many retried
+# runs) -- kept out of git going forward, archived instead via
+# archive_results.py. Does NOT retroactively untrack anything already
+# committed (the existing n=10 pilot results/*.jsonl stay tracked,
+# unchanged, unless you decide otherwise -- see docs/
+# GROUNDING_FACTOR_UI_STEP5_REPORT.md's git in/out breakdown).
+*.manifest.json
+llm/evaluation/results/*_failures.jsonl
+llm/evaluation/results/*_failures_resolved.jsonl
+
+# Per-dashboard-run log files (one per run_id, grows unbounded) -- see
+# engine_service.py::_run_log_path(). logs/invalid_runs.jsonl itself
+# (repo root, NOT under llm/*/logs/) stays tracked -- it's a small,
+# deliberately-curated audit record, not per-run noise.
+llm/*/logs/dashboard_*.log

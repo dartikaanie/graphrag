@@ -212,11 +212,12 @@ export function RunJudgePage() {
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-lg font-semibold text-text-primary mb-1">LLM-as-Judge Evaluation</h1>
+      <h1 className="text-lg font-semibold text-text-primary mb-1">Faithfulness Judge (context-grounded, legacy)</h1>
       <p className="text-sm text-text-secondary mb-4">
         Post-hoc evaluation of an already-completed condition's results: Faithfulness, Answer Relevance, and a
         3-class Hallucination Rate, with optional Cohen's Kappa validation against a second judge. Does not re-run
-        the original condition.
+        the original condition. For the reference-based Hallucination Judge (judge-v1), see "Hallucination Judge
+        (judge-v1)" in the sidebar.
       </p>
 
       <div className="border border-border rounded-lg bg-surface p-4">

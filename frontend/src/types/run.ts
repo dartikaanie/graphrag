@@ -43,6 +43,12 @@ export interface RunCreateParams {
   /** Response-only, Condition C only -- null for every other condition. */
   c_retrieval_version?: string | null
   question_id?: number | null
+  /** Factorial Batch page only -- shared by every run in one "Confirm &
+   * Launch" click (see FactorialBatchPage.tsx), recorded into
+   * run_history.jsonl so the Hallucination Judge page's run picker can
+   * group runs launched together without re-inferring it. */
+  batch_id?: string
+  batch_launched_at?: string
   provider: string
   model: string
 }
@@ -57,7 +63,11 @@ export interface RunResultItem {
 }
 
 export interface RunSummary {
-  n_processed: number
+  n_processed?: number
+  // Judge-v1 dashboard job summary shape (engine_service.
+  // run_judge_v1_batch_dashboard) -- a judge-v1 job run isn't a
+  // generator run, so it doesn't set most of the fields below.
+  per_judge?: Record<string, { judged: number; skipped: number; failed: number; parse_errors: number }>
   cosine_similarity_mean: number | null
   cosine_similarity_median?: number
   pct_similarity_above_0_5?: number
@@ -67,6 +77,15 @@ export interface RunSummary {
   duration_sec?: number
   require_grounding?: boolean
   enable_semantic_expansion?: boolean
+  // 3-way citation split (docs/NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md) --
+  // pct_with_valid_citation above is the "valid" share; these three are
+  // the other two slices of the same 100% plus a precision score.
+  pct_citation_no_citation?: number
+  pct_citation_invalid_only?: number
+  fabricated_citation_rate?: number
+  citation_precision?: number
+  n_context_items_used_mean?: number
+  n_context_items_used_min?: number
 }
 
 export interface RunState {
@@ -74,6 +93,11 @@ export interface RunState {
   condition: RunCondition
   mode: RunMode
   status: RunStatusValue
+  // Only present when this RunState came from get_history_detail() (a
+  // history_id, not a live run_id) -- history_service.py's
+  // derive_run_label(), see types/history.ts's HistoryItem for the same
+  // field on list items.
+  run_label?: string
   params: RunCreateParams
   created_at: string
   started_at: string | null
@@ -130,6 +154,10 @@ export interface RunResultDetail {
   n_expansion_candidates?: number
   n_low_level_candidates?: number
   n_high_level_candidates?: number
+  /** Actual number of context items sent to the LLM in this prompt, after
+   * the top_k cutoff -- same field/meaning for B, C, and D, so context
+   * count parity can be verified per-question after a pilot run. */
+  n_context_items_used?: number
   require_grounding?: boolean
   enable_semantic_expansion?: boolean
   retrieval_latency_sec?: number

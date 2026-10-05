@@ -66,6 +66,7 @@ llm_judge_context_relevance.py).
 """
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -78,10 +79,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from _judge_common import append_manifest, html_to_text, load_question_bodies  # noqa: E402
 from _run_metadata import RunMetadataNotFoundError, resolve_run_metadata  # noqa: E402
 from judge_clients import get_judge_client  # noqa: E402
+from llm.manifest import write_manifest  # noqa: E402
 from judge_prompt_v1 import BLINDING_VERSION, PROMPT_VERSION, build_messages, parse_judgment  # noqa: E402
 
 log = print
@@ -115,33 +118,62 @@ def load_items(run_files: list[str], limit: int | None) -> list[dict]:
     entry, per the "stop and tell me" requirement -- this must never
     silently fall back to filename-only inference.
     """
+    from llm.manifest import assert_single_config_hash
+
     items = []
     for path in run_files:
         metadata = resolve_run_metadata(path)
         count = 0
+        records = []
         with open(path) as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 record = json.loads(line)
-                items.append({
-                    **metadata,
-                    "question_id": record["question_id"],
-                    "title": record.get("title", ""),
-                    "tags": format_tags(record.get("tags")),
-                    "ground_truth_answer_html": record.get("ground_truth_answer", "") or "",
-                    "candidate": record.get("llm_answer", "") or "",
-                })
+                records.append(record)
                 count += 1
                 if limit is not None and count >= limit:
                     break
+        # Refuse to judge a file that mixes answers from genuinely
+        # different configs/prompt_versions under one filename -- see
+        # llm.manifest.assert_single_config_hash's docstring. Raises
+        # MixedConfigHashError (uncaught, by design, same as
+        # RunMetadataNotFoundError above) rather than silently judging a
+        # blend no single config_hash/run_label actually describes.
+        assert_single_config_hash(records, source_label=path)
+        for record in records:
+            items.append({
+                **metadata,
+                "question_id": record["question_id"],
+                "title": record.get("title", ""),
+                "tags": format_tags(record.get("tags")),
+                "ground_truth_answer_html": record.get("ground_truth_answer", "") or "",
+                "candidate": record.get("llm_answer", "") or "",
+                "config_hash": record.get("config_hash"),
+            })
     return items
 
 
 # ---------------------------------------------------------------------------
 # Resume
 # ---------------------------------------------------------------------------
+
+def _resume_key(r: dict) -> tuple:
+    """(run_id, config_hash, question_id, judge_id, judge_model,
+    prompt_version, blinding_version) -- ALL seven must match for a
+    record to count as "already done" for a given item. config_hash and
+    judge_model are included (not just run_id/judge_id) so a generation
+    re-run under a NEW config_hash, or a judge model swapped under the
+    same judge_id (e.g. after a role change), is never silently treated
+    as already-judged. blinding_version is included so a future blinding
+    scheme change also forces a re-judge rather than reusing a
+    differently-blinded record's "done" status."""
+    return (
+        r.get("run_id"), r.get("config_hash"), r.get("question_id"), r.get("judge_id"),
+        r.get("judge_model"), r.get("prompt_version"), r.get("blinding_version"),
+    )
+
 
 def load_already_done(output_path: Path) -> set[tuple]:
     done = set()
@@ -153,8 +185,7 @@ def load_already_done(output_path: Path) -> set[tuple]:
             if not line:
                 continue
             try:
-                r = json.loads(line)
-                done.add((r["run_id"], r["question_id"], r["judge_id"], r["prompt_version"]))
+                done.add(_resume_key(json.loads(line)))
             except Exception:
                 continue
     return done
@@ -164,10 +195,25 @@ def load_already_done(output_path: Path) -> set[tuple]:
 # One (item, judge) call -- retry with exponential backoff + jitter
 # ---------------------------------------------------------------------------
 
-def call_judge_with_retry(client, config, messages: list[dict]) -> tuple[dict | None, str | None]:
-    """Returns (response_payload, error_message). response_payload is
-    None only if every attempt failed -- caller logs the failure and
-    moves on, it never raises (so one bad item can't crash the batch)."""
+REQUEST_TEMPERATURE = 0.0
+
+
+def call_judge_with_retry(client, config, messages: list[dict]) -> tuple[dict | None, list[dict]]:
+    """Returns (response_payload, attempts). response_payload is None
+    only if every attempt failed -- caller logs the failure and moves on,
+    it never raises (so one bad item can't crash the batch). `attempts`
+    is a list of {"attempt": int, "error": str|None, "status_code":
+    int|None} for EVERY attempt made (not just the last) -- Step 5 data-
+    retention requirement: nothing about a retried call is dropped, even
+    on eventual success.
+
+    response_payload, when present, carries the FULL raw response
+    metadata (not just the parsed content) per the same requirement:
+    response id/model/created/system_fingerprint/finish_reason/usage,
+    plus the request params actually sent (model, temperature,
+    max_tokens if set) -- enough to audit exactly what was asked for and
+    what came back, not just the judge's parsed label.
+    """
     import openai
 
     retryable = (
@@ -177,40 +223,58 @@ def call_judge_with_retry(client, config, messages: list[dict]) -> tuple[dict | 
         openai.InternalServerError,  # covers 5xx
     )
 
-    last_error = None
+    attempts: list[dict] = []
     for attempt in range(1, RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS + 1):
         try:
             start = time.monotonic()
             response = client.chat.completions.create(
                 model=config.model,
                 messages=messages,
-                temperature=0.0,
+                temperature=REQUEST_TEMPERATURE,
             )
             latency_s = time.monotonic() - start
+            attempts.append({"attempt": attempt, "error": None, "status_code": None})
+            usage = response.usage
             return {
                 "raw": response.choices[0].message.content,
-                "prompt_tokens": getattr(response.usage, "prompt_tokens", None) if response.usage else None,
-                "completion_tokens": getattr(response.usage, "completion_tokens", None) if response.usage else None,
+                "prompt_tokens": getattr(usage, "prompt_tokens", None) if usage else None,
+                "completion_tokens": getattr(usage, "completion_tokens", None) if usage else None,
                 "latency_s": round(latency_s, 3),
-            }, None
+                "response_id": response.id,
+                "response_model": response.model,
+                "response_created": response.created,
+                "system_fingerprint": getattr(response, "system_fingerprint", None),
+                "finish_reason": response.choices[0].finish_reason,
+                "usage_full": usage.model_dump() if usage else None,
+                "request_params": {"model": config.model, "temperature": REQUEST_TEMPERATURE},
+            }, attempts
         except retryable as e:
-            last_error = f"{type(e).__name__}: {e}"
+            status_code = getattr(e, "status_code", None)
+            error_text = f"{type(e).__name__}: {e}"
+            attempts.append({"attempt": attempt, "error": error_text, "status_code": status_code})
             if attempt == RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS:
                 break
             sleep_s = min(60, (2 ** (attempt - 1))) + random.uniform(0, 1)
-            log(f"      [retry {attempt}/{RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS}] {last_error} -- sleeping {sleep_s:.1f}s")
+            log(f"      [retry {attempt}/{RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS}] {error_text} -- sleeping {sleep_s:.1f}s")
             time.sleep(sleep_s)
         except Exception as e:
             # Non-retryable (e.g. 400 bad request, auth error) -- fail fast, no point retrying.
-            last_error = f"{type(e).__name__}: {e}"
+            status_code = getattr(e, "status_code", None)
+            error_text = f"{type(e).__name__}: {e}"
+            attempts.append({"attempt": attempt, "error": error_text, "status_code": status_code})
             break
 
-    return None, last_error
+    return None, attempts
 
 
 # ---------------------------------------------------------------------------
 # One (item, judge) end to end -> output record
 # ---------------------------------------------------------------------------
+
+def _messages_sha256(messages: list[dict]) -> str:
+    canonical = json.dumps(messages, sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 
 def judge_one(item: dict, judge_id: str, client, config, body_text: str, reference_text: str) -> dict:
     messages = build_messages(
@@ -221,13 +285,15 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str, referen
         candidate=item["candidate"],
     )
     timestamp = datetime.now(timezone.utc).isoformat()
-    payload, error = call_judge_with_retry(client, config, messages)
+    payload, attempts = call_judge_with_retry(client, config, messages)
 
     base = {
         "run_id": item["run_id"],
+        "config_hash": item.get("config_hash"),
         "condition": item["condition"],
         "run_label": item["run_label"],
         "fusion_mode": item["fusion_mode"],
+        "grounding": item.get("grounding"),
         "retrieval_version": item["retrieval_version"],
         "source_file": item["source_file"],
         "question_id": item["question_id"],
@@ -237,6 +303,15 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str, referen
         "prompt_version": PROMPT_VERSION,
         "blinding_version": BLINDING_VERSION,
         "timestamp_utc": timestamp,
+        # Step 5 data retention: exact messages sent are NOT stored verbatim
+        # (they're large and fully reconstructible), but a SHA-256 + the
+        # rebuild fields (run_id/source_file/question_id -- already above --
+        # plus judge_id/prompt_version/blinding_version) let anyone rebuild
+        # them deterministically via load_items()+the same body lookup and
+        # verify the hash matches, proving nothing was silently altered.
+        "messages_sha256": _messages_sha256(messages),
+        "attempt_count": len(attempts),
+        "attempts": attempts,
     }
 
     if payload is None:
@@ -244,7 +319,12 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str, referen
             "label": None, "derived_label": None, "consistent": None,
             "parse_error": True, "claims": [], "reasoning": None,
             "raw_response": None, "prompt_tokens": None, "completion_tokens": None,
-            "latency_s": None, "call_failed": True, "error": error,
+            "latency_s": None, "call_failed": True,
+            "error": attempts[-1]["error"] if attempts else None,
+            "response_id": None, "response_model": None, "response_created": None,
+            "system_fingerprint": None, "finish_reason": None, "usage_full": None,
+            "request_params": {"model": config.model, "temperature": REQUEST_TEMPERATURE},
+            "served_model_mismatch": None,
         })
         return base
 
@@ -262,7 +342,23 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str, referen
         "latency_s": payload["latency_s"],
         "call_failed": False,
         "error": None,
+        "response_id": payload["response_id"],
+        "response_model": payload["response_model"],
+        "response_created": payload["response_created"],
+        "system_fingerprint": payload["system_fingerprint"],
+        "finish_reason": payload["finish_reason"],
+        "usage_full": payload["usage_full"],
+        "request_params": payload["request_params"],
     })
+
+    expected = getattr(config, "expected_served_model", None)
+    served_model_mismatch = bool(expected) and payload["response_model"] != expected
+    base["served_model_mismatch"] = served_model_mismatch
+    if served_model_mismatch:
+        log(f"      [WARN] judge '{judge_id}': response_model='{payload['response_model']}' "
+            f"differs from registry's expected_served_model='{expected}' -- the provider may have "
+            f"changed which model/variant it actually serves for this judge_id. Investigate before "
+            f"trusting further records from this judge_id.")
     return base
 
 
@@ -272,18 +368,64 @@ def write_record(output_path: Path, record: dict) -> None:
             f.write(json.dumps(record, default=str) + "\n")
 
 
+def load_failed_keys(failures_path: Path) -> set[tuple]:
+    """Keys of every item EVER recorded in <out>_failures.jsonl (across
+    all past runs) -- used only to detect when a retry succeeds, so that
+    can be logged to a resolution log. The failures file itself is never
+    read for resume/skip purposes (that's output_path's job) and is NEVER
+    deleted or rewritten -- Step 5 data retention: a failure record stays
+    forever, even after a later success."""
+    keys = set()
+    if not failures_path.exists():
+        return keys
+    with open(failures_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                keys.add(_resume_key(json.loads(line)))
+            except Exception:
+                continue
+    return keys
+
+
+def append_resolution_record(resolved_path: Path, record: dict) -> None:
+    """A previously-failed (run_id, question_id, judge_id, prompt_version)
+    succeeded on this run -- note it here, in a SEPARATE append-only log,
+    rather than touching/deleting the original failure record in
+    <out>_failures.jsonl (which stays as permanent evidence it happened)."""
+    resolution = {
+        "run_id": record["run_id"], "question_id": record["question_id"],
+        "judge_id": record["judge_id"], "prompt_version": record["prompt_version"],
+        "resolved": True, "resolved_at_utc": record["timestamp_utc"],
+    }
+    write_record(resolved_path, resolution)
+
+
 # ---------------------------------------------------------------------------
 # Batch driver
 # ---------------------------------------------------------------------------
 
 def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
-              output_path: Path, failures_path: Path, workers: int) -> dict:
+              output_path: Path, failures_path: Path, workers: int,
+              resolved_path: Path | None = None, on_progress=None,
+              check_cancel=None) -> dict:
+    """`on_progress(dict)` -- called after EVERY task (success or failure),
+    with {"judge_id", "question_id", "run_id", "status": "done"|"failed",
+    "done_count", "total_count"} -- optional, used by the dashboard
+    backend to push live progress/throughput/ETA. `check_cancel()` -> bool
+    -- checked before submitting each task; already-submitted tasks still
+    finish and get written normally (never leaves a half-written record).
+    Both optional so the CLI (main()) behavior is unchanged."""
     clients = {jid: get_judge_client(jid) for jid in judge_ids}
 
     question_ids = sorted({item["question_id"] for item in items})
     bodies_html = load_question_bodies(questions_parquet, question_ids)
 
     done = load_already_done(output_path)
+    previously_failed_keys = load_failed_keys(failures_path)
+    resolved_path = resolved_path or failures_path.with_name(failures_path.stem + "_resolved.jsonl")
     skipped = 0
     tasks = []
     for item in items:
@@ -291,7 +433,9 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
         body_text = html_to_text(body_html) if body_html else "[question body not found in parquet]"
         reference_text = html_to_text(item["ground_truth_answer_html"])
         for judge_id in judge_ids:
-            key = (item["run_id"], item["question_id"], judge_id, PROMPT_VERSION)
+            judge_model = clients[judge_id][1].model
+            key = (item["run_id"], item.get("config_hash"), item["question_id"], judge_id,
+                   judge_model, PROMPT_VERSION, BLINDING_VERSION)
             if key in done:
                 skipped += 1
                 continue
@@ -300,6 +444,7 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
     failed = 0
     parse_errors = 0
     judged = 0
+    served_model_mismatches = 0
     label_counts: dict[str, dict[str, int]] = {}
     token_totals: dict[str, int] = {jid: 0 for jid in judge_ids}
 
@@ -308,10 +453,16 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
         client, config = clients[judge_id]
         return judge_one(item, judge_id, client, config, body_text, reference_text)
 
+    total_count = len(tasks)
+    done_count = 0
+    if check_cancel is not None and check_cancel():
+        tasks = []  # cancelled before any work started -- nothing to submit
+
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_run, t) for t in tasks]
         for future in as_completed(futures):
             record = future.result()
+            done_count += 1
             if record["call_failed"]:
                 # NEVER written to output_path -- its (run_id, question_id,
                 # judge_id, prompt_version) key must stay absent from
@@ -320,11 +471,20 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
                 # file instead, purely for visibility/debugging.
                 write_record(failures_path, record)
                 failed += 1
+                if on_progress:
+                    on_progress({"judge_id": record["judge_id"], "question_id": record["question_id"],
+                                 "run_id": record["run_id"], "status": "failed",
+                                 "done_count": done_count, "total_count": total_count})
                 continue
             write_record(output_path, record)
             judged += 1
+            key = _resume_key(record)
+            if key in previously_failed_keys:
+                append_resolution_record(resolved_path, record)
             if record["parse_error"]:
                 parse_errors += 1
+            if record.get("served_model_mismatch"):
+                served_model_mismatches += 1
             for tok_field in ("prompt_tokens", "completion_tokens"):
                 v = record.get(tok_field)
                 if v:
@@ -332,6 +492,10 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
             label_counts.setdefault(record["run_label"], {})
             label = record["label"] or "PARSE_ERROR"
             label_counts[record["run_label"]][label] = label_counts[record["run_label"]].get(label, 0) + 1
+            if on_progress:
+                on_progress({"judge_id": record["judge_id"], "question_id": record["question_id"],
+                             "run_id": record["run_id"], "status": "done",
+                             "done_count": done_count, "total_count": total_count})
 
     return {
         "judged": judged,
@@ -339,6 +503,7 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
         "failed": failed,
         "parse_errors": parse_errors,
         "parse_error_rate": round(parse_errors / judged, 3) if judged else None,
+        "served_model_mismatches": served_model_mismatches,
         "label_distribution_per_run_label": label_counts,
         "total_tokens_per_judge": token_totals,
     }
@@ -416,6 +581,7 @@ def main():
     log(f"Label distribution per run_label: {json.dumps(summary['label_distribution_per_run_label'], indent=2)}")
     log(f"Total tokens per judge: {summary['total_tokens_per_judge']}")
 
+    finished_at = datetime.now(timezone.utc).isoformat()
     append_manifest("judge_v1_run_history.jsonl", {
         "run_started_at": started_at,
         "run_files": args.run_files,
@@ -426,6 +592,23 @@ def main():
         "prompt_version": PROMPT_VERSION,
         **summary,
     })
+
+    write_manifest(
+        output_path,
+        run_label=None,  # a judge run can cover MULTIPLE run_labels (one per --run-files entry) -- see summary
+        config={
+            "run_files": args.run_files, "judge": args.judge, "limit": args.limit,
+            "workers": args.workers, "questions_parquet": args.questions_parquet,
+        },
+        started_at_utc=started_at,
+        finished_at_utc=finished_at,
+        item_counts={"attempted": summary["judged"] + summary["failed"],
+                     "succeeded": summary["judged"], "failed": summary["failed"]},
+        prompt_version=PROMPT_VERSION,
+        blinding_version=BLINDING_VERSION,
+        total_tokens=summary["total_tokens_per_judge"],
+        extra_output_files=[failures_path],
+    )
 
 
 if __name__ == "__main__":

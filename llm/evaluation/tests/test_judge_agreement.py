@@ -4,18 +4,62 @@ logic: pairing primary/secondary records, confusion matrix, kappa
 exclusion rule, and stratified sampling for the human-annotation export.
 """
 
+import pytest
+
 from judge_agreement import (
     build_confusion_matrix,
     compute_kappas,
+    compute_run_label_summary,
     pair_primary_secondary,
+    pair_two_judges,
     stratified_sample,
     stratified_sample_for_human_export,
 )
 
 
-def _record(run_id, qid, judge_id, label, call_failed=False):
+def _record(run_id, qid, judge_id, label, call_failed=False, run_label=None):
     return {"run_id": run_id, "question_id": qid, "judge_id": judge_id, "label": label,
-            "call_failed": call_failed, "condition": "B"}
+            "call_failed": call_failed, "condition": "B", "run_label": run_label or "B-plain"}
+
+
+def test_pair_two_judges_works_for_any_pair_not_just_primary_secondary():
+    records = [
+        _record("r1", 1, "fallback", "FAKTUAL"),
+        _record("r1", 1, "secondary", "HALUSINASI_SEBAGIAN"),
+        _record("r1", 2, "fallback", "ABSTAIN"),  # no secondary counterpart
+    ]
+    pairs = pair_two_judges(records, "fallback", "secondary")
+    assert len(pairs) == 1
+    assert pairs[0][0]["judge_id"] == "fallback"
+    assert pairs[0][1]["label"] == "HALUSINASI_SEBAGIAN"
+
+
+def test_pair_primary_secondary_is_pair_two_judges_specialized():
+    records = [_record("r1", 1, "primary", "FAKTUAL"), _record("r1", 1, "secondary", "FAKTUAL")]
+    assert pair_primary_secondary(records) == pair_two_judges(records, "primary", "secondary")
+
+
+def test_compute_run_label_summary_math():
+    records = [
+        _record("r1", 1, "primary", "FAKTUAL", run_label="B-plain"),
+        _record("r1", 2, "primary", "HALUSINASI_SEBAGIAN", run_label="B-plain"),
+        _record("r1", 3, "primary", "HALUSINASI_PENUH", run_label="B-plain"),
+        _record("r1", 4, "primary", "ABSTAIN", run_label="B-plain"),
+        _record("r1", 5, "secondary", "FAKTUAL", run_label="B-plain"),  # different judge_id, must be filtered out
+    ]
+    summary = compute_run_label_summary(records, "primary")
+    assert set(summary.keys()) == {"B-plain"}
+    s = summary["B-plain"]
+    assert s["n"] == 4
+    assert s["abstention_rate"] == 0.25
+    assert s["hall_rate_excl_abstain"] == round(2 / 3, 3)
+    assert s["hall_rate_incl_abstain"] == round(3 / 4, 3)
+    assert s["label_distribution"] == {"FAKTUAL": 1, "HALUSINASI_SEBAGIAN": 1, "HALUSINASI_PENUH": 1, "ABSTAIN": 1}
+
+
+def test_compute_run_label_summary_empty_for_unknown_judge_id():
+    records = [_record("r1", 1, "primary", "FAKTUAL")]
+    assert compute_run_label_summary(records, "secondary") == {}
 
 
 def test_pair_primary_secondary_matches_by_run_id_and_question_id():
@@ -212,3 +256,129 @@ def test_export_is_deterministic_for_same_seed():
     sampled1, _ = stratified_sample_for_human_export(pool, n_total=15, seed=7, min_per_label=5)
     sampled2, _ = stratified_sample_for_human_export(pool, n_total=15, seed=7, min_per_label=5)
     assert sampled1 == sampled2
+
+
+def test_compute_human_kappa_insufficient_data_when_no_human_labels(tmp_path):
+    import csv
+    import json
+
+    from judge_agreement import compute_human_kappa
+
+    csv_path = tmp_path / "human.csv"
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["item_id", "human_label"])
+        writer.writerow(["item_0001", ""])  # never labeled
+
+    mapping_path = tmp_path / "mapping.jsonl"
+    mapping_path.write_text(json.dumps({"item_id": "item_0001", "run_id": "r1", "question_id": 1}) + "\n")
+
+    judge_output = tmp_path / "judge_out.jsonl"
+    judge_output.write_text(json.dumps(_record("r1", 1, "primary", "FAKTUAL")) + "\n")
+
+    results = compute_human_kappa(str(csv_path), str(mapping_path), [str(judge_output)])
+    assert results["primary"]["insufficient_data"] is True
+    assert results["primary"]["n_missing_human"] == 1
+
+
+def test_compute_human_kappa_computes_weighted_and_unweighted(tmp_path):
+    import csv
+    import json
+
+    from judge_agreement import compute_human_kappa
+
+    csv_path = tmp_path / "human.csv"
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["item_id", "human_label"])
+        writer.writerow(["item_0001", "FAKTUAL"])
+        writer.writerow(["item_0002", "HALUSINASI_PENUH"])
+
+    mapping_path = tmp_path / "mapping.jsonl"
+    with open(mapping_path, "w") as f:
+        f.write(json.dumps({"item_id": "item_0001", "run_id": "r1", "question_id": 1}) + "\n")
+        f.write(json.dumps({"item_id": "item_0002", "run_id": "r1", "question_id": 2}) + "\n")
+
+    judge_output = tmp_path / "judge_out.jsonl"
+    with open(judge_output, "w") as f:
+        f.write(json.dumps(_record("r1", 1, "primary", "FAKTUAL")) + "\n")
+        f.write(json.dumps(_record("r1", 2, "primary", "HALUSINASI_PENUH")) + "\n")
+
+    results = compute_human_kappa(str(csv_path), str(mapping_path), [str(judge_output)], judge_ids=("primary",))
+    assert results["primary"]["insufficient_data"] is False
+    assert results["primary"]["n_paired"] == 2
+    assert results["primary"]["weighted_kappa"] == 1.0
+
+
+def test_load_judge_records_refuses_mixed_prompt_version(tmp_path):
+    import json
+
+    from judge_agreement import MixedJudgeVersionError, load_judge_records
+
+    path = tmp_path / "mixed.jsonl"
+    with open(path, "w") as f:
+        f.write(json.dumps({"run_id": "r1", "question_id": 1, "judge_id": "primary",
+                             "prompt_version": "judge-v1", "blinding_version": "blind-v2"}) + "\n")
+        f.write(json.dumps({"run_id": "r1", "question_id": 2, "judge_id": "primary",
+                             "prompt_version": "judge-v2", "blinding_version": "blind-v2"}) + "\n")
+
+    with pytest.raises(MixedJudgeVersionError):
+        load_judge_records([str(path)])
+
+
+def test_load_judge_records_refuses_mixed_blinding_version(tmp_path):
+    import json
+
+    from judge_agreement import MixedJudgeVersionError, load_judge_records
+
+    path = tmp_path / "mixed_blinding.jsonl"
+    with open(path, "w") as f:
+        f.write(json.dumps({"run_id": "r1", "question_id": 1, "judge_id": "primary",
+                             "prompt_version": "judge-v1", "blinding_version": "blind-v1"}) + "\n")
+        f.write(json.dumps({"run_id": "r1", "question_id": 2, "judge_id": "primary",
+                             "prompt_version": "judge-v1", "blinding_version": "blind-v2"}) + "\n")
+
+    with pytest.raises(MixedJudgeVersionError):
+        load_judge_records([str(path)])
+
+
+def test_load_judge_records_accepts_single_version(tmp_path):
+    import json
+
+    from judge_agreement import load_judge_records
+
+    path = tmp_path / "clean.jsonl"
+    with open(path, "w") as f:
+        f.write(json.dumps({"run_id": "r1", "question_id": 1, "judge_id": "primary",
+                             "prompt_version": "judge-v1", "blinding_version": "blind-v2"}) + "\n")
+        f.write(json.dumps({"run_id": "r1", "question_id": 2, "judge_id": "primary",
+                             "prompt_version": "judge-v1", "blinding_version": "blind-v2"}) + "\n")
+
+    assert len(load_judge_records([str(path)])) == 2
+
+
+def test_compute_run_label_summary_parse_error_and_consistency_rates():
+    def _rec(qid, label, parse_error=False, consistent=None):
+        r = _record("r1", qid, "primary", label, run_label="A")
+        r["parse_error"] = parse_error
+        r["consistent"] = consistent
+        return r
+
+    records = [
+        _rec(1, "FAKTUAL", consistent=True),
+        _rec(2, "FAKTUAL", consistent=False),
+        _rec(3, "HALUSINASI_PENUH", parse_error=True, consistent=None),  # excluded from consistency denominator
+        _rec(4, "FAKTUAL", consistent=True),
+    ]
+    summary = compute_run_label_summary(records, "primary")["A"]
+    assert summary["parse_error_rate"] == round(1 / 4, 3)
+    # consistency_rate excludes the parse-error record (consistent=None):
+    # 2 True out of 3 non-None values.
+    assert summary["consistency_rate"] == round(2 / 3, 3)
+
+
+def test_compute_run_label_summary_consistency_rate_none_when_no_data():
+    records = [_record("r1", 1, "primary", "FAKTUAL", run_label="A")]
+    summary = compute_run_label_summary(records, "primary")["A"]
+    assert summary["parse_error_rate"] == 0.0
+    assert summary["consistency_rate"] is None

@@ -13,7 +13,13 @@ return.
 import re
 
 from llm.citations import CITATION_PATTERN
-from llm.prompts import build_base_messages, build_graphrag_messages, build_lightrag_messages, build_rag_messages
+from llm.prompts import (
+    PROMPT_VERSION,
+    build_base_messages,
+    build_graphrag_messages,
+    build_lightrag_messages,
+    build_rag_messages,
+)
 
 # Deliberately stricter than CITATION_PATTERN (which tolerates format
 # variation) -- this scans for ANY digit-only [SO-<digits>]-shaped token,
@@ -122,3 +128,84 @@ def test_placeholder_ids_never_match_citation_pattern():
     property must hold regardless)."""
     assert CITATION_PATTERN.findall("[SO-<id>]") == []
     assert CITATION_PATTERN.findall("[SO-<id1>][SO-<id2>]") == []
+
+
+def test_prompt_version_is_v3():
+    assert PROMPT_VERSION == "v3"
+
+
+def test_no_v3_prompt_string_contains_placeholder():
+    """Prompt v3 (docs/NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md): the
+    v2 worked-example sentence ("You can fix this... [SO-<id>]...") is
+    the one piece of text models were copying verbatim when they had
+    nothing confident to cite -- it's been removed from every builder,
+    and NO built prompt string (any builder, any branch, with or without
+    retrieved context) may contain the literal "<id>" placeholder token,
+    or any numbered variant of it ("<id1>", "<id2>", ...), ever again.
+    """
+    placeholder_re = re.compile(r"<id\d*>", re.IGNORECASE)
+    retrieved = _retrieved_with_one_real_item(999999)
+
+    cases = [("A", build_base_messages("Title", "Body", "<java>"))]
+    for name, builder, kwarg in BUILDERS_WITH_GROUNDING_FLAG:
+        for require_flag in (True, False):
+            for ctx in ([], retrieved):
+                cases.append((
+                    f"{name}({kwarg}={require_flag}, retrieved={'non-empty' if ctx else 'empty'})",
+                    builder("Title", "Body", "<java>", ctx, **{kwarg: require_flag}),
+                ))
+    for require_citation in (True, False):
+        for ctx in ([], retrieved):
+            cases.append((
+                f"build_rag_messages(require_citation={require_citation}, retrieved={'non-empty' if ctx else 'empty'})",
+                build_rag_messages("Title", "Body", "<java>", ctx, require_citation=require_citation),
+            ))
+
+    for name, messages in cases:
+        text = _all_text(messages)
+        assert "<id>" not in text, f"{name} still contains the literal '<id>' placeholder"
+        assert placeholder_re.search(text) is None, f"{name} still contains an '<idN>'-style placeholder"
+
+
+def test_v3_grounded_branches_instruct_omitting_the_claim_not_just_the_citation():
+    """Rule 1 (ground ONLY in context, never introduce unsupported claims)
+    and the old rule 3 ("write that claim without any citation" when
+    nothing supports it) directly contradicted each other -- rule 3 was
+    rewritten so that when nothing supports a claim, the model must not
+    make that claim at all (and say the sources don't cover it), not just
+    drop the citation on an otherwise-still-made unsupported claim. This
+    must hold in every GROUNDED branch (require_grounding/True), and in
+    the matching system-message/reminder text too."""
+    retrieved = _retrieved_with_one_real_item(999999)
+    for name, builder, kwarg in BUILDERS_WITH_GROUNDING_FLAG:
+        text = _all_text(builder("Title", "Body", "<java>", retrieved, **{kwarg: True}))
+        assert "do not make that claim" in text, f"{name}({kwarg}=True) missing the rule-1/3-consistent instruction"
+        assert "retrieved sources do not cover" in text or "sources don't cover" in text
+        assert "write that claim without" not in text, (
+            f"{name}({kwarg}=True) still contains the old rule 3 wording that contradicted rule 1"
+        )
+
+
+def test_v3_non_grounded_branches_still_allow_omitting_just_the_citation():
+    """The non-grounded ablation variant (require_grounding=False / B's
+    require_citation=True) never claimed "ground ONLY in context" in the
+    first place, so writing an uncited claim there is NOT contradictory --
+    this wording is deliberately UNCHANGED."""
+    retrieved = _retrieved_with_one_real_item(999999)
+    for name, builder, kwarg in BUILDERS_WITH_GROUNDING_FLAG:
+        text = _all_text(builder("Title", "Body", "<java>", retrieved, **{kwarg: False}))
+        assert "write that claim without" in text, f"{name}({kwarg}=False) missing the unchanged instruction"
+
+    text = _all_text(build_rag_messages("Title", "Body", "<java>", retrieved, require_citation=True))
+    assert "write that claim without" in text
+
+
+def test_format_description_typo_is_fixed():
+    """'no colon, no space, no the word thread' -> 'and not the word
+    thread' -- was a grammar typo in the grounded branches' format
+    description."""
+    retrieved = _retrieved_with_one_real_item(999999)
+    for name, builder, kwarg in BUILDERS_WITH_GROUNDING_FLAG:
+        text = _all_text(builder("Title", "Body", "<java>", retrieved, **{kwarg: True}))
+        assert "no the word" not in text, f"{name}({kwarg}=True) still has the typo"
+        assert "and not the word 'thread'" in text

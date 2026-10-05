@@ -149,6 +149,7 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
+from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B
@@ -617,7 +618,7 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
 # apples-to-apples, bukan dua implementasi yang bisa diam-diam berbeda.
 # ---------------------------------------------------------------------
 
-from llm.citations import CITATION_PATTERN, extract_citations  # noqa: E402,F401
+from llm.citations import CITATION_PATTERN, compute_citation_report, extract_citations  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------
@@ -649,6 +650,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     semantic_expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP,
                     require_grounding: bool = True, enable_semantic_expansion: bool = True,
                     log_full_candidates: bool = False,
+                    config: dict | None = None, config_hash: str | None = None,
                     ) -> tuple[list[dict], dict]:
     """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
@@ -764,7 +766,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                                     require_grounding=require_grounding)
                 try:
-                    llm_answer = call_llm_fn(llm_client, messages, model)
+                    call_result = call_llm_fn(llm_client, messages, model)
+                    llm_answer = call_result["content"]
                 except Exception as e:
                     log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
                     if on_progress:
@@ -799,6 +802,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "n_anchors": len(anchor_ids),
                     "n_graph_candidates": len(graph_candidates),
                     "n_expansion_candidates": len(expansion_candidates),
+                    # Actual number of context items sent to the LLM in this
+                    # prompt, AFTER fuse_and_rank()'s top_k cutoff -- always
+                    # <= top_k regardless of how large the n_anchor/
+                    # n_semantic_expansion candidate pool was. Equivalent to
+                    # len(retrieved_context), stored explicitly so a pilot
+                    # run can be verified without recomputing it.
+                    "n_context_items_used": len(retrieved),
                     "require_grounding": require_grounding,
                     "enable_semantic_expansion": enable_semantic_expansion,
                     **({"all_candidate_question_ids": all_candidate_question_ids} if log_full_candidates else {}),
@@ -810,6 +820,15 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "cited_source_ids": cited_ids,
                     "has_valid_citation": has_valid_citation,
                     "valid_cited_source_ids": valid_ids,
+                    "response_id": call_result.get("response_id"),
+                    "response_model": call_result.get("response_model"),
+                    "response_created": call_result.get("response_created"),
+                    "system_fingerprint": call_result.get("system_fingerprint"),
+                    "finish_reason": call_result.get("finish_reason"),
+                    "usage_full": call_result.get("usage_full"),
+                    "request_params": call_result.get("request_params"),
+                    "config": config,
+                    "config_hash": config_hash,
                 }
                 try:
                     line = json.dumps(record, default=str)
@@ -872,11 +891,34 @@ def _fmt_weight_for_filename(w: float) -> str:
     return f"{w}".replace(".", "-")
 
 
+def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
+                  top_k: int, n_anchor: int, n_semantic_expansion: int, fusion_mode: str,
+                  fusion_w_path_trust: float, fusion_w_intrinsic: float,
+                  semantic_expansion_trust_cap: float, require_grounding: bool,
+                  enable_semantic_expansion: bool) -> dict:
+    """The full set of parameters that affect Condition C's answers -- see
+    llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
+    for why this exists. Includes C_RETRIEVAL_VERSION since a retrieval
+    code fix changes answers just as much as a parameter does."""
+    return {
+        "condition": "C", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
+        "oversample_pool": oversample_pool, "top_k": top_k, "n_anchor": n_anchor,
+        "n_semantic_expansion": n_semantic_expansion, "fusion_mode": fusion_mode,
+        "fusion_w_path_trust": fusion_w_path_trust, "fusion_w_intrinsic": fusion_w_intrinsic,
+        "semantic_expansion_trust_cap": semantic_expansion_trust_cap,
+        "require_grounding": require_grounding, "enable_semantic_expansion": enable_semantic_expansion,
+        "c_retrieval_version": C_RETRIEVAL_VERSION,
+    }
+
+
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
                        fusion_mode: str = "trust_weighted",
                        fusion_w_path_trust: float = DEFAULT_FUSION_W_PATH_TRUST,
                        fusion_w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST,
-                       require_grounding: bool = True, enable_semantic_expansion: bool = True) -> Path:
+                       require_grounding: bool = True, enable_semantic_expansion: bool = True,
+                       oversample_pool: int | None = None, top_k: int = 5, n_anchor: int = 3,
+                       n_semantic_expansion: int = 3,
+                       semantic_expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP) -> Path:
     """Nama file menyertakan fusion mode/bobot supaya run ablasi (mis.
     --fusion-mode uniform vs --fusion-mode trust_weighted dgn bobot
     berbeda) tidak saling menimpa file .jsonl satu sama lain -- pola sama
@@ -885,7 +927,12 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     `require_grounding=False`/`enable_semantic_expansion=False` masing-masing
     HANYA menambah suffix kalau non-default (False) -- run default (kedua True,
     perilaku asli sebelum toggle ini ada) tetap menghasilkan nama file yang
-    SAMA seperti sebelumnya, tidak ada perubahan back-compat."""
+    SAMA seperti sebelumnya (minus the new prompt_version+config_hash
+    suffix, see below -- that part is NOT back-compat on purpose, it's the
+    2026-10-05 pilot incident fix: a stale file from an older
+    prompt_version/config must never again share a filename with a new
+    run's, see llm.manifest.read_already_done's docstring)."""
+    from llm.manifest import compute_config_hash
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
     base = f"condition_c_{provider}_{safe_model}_n{n_sample}_seed{seed}"
     if fusion_mode == "uniform":
@@ -896,7 +943,12 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
         suffix += "_ungrounded"
     if not enable_semantic_expansion:
         suffix += "_noexp"
-    return Path(output_dir) / f"{base}_{suffix}.jsonl"
+    config_hash = compute_config_hash(build_config(
+        provider, model, n_sample, seed, oversample_pool, top_k, n_anchor, n_semantic_expansion,
+        fusion_mode, fusion_w_path_trust, fusion_w_intrinsic, semantic_expansion_trust_cap,
+        require_grounding, enable_semantic_expansion,
+    ))
+    return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
 
 def main():
@@ -991,7 +1043,10 @@ def main():
         args.output = str(build_output_path(args.output_dir, args.provider, args.model,
                                              args.n_sample, args.seed, args.fusion_mode,
                                              args.fusion_w_path_trust, args.fusion_w_intrinsic,
-                                             args.require_grounding, args.enable_semantic_expansion))
+                                             args.require_grounding, args.enable_semantic_expansion,
+                                             oversample_pool=oversample_pool, top_k=args.top_k,
+                                             n_anchor=args.n_anchor, n_semantic_expansion=args.n_semantic_expansion,
+                                             semantic_expansion_trust_cap=args.semantic_expansion_trust_cap))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -1007,7 +1062,7 @@ def main():
     log(f"[config] require_grounding={args.require_grounding} "
         f"enable_semantic_expansion={args.enable_semantic_expansion}")
 
-    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
+    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log, with_meta=True)
 
     con = duckdb.connect()
     con.execute("SET memory_limit='2GB'")
@@ -1043,16 +1098,18 @@ def main():
     embed_model = SentenceTransformer(args.embed_model, device="cpu")
 
     # --- Resume support ---
+    from llm.manifest import compute_config_hash
+    config = build_config(
+        args.provider, args.model, args.n_sample, args.seed, oversample_pool, args.top_k,
+        args.n_anchor, args.n_semantic_expansion, args.fusion_mode, args.fusion_w_path_trust,
+        args.fusion_w_intrinsic, args.semantic_expansion_trust_cap, args.require_grounding,
+        args.enable_semantic_expansion,
+    )
+    config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    already_done = set()
-    if output_path.exists():
-        with open(output_path) as f:
-            for line in f:
-                try:
-                    already_done.add(json.loads(line)["question_id"])
-                except Exception:
-                    continue
+    already_done = read_already_done(output_path, PROMPT_VERSION, config_hash)
+    if already_done:
         log(f"      [resume] {len(already_done)} pertanyaan sudah diproses sebelumnya")
 
     log(f"[7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting {args.model} "
@@ -1069,6 +1126,7 @@ def main():
         require_grounding=args.require_grounding,
         enable_semantic_expansion=args.enable_semantic_expansion,
         log_full_candidates=args.log_full_candidates,
+        config=config, config_hash=config_hash,
     )
     interrupted = stats["interrupted"]
 
@@ -1096,10 +1154,25 @@ def main():
             "fusion_w_answer_intrinsic_trust": args.fusion_w_intrinsic,
             "semantic_expansion_trust_cap": args.semantic_expansion_trust_cap,
             "require_grounding": args.require_grounding,
+            "grounding": "on" if args.require_grounding else "off",
             "enable_semantic_expansion": args.enable_semantic_expansion,
+            "config_hash": config_hash,
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
+        from llm.evaluation._run_metadata import derive_run_label as _derive_run_label_failed
+        run_label = _derive_run_label_failed("C", {
+            "fusion_mode": args.fusion_mode, "grounding": "on" if args.require_grounding else "off",
+        })["run_label"]
+        finished_at = datetime.now(timezone.utc)
+        manifest_path = write_manifest(
+            output_path, run_label=run_label, status="failed",
+            config=config, config_hash=config_hash, log_path=str(log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
+            item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
+            prompt_version=PROMPT_VERSION,
+        )
+        log(f"[logging] Manifest (gagal) ditulis -> {manifest_path}")
         return
 
     results_df = pd.read_json(output_path, lines=True)
@@ -1116,6 +1189,20 @@ def main():
     log(f"% jawaban dgn >=1 kutipan VALID (NF2)   : {pct_valid_citation:.1f}% "
         f"[target: 100%] {'PASS' if pct_valid_citation >= 100 else 'BELUM TERCAPAI'} "
         f"(ID kutipan divalidasi ada di retrieved_context yg sebenarnya)")
+
+    # Reporting TAMBAHAN di luar definisi NF2 (pct_valid_citation di atas
+    # TIDAK berubah) -- lihat docs/NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md:
+    # 3-way split per jawaban, fabricated-citation-rate (jawaban dgn >=1
+    # token TIDAK valid, meski ada yg valid juga), dan citation precision
+    # (token valid / semua token kutipan, termasuk placeholder, se-run).
+    citation_report = compute_citation_report(results_df.to_dict("records"))
+    log(f"  -- 3-way split: valid={citation_report['pct_valid']}% / "
+        f"no_citation={citation_report['pct_no_citation']}% / "
+        f"invalid_only={citation_report['pct_invalid_only']}%")
+    log(f"  -- fabricated citation rate (>=1 invalid token, even if also has a valid one): "
+        f"{citation_report['fabricated_citation_rate']}%")
+    log(f"  -- citation precision (valid tokens / all citation tokens incl. placeholders): "
+        f"{citation_report['citation_precision']}")
     pct_no_context = (results_df["n_anchors"] == 0).mean() * 100
     log(f"% pertanyaan tanpa hasil retrieval sama sekali: {pct_no_context:.1f}%")
     avg_latency = results_df["retrieval_latency_sec"].mean()
@@ -1141,12 +1228,19 @@ def main():
         "fusion_w_answer_intrinsic_trust": args.fusion_w_intrinsic,
         "semantic_expansion_trust_cap": args.semantic_expansion_trust_cap,
         "require_grounding": args.require_grounding,
+        "grounding": "on" if args.require_grounding else "off",
         "enable_semantic_expansion": args.enable_semantic_expansion,
+        "config_hash": config_hash,
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
         "pct_with_citation": round(float(pct_citation), 1),
         "pct_with_valid_citation": round(float(pct_valid_citation), 1),
+        "pct_citation_valid": citation_report["pct_valid"],
+        "pct_citation_no_citation": citation_report["pct_no_citation"],
+        "pct_citation_invalid_only": citation_report["pct_invalid_only"],
+        "fabricated_citation_rate": citation_report["fabricated_citation_rate"],
+        "citation_precision": citation_report["citation_precision"],
         "pct_no_retrieval": round(float(pct_no_context), 1),
         "avg_retrieval_latency_sec": round(float(avg_latency), 3),
         "p95_retrieval_latency_sec": round(float(p95_latency), 3),
@@ -1154,6 +1248,27 @@ def main():
         "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
     })
     log(f"[logging] Ringkasan run dicatat -> {history_path}")
+
+    from llm.evaluation._run_metadata import derive_run_label
+    finished_at = datetime.now(timezone.utc)
+    run_label = derive_run_label("C", {
+        "fusion_mode": args.fusion_mode, "grounding": "on" if args.require_grounding else "off",
+    })["run_label"]
+    manifest_path = write_manifest(
+        output_path,
+        run_label=run_label,
+        status="interrupted" if interrupted else "completed",
+        config=config,
+        config_hash=config_hash,
+        log_path=str(log_path),
+        started_at_utc=run_started_at.isoformat(),
+        finished_at_utc=finished_at.isoformat(),
+        item_counts={"attempted": args.n_sample, "succeeded": len(results_df),
+                     "failed": args.n_sample - len(results_df)},
+        prompt_version=PROMPT_VERSION,
+        total_tokens=sum_usage_tokens(results_df.to_dict("records")),
+    )
+    log(f"[logging] Manifest ditulis -> {manifest_path}")
 
 
 if __name__ == "__main__":

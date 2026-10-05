@@ -15,9 +15,37 @@ interface ProgressRunPanelProps {
   queuePosition?: number | null
 }
 
-export function ProgressRunPanel({ current, total, results, onStop, stopping, status, queuePosition }: ProgressRunPanelProps) {
+/** `compact`: a tighter shape for pages showing many cards at once (e.g.
+ * FactorialResultsPage's 9 cards) -- a one-line "Queued (position N)" +
+ * Cancel instead of the pulsing bar + full-size log box, and a shorter
+ * log area, so queued/running/done cards don't visually jump in size. */
+export function ProgressRunPanel({
+  current, total, results, onStop, stopping, status, queuePosition, compact,
+}: ProgressRunPanelProps & { compact?: boolean }) {
   const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0
   const isQueued = status === 'queued'
+
+  if (compact && isQueued) {
+    return (
+      <div className="border border-border rounded-lg bg-surface p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-text-secondary">
+            Queued{queuePosition != null ? ` (position ${queuePosition})` : ''}
+          </span>
+          {onStop && (
+            <button
+              onClick={onStop}
+              disabled={stopping}
+              className="px-3 py-1 text-xs border border-border-strong rounded-md text-danger hover:bg-bg disabled:opacity-50"
+            >
+              {stopping ? 'Stopping…' : '■ Cancel'}
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-text-muted mt-1">Waiting for a free run slot…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="border border-border rounded-lg bg-surface p-4">
@@ -46,7 +74,7 @@ export function ProgressRunPanel({ current, total, results, onStop, stopping, st
           <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
         </div>
       )}
-      <div className="font-mono text-xs bg-bg rounded-md p-3 max-h-56 overflow-y-auto flex flex-col gap-1">
+      <div className={`font-mono text-xs bg-bg rounded-md p-3 overflow-y-auto flex flex-col gap-1 ${compact ? 'max-h-40' : 'max-h-56'}`}>
         {isQueued && (
           <span className="text-text-muted">Another run is currently using this resource — this run will start automatically once it's free.</span>
         )}

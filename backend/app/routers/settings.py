@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import SettingsUpdate, TestConnectionRequest
+from app.models.schemas import ArchiveRequest, SettingsUpdate, TestConnectionRequest
 from app.services import settings_service as svc
 
 router = APIRouter(prefix="/api/settings")
@@ -9,6 +9,22 @@ router = APIRouter(prefix="/api/settings")
 @router.get("")
 def get_settings():
     return svc.get_masked_settings()
+
+
+@router.get("/archive-dest")
+def get_archive_dest():
+    """So the dashboard can show the destination BEFORE the user clicks
+    "Archive all results" -- same GRAPHRAG_ARCHIVE_DIR default
+    archive_results.py's CLI uses."""
+    return {"dest": svc.resolved_archive_dest()}
+
+
+@router.post("/archive")
+def archive(body: ArchiveRequest):
+    try:
+        return svc.run_archive(body.dest, dry_run=body.dry_run)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("")

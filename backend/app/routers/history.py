@@ -1,8 +1,26 @@
+import sys
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services import graph_service, history_service as svc
+from app.services import batch_grouping_service, graph_service, history_service as svc
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from llm.manifest import MixedConfigHashError  # noqa: E402
 
 router = APIRouter(prefix="/api/history")
+
+
+@router.get("/batches")
+def get_history_batches(show_superseded: bool = Query(False)):
+    """Every run (across A/B/C/D), grouped into launch batches -- for the
+    Hallucination Judge (judge-v1) page's run picker. Invalid runs are
+    always excluded; superseded runs excluded unless show_superseded=True
+    (same policy as GET /api/history). See batch_grouping_service.py."""
+    items, _ = svc.list_history(None, None, None, page=1, page_size=100000, show_superseded=show_superseded)
+    return {"batches": batch_grouping_service.group_into_batches(items)}
 
 
 @router.get("")
@@ -12,10 +30,11 @@ def get_history(
     date_to: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
+    show_superseded: bool = Query(False, description="Include runs superseded by a later re-run of the same config"),
 ):
     if condition and condition.upper() not in ("A", "B", "C", "D"):
         raise HTTPException(status_code=400, detail="condition must be A, B, C, or D")
-    items, total = svc.list_history(condition, date_from, date_to, page, page_size)
+    items, total = svc.list_history(condition, date_from, date_to, page, page_size, show_superseded)
     return {
         "items": items,
         "meta": {"page": page, "page_size": page_size, "total": total, "total_pages": svc.total_pages(total, page_size)},
@@ -33,7 +52,12 @@ def get_compare_consistency(ids: str = Query(..., description="Comma-separated h
 
 @router.get("/{history_id}")
 def get_history_detail(history_id: str):
-    detail = svc.get_history_detail(history_id)
+    try:
+        detail = svc.get_history_detail(history_id)
+    except MixedConfigHashError as e:
+        # Output file mixes records from genuinely different configs/
+        # prompt_versions under one filename -- never silently summarized.
+        raise HTTPException(status_code=409, detail=str(e))
     if not detail:
         raise HTTPException(status_code=404, detail="History entry not found")
     return detail

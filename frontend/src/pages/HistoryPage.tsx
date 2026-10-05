@@ -28,8 +28,9 @@ export function HistoryPage() {
   // judge run completes) -- still overridable via the dropdown below.
   const [condition, setCondition] = useState<string | undefined>(searchParams.get('condition') ?? undefined)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [showSuperseded, setShowSuperseded] = useState(false)
   const navigate = useNavigate()
-  const { data, isLoading, isError } = useHistory(condition, page, PAGE_SIZE)
+  const { data, isLoading, isError } = useHistory(condition, page, PAGE_SIZE, showSuperseded)
   const deleteHistory = useDeleteHistory()
 
   const handleDelete = (e: MouseEvent, id: string) => {
@@ -82,6 +83,14 @@ export function HistoryPage() {
           <option value="D">D</option>
         </select>
         <span className="text-xs text-text-muted">Select 2 or more runs to compare (any conditions/mix, no limit).</span>
+        <label className="flex items-center gap-1.5 text-xs text-text-secondary ml-auto">
+          <input
+            type="checkbox"
+            checked={showSuperseded}
+            onChange={(e) => { setShowSuperseded(e.target.checked); setPage(1) }}
+          />
+          Show superseded runs (replaced by a later re-run of the same config)
+        </label>
       </div>
 
       {isError && <div className="text-sm text-danger mb-4">Failed to load history.</div>}
