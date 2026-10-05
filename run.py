@@ -194,6 +194,20 @@ MENU = [
         "confirm_cost": True,
     },
     {
+        "label": "Arsipkan Semua Hasil/Log/Manifest (Step 5 data retention)",
+        "desc": "Salin SEMUA results/logs/manifest/judge output (A/B/C/D + llm/evaluation/) ke direktori "
+                "arsip -- struktur folder dipertahankan, SHA256SUMS ditulis & diverifikasi setelah "
+                "disalin. TIDAK PERNAH menghapus/mengubah apa pun di sumber (repo). TIDAK ADA panggilan "
+                "LLM, TIDAK ADA biaya API.",
+        "script": "archive_results.py",
+        "cwd": ".",
+        "default_args": ["--dry-run"],
+        "note": "Default --dry-run (cuma daftar, tidak menyalin apa pun). Isi --dest manual (atau set "
+                "GRAPHRAG_ARCHIVE_DIR di .env) lalu hapus --dry-run utk benar-benar menyalin, contoh: "
+                "--dest \"/Volumes/T7 Shield/graphrag_archive\".",
+        "confirm_cost": False,
+    },
+    {
         "label": "Analisis Kualitas Retrieval (Precision@k/MRR@k)",
         "desc": "Hitung Precision@k dan MRR@k (proxy tag-overlap) MURNI dari file JSONL hasil Kondisi "
                 "B/C/D yang sudah ada -- TIDAK ADA panggilan LLM, TIDAK ADA biaya API.",

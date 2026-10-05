@@ -143,8 +143,9 @@ load_dotenv()
 # (A/B/C) supaya cara panggil provider LLM & struktur prompt dasar tidak
 # terduplikasi/berisiko diam-diam berbeda antar file kondisi.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from llm.citations import extract_citations
+from llm.citations import compute_citation_report, extract_citations
 from llm.client_factory import get_llm_client
+from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_rag_messages
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, sama dgn Kondisi A
@@ -465,7 +466,8 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, index, meta_df: pd.DataFrame,
                     top_k: int, model: str, output_path: Path, already_done: set | None = None,
                     on_progress=None, check_cancel=None, require_citation: bool = True,
-                    log_full_candidates: bool = False) -> list[dict]:
+                    require_grounding: bool = False, log_full_candidates: bool = False,
+                    config: dict | None = None, config_hash: str | None = None) -> list[dict]:
     """Proses satu-per-satu sample_df: retrieval top-k + prompt RAG + hitung
     cosine similarity, tulis ke output_path (append, resumable). Diekstrak
     dari main() dengan pola SAMA PERSIS dengan process_sample() Kondisi A
@@ -481,6 +483,17 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     llm/citations.py.extract_citations() sehingga record punya field
     has_citation/cited_source_ids/has_valid_citation/valid_cited_source_ids
     -- dipakai utk membandingkan NF2 (citation compliance) Kondisi B vs C.
+
+    `require_grounding` (default False, HANYA berlaku kalau require_citation
+    juga True -- lihat --require-grounding di main()): sejak prompt-parity
+    v3 (docs/PROMPT_PARITY_V3.md), kalau True ("B-grounded") instruksinya
+    BYTE-IDENTICAL dengan Kondisi C/D (require_grounding=True); kalau False
+    ("B-plain", default -- perilaku B SEBELUM prompt-parity v3), citation-
+    only tanpa constraint grounding. Direkam per-record DAN di run_history
+    (field "require_grounding" + "grounding": "on"/"off" -- field DEDICATED,
+    BUKAN fusion_mode) supaya run_label membedakan keduanya sama seperti
+    "C-uniform-grounded"/"C-trust-plain" -- lihat llm/evaluation/
+    _run_metadata.py dan docs/GROUNDING_FACTOR_UI.md.
     """
     already_done = already_done or set()
     total = len(sample_df)
@@ -507,9 +520,11 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 )
 
             messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
-                                           require_citation=require_citation)
+                                           require_citation=require_citation,
+                                           require_grounding=require_grounding)
             try:
-                llm_answer = call_llm_fn(llm_client, messages, model)
+                call_result = call_llm_fn(llm_client, messages, model)
+                llm_answer = call_result["content"]
             except Exception as e:
                 log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
                 if on_progress:
@@ -537,16 +552,30 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 "accepted_answer_id": int(row["AcceptedAnswerId"]),
                 "ground_truth_answer": row["AcceptedAnswerBody"],
                 "retrieved_context": retrieved,  # utk RAGAS (context precision/recall) nanti
+                # Same field name/meaning as Condition C/D: actual number of
+                # context items sent to the LLM, == len(retrieved_context)
+                # (B's FAISS top-k retrieval already caps at top_k directly).
+                "n_context_items_used": len(retrieved),
                 "retrieval_latency_sec": round(retrieval_latency, 3),
                 "prompt_messages": messages,
                 "llm_answer": llm_answer,
                 "llm_model": model,
                 "cosine_similarity": similarity,
+                "response_id": call_result.get("response_id"),
+                "response_model": call_result.get("response_model"),
+                "response_created": call_result.get("response_created"),
+                "system_fingerprint": call_result.get("system_fingerprint"),
+                "finish_reason": call_result.get("finish_reason"),
+                "usage_full": call_result.get("usage_full"),
+                "request_params": call_result.get("request_params"),
+                "config": config,
+                "config_hash": config_hash,
                 **({
                     "has_citation": has_citation,
                     "cited_source_ids": cited_ids,
                     "has_valid_citation": has_valid_citation,
                     "valid_cited_source_ids": valid_ids,
+                    "require_grounding": require_grounding,
                 } if require_citation else {}),
                 **({"all_candidate_question_ids": all_candidate_question_ids} if log_full_candidates else {}),
             }
@@ -579,7 +608,22 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 # Main
 # ---------------------------------------------------------------------
 
-def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int) -> Path:
+def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
+                  top_k: int, require_citation: bool, require_grounding: bool) -> dict:
+    """The full set of parameters that affect Condition B's answers -- see
+    llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
+    for why this exists (stored in every record/manifest AND hashed into
+    the output filename)."""
+    return {
+        "condition": "B", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
+        "oversample_pool": oversample_pool, "top_k": top_k,
+        "require_citation": require_citation, "require_grounding": require_grounding,
+    }
+
+
+def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
+                       require_citation: bool = False, require_grounding: bool = False,
+                       oversample_pool: int | None = None, top_k: int = 5) -> Path:
     """Nama file JSONL otomatis dari provider+model+n_sample+seed -- identik
     pola Kondisi A, format:
     condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl.
@@ -588,9 +632,27 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     ukuran sample berbeda (mis. pilot n=5 lalu n=30) akan menulis ke file
     yang sama, dan fitur resume di bawah akan mengira sample lama 'sudah
     diproses' lalu menambahkan sample baru ke situ -- file JSONL jadi
-    campuran dua sample yang tidak koheren."""
+    campuran dua sample yang tidak koheren.
+
+    `require_citation`/`require_grounding` add a "_plain"/"_grounded"
+    suffix -- WITHOUT this, B-plain and B-grounded (require_citation=True
+    both, only require_grounding differs) compute the IDENTICAL filename,
+    so whichever one runs second sees the first's output as "already
+    done" and silently does zero new generation (the structural half of
+    the bug that caused the B-plain AND B-grounded pilot runs to both
+    no-op on 2026-10-05 -- the other half was the missing prompt_version
+    gate on resume, fixed separately in llm/manifest.py::read_already_done).
+    Omitted (require_citation=False, the default/back-compat value, B's
+    third mode with no citation requirement at all) keeps the OLD
+    unsuffixed filename -- no change for that mode."""
+    from llm.manifest import compute_config_hash
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
-    return Path(output_dir) / f"condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl"
+    base = f"condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}"
+    suffix = ("_grounded" if require_grounding else "_plain") if require_citation else ""
+    config_hash = compute_config_hash(
+        build_config(provider, model, n_sample, seed, oversample_pool, top_k, require_citation, require_grounding)
+    )
+    return Path(output_dir) / f"{base}{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
 
 def main():
@@ -641,6 +703,14 @@ def main():
                               "CONDITION_B_REQUIRE_CITATION di .env. Nonaktifkan dgn "
                               "--no-require-citation utk RAG konvensional tanpa instruksi sitasi "
                               "(perilaku Kondisi B sebelum fitur ini ada).")
+    parser.add_argument("--require-grounding", action=argparse.BooleanOptionalAction,
+                         default=os.getenv("CONDITION_B_REQUIRE_GROUNDING", "false").strip().lower()
+                         in ("1", "true", "yes", "on"),
+                         help="HANYA berlaku kalau --require-citation juga aktif. Sejak prompt-"
+                              "parity v3 (docs/PROMPT_PARITY_V3.md): kalau True ('B-grounded'), "
+                              "pakai instruksi dual-constraint (grounding + citation) BYTE-IDENTICAL "
+                              "dgn Kondisi C/D. Default: NONAKTIF ('B-plain' -- perilaku B sebelum "
+                              "prompt-parity v3), dari CONDITION_B_REQUIRE_GROUNDING di .env.")
     parser.add_argument("--log-full-candidates", action="store_true", default=False,
                          help="Opt-in: simpan field tambahan all_candidate_question_ids (daftar LENGKAP "
                               "question_id kandidat SEBELUM top-k cutoff) di setiap record -- TIDAK "
@@ -673,7 +743,10 @@ def main():
         log(f"[config] --output diisi manual -- auto-naming provider/model diabaikan.")
     else:
         args.output = str(build_output_path(args.output_dir, args.provider, args.model,
-                                             args.n_sample, args.seed))
+                                             args.n_sample, args.seed,
+                                             require_citation=args.require_citation,
+                                             require_grounding=args.require_grounding,
+                                             oversample_pool=oversample_pool, top_k=args.top_k))
         log(f"[config] output auto-generated dari provider='{args.provider}' "
               f"model='{args.model}' -> '{args.output}'")
 
@@ -691,8 +764,11 @@ def main():
           f"token_chunk_limit={args.token_chunk_limit} embed_model={args.embed_model}")
     log(f"[config] require_citation={args.require_citation} "
           f"({'[SO-<id>] labels + citation instruction, format sama dgn Kondisi C' if args.require_citation else 'RAG konvensional tanpa instruksi sitasi'})")
+    if args.require_citation:
+        log(f"[config] require_grounding={args.require_grounding} "
+              f"({'B-grounded -- instruksi BYTE-IDENTICAL dgn Kondisi C/D' if args.require_grounding else 'B-plain -- citation-only, tanpa constraint grounding'})")
 
-    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
+    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log, with_meta=True)
 
     con = duckdb.connect()
 
@@ -731,16 +807,14 @@ def main():
     )
 
     # --- Resume support: baca Id yang sudah pernah diproses ---
+    from llm.manifest import compute_config_hash
+    config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool,
+                           args.top_k, args.require_citation, args.require_grounding)
+    config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    already_done = set()
-    if output_path.exists():
-        with open(output_path) as f:
-            for line in f:
-                try:
-                    already_done.add(json.loads(line)["question_id"])
-                except Exception:
-                    continue
+    already_done = read_already_done(output_path, PROMPT_VERSION, config_hash)
+    if already_done:
         log(f"      [resume] {len(already_done)} pertanyaan sudah diproses sebelumnya, akan dilewati")
 
     # --- 7-8: retrieval + prompting + similarity scoring ---
@@ -749,7 +823,9 @@ def main():
 
     process_sample(sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, args.top_k,
                     args.model, output_path, already_done, require_citation=args.require_citation,
-                    log_full_candidates=args.log_full_candidates)
+                    require_grounding=args.require_grounding,
+                    log_full_candidates=args.log_full_candidates,
+                    config=config, config_hash=config_hash)
 
     log("[8/8] Selesai memproses seluruh sample.")
 
@@ -773,11 +849,22 @@ def main():
             "log_full_candidates": args.log_full_candidates,
             "index_pool": args.index_pool,
             "top_k": args.top_k,
+            "config_hash": config_hash,
             "output_path": str(output_path),
             "log_path": str(log_path),
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
+        run_label = ("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B"
+        finished_at = datetime.now(timezone.utc)
+        manifest_path = write_manifest(
+            output_path, run_label=run_label, status="failed",
+            config=config, config_hash=config_hash, log_path=str(log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
+            item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
+            prompt_version=PROMPT_VERSION,
+        )
+        log(f"[logging] Manifest (gagal) ditulis -> {manifest_path}")
         return
 
     results_df = pd.read_json(output_path, lines=True)
@@ -796,11 +883,22 @@ def main():
             "log_full_candidates": args.log_full_candidates,
             "index_pool": args.index_pool,
             "top_k": args.top_k,
+            "config_hash": config_hash,
             "output_path": str(output_path),
             "log_path": str(log_path),
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
+        run_label = ("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B"
+        finished_at = datetime.now(timezone.utc)
+        manifest_path = write_manifest(
+            output_path, run_label=run_label, status="failed",
+            config=config, config_hash=config_hash, log_path=str(log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
+            item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
+            prompt_version=PROMPT_VERSION,
+        )
+        log(f"[logging] Manifest (gagal) ditulis -> {manifest_path}")
         return
 
     log("\n" + "=" * 70)
@@ -824,9 +922,26 @@ def main():
         log(f"% jawaban dgn >=1 kutipan format cocok  : {pct_citation:.1f}%")
         log(f"% jawaban dgn >=1 kutipan VALID (NF2)   : {pct_valid_citation:.1f}% "
             f"(pembanding langsung terhadap Kondisi C)")
+
+        # Reporting TAMBAHAN di luar definisi NF2 -- lihat docs/
+        # NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md.
+        citation_report = compute_citation_report(results_df.to_dict("records"))
+        log(f"  -- 3-way split: valid={citation_report['pct_valid']}% / "
+            f"no_citation={citation_report['pct_no_citation']}% / "
+            f"invalid_only={citation_report['pct_invalid_only']}%")
+        log(f"  -- fabricated citation rate (>=1 invalid token, even if also has a valid one): "
+            f"{citation_report['fabricated_citation_rate']}%")
+        log(f"  -- citation precision (valid tokens / all citation tokens incl. placeholders): "
+            f"{citation_report['citation_precision']}")
+
         citation_summary = {
             "pct_with_citation": round(float(pct_citation), 1),
             "pct_with_valid_citation": round(float(pct_valid_citation), 1),
+            "pct_citation_valid": citation_report["pct_valid"],
+            "pct_citation_no_citation": citation_report["pct_no_citation"],
+            "pct_citation_invalid_only": citation_report["pct_invalid_only"],
+            "fabricated_citation_rate": citation_report["fabricated_citation_rate"],
+            "citation_precision": citation_report["citation_precision"],
         }
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
@@ -847,6 +962,16 @@ def main():
         "top_k": args.top_k,
         "token_chunk_limit": args.token_chunk_limit,
         "require_citation": args.require_citation,
+        "require_grounding": args.require_grounding,
+        "config_hash": config_hash,
+        # "grounding" -- field DEDICATED (bukan fusion_mode, yg itu punya
+        # arti beda: varian retrieval C uniform/trust_weighted) -- dibaca
+        # oleh llm/evaluation/_run_metadata.py & history_service.py utk
+        # membangun run_label 3-axis ("B-plain"/"B-grounded",
+        # "C-uniform-grounded", dst.) -- lihat docs/PROMPT_PARITY_V3.md
+        # dan docs/GROUNDING_FACTOR_UI.md. None kalau require_citation
+        # False (varian ketiga B, RAG konvensional, tidak punya axis ini).
+        "grounding": (("on" if args.require_grounding else "off") if args.require_citation else None),
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
@@ -857,6 +982,26 @@ def main():
         "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
     })
     log(f"[logging] Ringkasan run dicatat -> {history_path}")
+
+    finished_at = datetime.now(timezone.utc)
+    if args.require_citation:
+        run_label = "B-grounded" if args.require_grounding else "B-plain"
+    else:
+        run_label = "B"
+    manifest_path = write_manifest(
+        output_path,
+        run_label=run_label,
+        config=config,
+        config_hash=config_hash,
+        log_path=str(log_path),
+        started_at_utc=run_started_at.isoformat(),
+        finished_at_utc=finished_at.isoformat(),
+        item_counts={"attempted": args.n_sample, "succeeded": len(results_df),
+                     "failed": args.n_sample - len(results_df)},
+        prompt_version=PROMPT_VERSION,
+        total_tokens=sum_usage_tokens(results_df.to_dict("records")),
+    )
+    log(f"[logging] Manifest ditulis -> {manifest_path}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { HomePage } from '@/pages/HomePage'
 import { MethodologyPage } from '@/pages/MethodologyPage'
@@ -12,6 +12,7 @@ import { TagDetailPage } from '@/pages/TagDetailPage'
 import { RunConditionPage } from '@/pages/RunConditionPage'
 import { RunAllConditionsPage } from '@/pages/RunAllConditionsPage'
 import { RunAllResultsPage } from '@/pages/RunAllResultsPage'
+import { FactorialResultsPage } from '@/pages/FactorialResultsPage'
 import { RunResultPage } from '@/pages/RunResultPage'
 import { RunResultDetailPage } from '@/pages/RunResultDetailPage'
 import { HistoryPage } from '@/pages/HistoryPage'
@@ -20,6 +21,8 @@ import { HistoryDetailPage } from '@/pages/HistoryDetailPage'
 import { HistoryResultDetailPage } from '@/pages/HistoryResultDetailPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { RunJudgePage } from '@/pages/RunJudgePage'
+import { RunJudgeV1Page } from '@/pages/RunJudgeV1Page'
+import { JudgeV1ResultsPage } from '@/pages/JudgeV1ResultsPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 export default function App() {
@@ -38,11 +41,18 @@ export default function App() {
 
         <Route path="/experiment/all" element={<RunAllConditionsPage />} />
         <Route path="/experiment/all/runs" element={<RunAllResultsPage />} />
+        {/* Old direct link to the Factorial Batch page -- now a tab inside
+            RunAllConditionsPage -- redirected so bookmarks/shared links
+            keep working. */}
+        <Route path="/experiment/factorial" element={<Navigate to="/experiment/all?tab=factorial" replace />} />
+        <Route path="/experiment/factorial/runs" element={<FactorialResultsPage />} />
         <Route path="/experiment/:condition" element={<RunConditionPage />} />
         <Route path="/experiment/:condition/runs/:run_id" element={<RunResultPage />} />
         <Route path="/experiment/:condition/runs/:run_id/q/:question_id" element={<RunResultDetailPage />} />
 
         <Route path="/evaluation/judge" element={<RunJudgePage />} />
+        <Route path="/evaluation/judge-v1" element={<RunJudgeV1Page />} />
+        <Route path="/evaluation/judge-v1/results/:batchId" element={<JudgeV1ResultsPage />} />
 
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/history/compare" element={<HistoryComparePage />} />

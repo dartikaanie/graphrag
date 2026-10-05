@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from app.services import judge_lookup_service
+from app.services import invalid_runs_service, judge_lookup_service, superseded_runs_service
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -68,6 +68,55 @@ def _history_id(condition: str, record: dict[str, Any]) -> str:
     return f"{condition}-{hashlib.md5(basis.encode()).hexdigest()[:10]}"
 
 
+# Short names used ONLY inside run_label (e.g. "C-uniform-grounded") --
+# fusion_mode itself is always stored/returned in full. MANUALLY SYNCED
+# duplicate of llm/evaluation/_run_metadata.py::derive_run_label() -- see
+# that module's docstring for why this is a duplicate, not an import
+# (backend -> llm/ is the only allowed dependency direction; llm/
+# evaluation/ CLI scripts must stay free of the FastAPI app context).
+# If this formula ever changes, update BOTH copies, or the dashboard's
+# run_label will stop lining up with judge-v1's -- the cross-check test
+# (llm/evaluation/tests/test_run_id_matches_dashboard.py) guards this.
+_FUSION_MODE_SHORT = {"uniform": "uniform", "trust_weighted": "trust"}
+_B_LEGACY_FUSION_MODE_AS_GROUNDING = {"plain": "off", "grounded": "on"}
+_HISTORICAL_DEFAULT_GROUNDING = {"A": None, "B": "off", "C": "on", "D": "on"}
+
+
+def derive_run_label(condition: str, record: dict[str, Any]) -> dict[str, Any]:
+    """See llm/evaluation/_run_metadata.py::derive_run_label() -- EXACT
+    SAME formula, kept here as a manually-synced duplicate."""
+    if condition == "A":
+        return {"run_label": "A", "fusion_mode": None, "grounding": None, "grounding_inferred": False}
+
+    fusion_mode = record.get("fusion_mode")
+    grounding_inferred = False
+
+    if record.get("grounding") in ("on", "off"):
+        grounding = record["grounding"]
+    elif record.get("require_grounding") is not None:
+        grounding = "on" if record["require_grounding"] else "off"
+    elif condition == "B" and fusion_mode in _B_LEGACY_FUSION_MODE_AS_GROUNDING:
+        grounding = _B_LEGACY_FUSION_MODE_AS_GROUNDING[fusion_mode]
+        fusion_mode = None
+        grounding_inferred = True
+    else:
+        grounding = _HISTORICAL_DEFAULT_GROUNDING.get(condition)
+        grounding_inferred = grounding is not None
+
+    parts = [condition]
+    if condition == "C" and fusion_mode:
+        parts.append(_FUSION_MODE_SHORT.get(fusion_mode, fusion_mode))
+    if grounding is not None:
+        parts.append("grounded" if grounding == "on" else "plain")
+
+    return {
+        "run_label": "-".join(parts),
+        "fusion_mode": fusion_mode,
+        "grounding": grounding,
+        "grounding_inferred": grounding_inferred,
+    }
+
+
 def _load_condition_history(condition: str) -> list[dict[str, Any]]:
     path = HISTORY_PATHS[condition]
     if not path.exists():
@@ -84,17 +133,45 @@ def _load_condition_history(condition: str) -> list[dict[str, Any]]:
                 continue
             record.setdefault("condition", condition)
             record["history_id"] = _history_id(condition, record)
+            label_info = derive_run_label(condition, record)
+            record["run_label"] = label_info["run_label"]
+            record["grounding"] = label_info["grounding"]
+            record["grounding_inferred"] = label_info["grounding_inferred"]
+            # Overwrite with the CLEANED fusion_mode (derive_run_label()
+            # nulls it out when it was actually B's legacy grounding-hack
+            # value, "plain"/"grounded") -- never let that leak out as if
+            # it were a real fusion_mode.
+            record["fusion_mode"] = label_info["fusion_mode"]
             records.append(record)
     return records
 
 
 def list_history(
-    condition: str | None, date_from: str | None, date_to: str | None, page: int, page_size: int
+    condition: str | None, date_from: str | None, date_to: str | None, page: int, page_size: int,
+    show_superseded: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
     conditions = [condition.upper()] if condition else list(HISTORY_PATHS.keys())
     all_records: list[dict[str, Any]] = []
     for c in conditions:
         all_records.extend(_load_condition_history(c))
+
+    # Known-bad entries (logs/invalid_runs.jsonl, e.g. the 2026-10-05 pilot's
+    # stale-file resume collisions) never appear in History or Compare --
+    # run_history.jsonl itself is untouched, this is a display-time filter
+    # only. See invalid_runs_service's module docstring.
+    invalid_ids = invalid_runs_service.load_invalid_run_ids()
+    if invalid_ids:
+        all_records = [r for r in all_records if r["history_id"] not in invalid_ids]
+
+    # Superseded entries (logs/superseded_runs.jsonl, e.g. the 2026-10-05
+    # pilot's 3 real successes re-run under the config-hashed filename
+    # scheme) are hidden BY DEFAULT, but -- unlike invalid runs -- a caller
+    # can ask to see them again (show_superseded=True) since they were
+    # never wrong, just outdated. See superseded_runs_service's docstring.
+    if not show_superseded:
+        superseded_ids = superseded_runs_service.load_superseded_run_ids()
+        if superseded_ids:
+            all_records = [r for r in all_records if r["history_id"] not in superseded_ids]
 
     if date_from:
         all_records = [r for r in all_records if str(r.get("run_started_at", "")) >= date_from]
@@ -120,22 +197,33 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
         return None
 
     results: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     output_path = record.get("output_path")
     if output_path and Path(output_path).exists():
         with open(output_path) as f:
-            for i, line in enumerate(f):
+            for line in f:
                 try:
-                    row = json.loads(line)
+                    rows.append(json.loads(line))
                 except json.JSONDecodeError:
                     continue
-                results.append({
-                    "question_id": row.get("question_id"),
-                    "index": i,
-                    "total": record.get("n_processed", len(results) + 1),
-                    "status": "done",
-                    "similarity": row.get("cosine_similarity"),
-                    "error": None,
-                })
+        # Refuse to summarize a file that mixes answers from genuinely
+        # different configs/prompt_versions under one filename -- see
+        # llm.manifest.assert_single_config_hash's docstring (raises
+        # MixedConfigHashError, translated to a 409 by the router).
+        import sys
+        if str(REPO_ROOT) not in sys.path:
+            sys.path.insert(0, str(REPO_ROOT))
+        from llm.manifest import assert_single_config_hash
+        assert_single_config_hash(rows, source_label=output_path)
+        for i, row in enumerate(rows):
+            results.append({
+                "question_id": row.get("question_id"),
+                "index": i,
+                "total": record.get("n_processed", len(results) + 1),
+                "status": "done",
+                "similarity": row.get("cosine_similarity"),
+                "error": None,
+            })
 
     started_at = record.get("run_started_at")
     finished_at = None
@@ -151,12 +239,45 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
         "n_processed", "cosine_similarity_mean", "cosine_similarity_median",
         "pct_similarity_above_0_5", "pct_with_citation", "pct_with_valid_citation",
         "avg_retrieval_latency_sec", "duration_sec",
+        # 3-way citation split (lihat docs/NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md)
+        # -- NoCit%/InvOnly%/Fabric%/Precis columns di History Compare.
+        "pct_citation_valid", "pct_citation_no_citation", "pct_citation_invalid_only",
+        "fabricated_citation_rate", "citation_precision",
     ]
     summary = {k: record[k] for k in summary_keys if k in record}
+
+    # Fallback: recompute the 3-way citation split straight from the
+    # output file's records when run_history.jsonl doesn't already have
+    # it (every dashboard-launched run before this fix, e.g. the
+    # 2026-10-05 pilot re-run -- engine_service.py's run_condition_b/c/d
+    # never called compute_citation_report() at all, only the CLI's
+    # main() did). Only for records that actually attempted citations
+    # (has "has_citation" key) -- Condition A's records never have it,
+    # and compute_citation_report() would otherwise misreport 100%
+    # "no_citation" for a condition that never had the concept at all.
+    if "pct_citation_valid" not in summary and rows and "has_citation" in rows[0]:
+        import sys
+        if str(REPO_ROOT) not in sys.path:
+            sys.path.insert(0, str(REPO_ROOT))
+        from llm.citations import compute_citation_report
+        citation_report = compute_citation_report(rows)
+        summary["pct_citation_valid"] = citation_report["pct_valid"]
+        summary["pct_citation_no_citation"] = citation_report["pct_no_citation"]
+        summary["pct_citation_invalid_only"] = citation_report["pct_invalid_only"]
+        summary["fabricated_citation_rate"] = citation_report["fabricated_citation_rate"]
+        summary["citation_precision"] = citation_report["citation_precision"]
+
+    n_context_counts = [row["n_context_items_used"] for row in rows if isinstance(row.get("n_context_items_used"), int)]
+    if n_context_counts:
+        summary["n_context_items_used_mean"] = round(sum(n_context_counts) / len(n_context_counts), 2)
+        summary["n_context_items_used_min"] = min(n_context_counts)
 
     return {
         "run_id": history_id,
         "condition": condition,
+        "run_label": record.get("run_label"),
+        "grounding": record.get("grounding"),
+        "grounding_inferred": record.get("grounding_inferred"),
         "mode": "single" if "single" in str(output_path) else "batch",
         "status": record.get("status", "unknown"),
         "params": {

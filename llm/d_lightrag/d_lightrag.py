@@ -164,6 +164,7 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
+from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_lightrag_messages
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B/C
@@ -535,7 +536,7 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
 # Citation check -- SAMA PERSIS Kondisi B/C (llm/citations.py)
 # ---------------------------------------------------------------------
 
-from llm.citations import CITATION_PATTERN, extract_citations  # noqa: E402,F401
+from llm.citations import CITATION_PATTERN, compute_citation_report, extract_citations  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------
@@ -558,6 +559,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     top_k: int, n_low_level: int, n_high_level: int, token_chunk_limit: int,
                     model: str, output_path: Path, already_done: set | None = None,
                     on_progress=None, check_cancel=None, require_grounding: bool = True,
+                    config: dict | None = None, config_hash: str | None = None,
                     ) -> tuple[list[dict], dict]:
     """Pola SAMA PERSIS process_sample() Kondisi C: retrieval (dual-level, bukan
     trust-weighted) + prompt (grounded/ungrounded sesuai require_grounding) +
@@ -626,7 +628,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 messages = build_lightrag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                                     require_grounding=require_grounding)
                 try:
-                    llm_answer = call_llm_fn(llm_client, messages, model)
+                    call_result = call_llm_fn(llm_client, messages, model)
+                    llm_answer = call_result["content"]
                 except Exception as e:
                     log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
                     if on_progress:
@@ -660,6 +663,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "prompt_messages": messages,
                     "n_low_level_candidates": len(low_level_candidates),
                     "n_high_level_candidates": len(high_level_candidates),
+                    # Actual number of context items sent to the LLM in this
+                    # prompt, AFTER fuse_dual_level()'s top_k cutoff -- always
+                    # <= top_k regardless of how large n_low_level/
+                    # n_high_level made the candidate pool. Equivalent to
+                    # len(retrieved_context), stored explicitly for pilot
+                    # verification -- same field name as Condition C.
+                    "n_context_items_used": len(retrieved),
                     "require_grounding": require_grounding,
                     "retrieval_latency_sec": round(retrieval_latency, 3),
                     "llm_answer": llm_answer,
@@ -669,6 +679,15 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "cited_source_ids": cited_ids,
                     "has_valid_citation": has_valid_citation,
                     "valid_cited_source_ids": valid_ids,
+                    "response_id": call_result.get("response_id"),
+                    "response_model": call_result.get("response_model"),
+                    "response_created": call_result.get("response_created"),
+                    "system_fingerprint": call_result.get("system_fingerprint"),
+                    "finish_reason": call_result.get("finish_reason"),
+                    "usage_full": call_result.get("usage_full"),
+                    "request_params": call_result.get("request_params"),
+                    "config": config,
+                    "config_hash": config_hash,
                 }
                 try:
                     line = json.dumps(record, default=str)
@@ -715,14 +734,36 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 # Main
 # ---------------------------------------------------------------------
 
+def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
+                  top_k: int, n_low_level: int, n_high_level: int, require_grounding: bool) -> dict:
+    """The full set of parameters that affect Condition D's answers -- see
+    llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
+    for why this exists. Includes D_RETRIEVAL_VERSION since a retrieval
+    code fix changes answers just as much as a parameter does."""
+    return {
+        "condition": "D", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
+        "oversample_pool": oversample_pool, "top_k": top_k, "n_low_level": n_low_level,
+        "n_high_level": n_high_level, "require_grounding": require_grounding,
+        "d_retrieval_version": D_RETRIEVAL_VERSION,
+    }
+
+
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
-                       require_grounding: bool = True) -> Path:
+                       require_grounding: bool = True, oversample_pool: int | None = None,
+                       top_k: int = 5, n_low_level: int = 3, n_high_level: int = 3) -> Path:
     """Nama file menyertakan varian grounding supaya run grounded/ungrounded
-    tidak saling menimpa file .jsonl satu sama lain."""
+    tidak saling menimpa file .jsonl satu sama lain -- plus prompt_version +
+    config_hash (see llm.manifest.read_already_done's docstring for why --
+    2026-10-05 pilot incident fix)."""
+    from llm.manifest import compute_config_hash
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
     base = f"condition_d_{provider}_{safe_model}_n{n_sample}_seed{seed}"
     suffix = "grounded" if require_grounding else "ungrounded"
-    return Path(output_dir) / f"{base}_{suffix}.jsonl"
+    config_hash = compute_config_hash(
+        build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_low_level,
+                     n_high_level, require_grounding)
+    )
+    return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
 
 def main():
@@ -771,7 +812,9 @@ def main():
         log("[config] --output diisi manual -- auto-naming diabaikan.")
     else:
         args.output = str(build_output_path(args.output_dir, args.provider, args.model,
-                                             args.n_sample, args.seed, args.require_grounding))
+                                             args.n_sample, args.seed, args.require_grounding,
+                                             oversample_pool=oversample_pool, top_k=args.top_k,
+                                             n_low_level=args.n_low_level, n_high_level=args.n_high_level))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -784,7 +827,7 @@ def main():
     log(f"[config] require_grounding={args.require_grounding} "
         f"({'dual-constraint grounding+citation' if args.require_grounding else 'citation only, no grounding'})")
 
-    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log)
+    llm_client, call_llm_fn = get_llm_client(args.provider, args.model, log=log, with_meta=True)
 
     con = duckdb.connect()
     con.execute("SET memory_limit='2GB'")
@@ -812,16 +855,14 @@ def main():
     from sentence_transformers import SentenceTransformer
     embed_model = SentenceTransformer(args.embed_model, device="cpu")
 
+    from llm.manifest import compute_config_hash
+    config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool,
+                           args.top_k, args.n_low_level, args.n_high_level, args.require_grounding)
+    config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    already_done = set()
-    if output_path.exists():
-        with open(output_path) as f:
-            for line in f:
-                try:
-                    already_done.add(json.loads(line)["question_id"])
-                except Exception:
-                    continue
+    already_done = read_already_done(output_path, PROMPT_VERSION, config_hash)
+    if already_done:
         log(f"      [resume] {len(already_done)} pertanyaan sudah diproses sebelumnya")
 
     log(f"[7/9] Dual-level retrieval (low-level+high-level) + prompting {args.model} "
@@ -833,6 +874,7 @@ def main():
         args.top_k, args.n_low_level, args.n_high_level, args.token_chunk_limit,
         args.model, output_path, already_done,
         require_grounding=args.require_grounding,
+        config=config, config_hash=config_hash,
     )
     interrupted = stats["interrupted"]
 
@@ -854,9 +896,21 @@ def main():
             "seed": args.seed, "output_path": str(output_path), "log_path": str(log_path),
             "oversample_pool": oversample_pool,
             "require_grounding": args.require_grounding,
+            "grounding": "on" if args.require_grounding else "off",
+            "config_hash": config_hash,
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
+        run_label = "D-grounded" if args.require_grounding else "D-plain"
+        finished_at = datetime.now(timezone.utc)
+        manifest_path = write_manifest(
+            output_path, run_label=run_label, status="failed",
+            config=config, config_hash=config_hash, log_path=str(log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
+            item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
+            prompt_version=PROMPT_VERSION,
+        )
+        log(f"[logging] Manifest (gagal) ditulis -> {manifest_path}")
         return
 
     results_df = pd.read_json(output_path, lines=True)
@@ -872,6 +926,18 @@ def main():
     pct_valid_citation = results_df["has_valid_citation"].mean() * 100
     log(f"% jawaban dgn >=1 kutipan format cocok  : {pct_citation:.1f}%")
     log(f"% jawaban dgn >=1 kutipan VALID (NF2)   : {pct_valid_citation:.1f}%")
+
+    # Reporting TAMBAHAN di luar definisi NF2 -- lihat docs/
+    # NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md.
+    citation_report = compute_citation_report(results_df.to_dict("records"))
+    log(f"  -- 3-way split: valid={citation_report['pct_valid']}% / "
+        f"no_citation={citation_report['pct_no_citation']}% / "
+        f"invalid_only={citation_report['pct_invalid_only']}%")
+    log(f"  -- fabricated citation rate (>=1 invalid token, even if also has a valid one): "
+        f"{citation_report['fabricated_citation_rate']}%")
+    log(f"  -- citation precision (valid tokens / all citation tokens incl. placeholders): "
+        f"{citation_report['citation_precision']}")
+
     avg_latency = results_df["retrieval_latency_sec"].mean()
     p95_latency = results_df["retrieval_latency_sec"].quantile(0.95)
     log(f"Retrieval latency -- avg: {avg_latency:.2f}s, p95: {p95_latency:.2f}s "
@@ -889,17 +955,42 @@ def main():
         "n_candidates_after_token_filter": len(candidates),
         "top_k": args.top_k, "n_low_level": args.n_low_level,
         "n_high_level": args.n_high_level, "require_grounding": args.require_grounding,
+        "grounding": "on" if args.require_grounding else "off",
+        "config_hash": config_hash,
         "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
         "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
         "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
         "pct_with_citation": round(float(pct_citation), 1),
         "pct_with_valid_citation": round(float(pct_valid_citation), 1),
+        "pct_citation_valid": citation_report["pct_valid"],
+        "pct_citation_no_citation": citation_report["pct_no_citation"],
+        "pct_citation_invalid_only": citation_report["pct_invalid_only"],
+        "fabricated_citation_rate": citation_report["fabricated_citation_rate"],
+        "citation_precision": citation_report["citation_precision"],
         "avg_retrieval_latency_sec": round(float(avg_latency), 3),
         "p95_retrieval_latency_sec": round(float(p95_latency), 3),
         "output_path": str(output_path), "log_path": str(log_path),
         "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
     })
     log(f"[logging] Ringkasan run dicatat -> {history_path}")
+
+    finished_at = datetime.now(timezone.utc)
+    run_label = "D-grounded" if args.require_grounding else "D-plain"
+    manifest_path = write_manifest(
+        output_path,
+        run_label=run_label,
+        status="interrupted" if interrupted else "completed",
+        config=config,
+        config_hash=config_hash,
+        log_path=str(log_path),
+        started_at_utc=run_started_at.isoformat(),
+        finished_at_utc=finished_at.isoformat(),
+        item_counts={"attempted": args.n_sample, "succeeded": len(results_df),
+                     "failed": args.n_sample - len(results_df)},
+        prompt_version=PROMPT_VERSION,
+        total_tokens=sum_usage_tokens(results_df.to_dict("records")),
+    )
+    log(f"[logging] Manifest ditulis -> {manifest_path}")
 
 
 if __name__ == "__main__":

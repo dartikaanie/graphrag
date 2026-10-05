@@ -5,10 +5,37 @@ import threading
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.models.schemas import RunCreateRequest, RunCreateResponse
+from app.models.schemas import (
+    CheckCompletedRequest,
+    CheckCompletedResponse,
+    CheckCompletedResult,
+    RunCreateRequest,
+    RunCreateResponse,
+)
 from app.services import engine_service, graph_service, run_registry
 
 router = APIRouter(prefix="/api/runs")
+
+
+@router.post("/check-completed", response_model=CheckCompletedResponse)
+def check_completed(body: CheckCompletedRequest):
+    """Factorial Batch page's skip-detection: for each candidate run,
+    returns its config_hash and whether a matching (same config_hash,
+    status=success) run_history.jsonl entry already exists -- the SAME
+    rule the resume gate itself uses (llm.manifest.read_already_done),
+    computed server-side so the client never has to reimplement/drift
+    from the hashing formula. mode="single" always resolves to
+    already_completed=False (not meaningfully resumable, see
+    engine_service.compute_run_config_hash's docstring)."""
+    results = []
+    for run in body.runs:
+        condition = run.condition.upper()
+        if run.mode == "single":
+            results.append(CheckCompletedResult(config_hash="", already_completed=False))
+            continue
+        completed, config_hash = engine_service.is_run_already_completed(condition, run.model_dump())
+        results.append(CheckCompletedResult(config_hash=config_hash, already_completed=completed))
+    return CheckCompletedResponse(results=results)
 
 
 def _find_result_record(output_path: str | None, question_id: int) -> dict | None:

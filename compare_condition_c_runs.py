@@ -44,7 +44,14 @@ Kalau dijalankan dari lokasi lain / nama folder beda, override path log-nya:
 import argparse
 import json
 import statistics
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from llm.evaluation._run_metadata import derive_run_label  # noqa: E402
 
 NA = "-"
 OUTLIER_MARK = "⚠"
@@ -184,17 +191,37 @@ def _fmt_grounding(r: dict) -> str:
     return NA if rg is None else ("Yes" if rg else "No")
 
 
+def _run_label(r: dict) -> str:
+    """3-axis factorial label (docs/GROUNDING_FACTOR_UI.md) -- same
+    formula as llm/evaluation/_run_metadata.py / backend/history_service.py
+    (imported directly here, not a third manually-synced copy, since this
+    script already lives alongside llm/ at the repo root)."""
+    condition = r.get("condition", "?")
+    if condition not in ("A", "B", "C", "D"):
+        return NA
+    return derive_run_label(condition, r)["run_label"]
+
+
 def print_table(runs: list[dict], sort_label: str, extra_note: str = "", judge_by_condition: dict | None = None) -> None:
     has_grounding_col = any(r.get("require_grounding") is not None for r in runs)
     judge_by_condition = judge_by_condition or {}
     has_judge_col = bool(judge_by_condition) and any(r.get("condition") in judge_by_condition for r in runs)
+    # Opsional, read-only ADDITIF di atas NF2 (pct_with_citation di atas
+    # TIDAK berubah definisinya) -- lihat docs/
+    # NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md. Hanya ada utk run yg
+    # ditulis SETELAH compute_citation_report() ditambahkan ke generator
+    # scripts -- run v1/v2 lama tampil "-" (field belum ada saat itu),
+    # bukan ditebak/dihitung ulang dari jawaban mentah di sini.
+    has_citation_breakdown_col = any(r.get("fabricated_citation_rate") is not None for r in runs)
     cols = [
-        ("Kondisi", 8), ("Provider", 10), ("Model", 22), ("n", 4),
+        ("Kondisi", 8), ("RunLabel", 20), ("Provider", 10), ("Model", 22), ("n", 4),
         ("Sim.Mean", 10), ("Sim.Med", 8), ("%>0.5", 7), ("NF2%", 7),
         ("Lat.avg", 8), ("Durasi(s)", 10),
     ]
     if has_grounding_col:
-        cols.append(("Ground(D)", 9))
+        cols.append(("Ground", 6))
+    if has_citation_breakdown_col:
+        cols += [("NoCit%", 7), ("InvOnly%", 9), ("Fabric%", 8), ("Precis", 7)]
     if has_judge_col:
         cols += [("%Faktual", 9), ("%Sebagian", 10), ("%Penuh", 8), ("Kappa", 7)]
     header = "".join(f"{name:<{w}}" for name, w in cols)
@@ -209,6 +236,7 @@ def print_table(runs: list[dict], sort_label: str, extra_note: str = "", judge_b
             any_outlier = True
         row = [
             str(r.get("condition", "?")),
+            _run_label(r),
             str(r.get("provider", "?"))[:9],
             str(r.get("model", "?"))[:21],
             str(r.get("n_processed", "?")),
@@ -221,6 +249,13 @@ def print_table(runs: list[dict], sort_label: str, extra_note: str = "", judge_b
         ]
         if has_grounding_col:
             row.append(_fmt_grounding(r))
+        if has_citation_breakdown_col:
+            row += [
+                fmt(r.get("pct_citation_no_citation"), ".1f") + ("%" if r.get("pct_citation_no_citation") is not None else ""),
+                fmt(r.get("pct_citation_invalid_only"), ".1f") + ("%" if r.get("pct_citation_invalid_only") is not None else ""),
+                fmt(r.get("fabricated_citation_rate"), ".1f") + ("%" if r.get("fabricated_citation_rate") is not None else ""),
+                fmt(r.get("citation_precision"), ".3f"),
+            ]
         if has_judge_col:
             jr = judge_by_condition.get(r.get("condition"))
             row += [
@@ -244,6 +279,16 @@ def print_table(runs: list[dict], sort_label: str, extra_note: str = "", judge_b
               f"{int(OUTLIER_RATIO * 100)}% dari nilai terbaik run sejenis (kondisi+model+n sama) — "
               "kemungkinan gejala truncation/timeout/error, cek log run tsb sebelum dipakai "
               "untuk kesimpulan.")
+    if has_citation_breakdown_col:
+        print("Catatan: NoCit%/InvOnly%/Fabric%/Precis adalah breakdown TAMBAHAN di luar NF2% "
+              "(definisi NF2% TIDAK berubah) -- lihat docs/NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md. "
+              "NoCit%+InvOnly%+NF2% = 100% (3-way split per jawaban). Fabric% = % jawaban dgn "
+              ">=1 token sitasi TIDAK valid (placeholder atau ID di luar konteks), TERMASUK "
+              "jawaban yg juga punya sitasi valid -- karena itu Fabric% bisa > InvOnly%. "
+              "Precis = token valid / semua token sitasi (termasuk placeholder) se-run. Hanya "
+              "terisi utk run yang ditulis SETELAH fix placeholder-citation ini -- run v1/v2 "
+              "lama tampil '-' (field belum ada saat itu, BUKAN ditebak/dihitung ulang dari "
+              "jawaban mentah di sini).")
     if has_judge_col:
         print("Catatan: kolom %Faktual/%Sebagian/%Penuh/Kappa dari judge_run_history.jsonl -- "
               "diambil dari run judge TERBARU per kondisi (bukan per-file/per-run spesifik), "
@@ -267,6 +312,7 @@ def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> Non
 
     order = {"A": 0, "B": 1, "C": 2, "D": 3}
     any_outlier = False
+    any_citation_breakdown_col = False
 
     for (model, n) in sorted(groups.keys(), key=group_sort_key):
         group_runs = groups[(model, n)]
@@ -276,12 +322,16 @@ def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> Non
         print(f"\n=== Model: {model} | n={n} | Kondisi: {', '.join(conditions_present)} ===")
 
         has_grounding_col = any(r.get("require_grounding") is not None for r in group_runs)
+        has_citation_breakdown_col = any(r.get("fabricated_citation_rate") is not None for r in group_runs)
+        any_citation_breakdown_col = any_citation_breakdown_col or has_citation_breakdown_col
         cols = [
-            ("Kondisi", 8), ("Sim.Mean", 10), ("Sim.Med", 8), ("%>0.5", 7),
+            ("Kondisi", 8), ("RunLabel", 20), ("Sim.Mean", 10), ("Sim.Med", 8), ("%>0.5", 7),
             ("NF2%", 7), ("Lat.avg", 8), ("Durasi(s)", 10),
         ]
         if has_grounding_col:
-            cols.append(("Ground(D)", 9))
+            cols.append(("Ground", 6))
+        if has_citation_breakdown_col:
+            cols += [("NoCit%", 7), ("InvOnly%", 9), ("Fabric%", 8), ("Precis", 7)]
         header = "".join(f"{name:<{w}}" for name, w in cols)
         print(header)
         print("-" * len(header))
@@ -293,6 +343,7 @@ def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> Non
                 any_outlier = True
             row = [
                 str(r.get("condition", "?")),
+                _run_label(r),
                 sim_mean_str,
                 fmt(r.get("cosine_similarity_median"), ".4f"),
                 fmt(r.get("pct_similarity_above_0_5"), ".1f") + ("%" if r.get("pct_similarity_above_0_5") is not None else ""),
@@ -302,6 +353,13 @@ def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> Non
             ]
             if has_grounding_col:
                 row.append(_fmt_grounding(r))
+            if has_citation_breakdown_col:
+                row += [
+                    fmt(r.get("pct_citation_no_citation"), ".1f") + ("%" if r.get("pct_citation_no_citation") is not None else ""),
+                    fmt(r.get("pct_citation_invalid_only"), ".1f") + ("%" if r.get("pct_citation_invalid_only") is not None else ""),
+                    fmt(r.get("fabricated_citation_rate"), ".1f") + ("%" if r.get("fabricated_citation_rate") is not None else ""),
+                    fmt(r.get("citation_precision"), ".3f"),
+                ]
             line = "".join(f"{val:<{w}}" for val, (_, w) in zip(row, cols))
             print(line)
 
@@ -332,6 +390,10 @@ def print_grouped(runs: list[dict], sort_key_map: dict, sort_choice: str) -> Non
               f"{int(OUTLIER_RATIO * 100)}% dari nilai terbaik run sejenis (kondisi+model+n sama) — "
               "kemungkinan gejala truncation/timeout/error, cek log run tsb sebelum dipakai "
               "untuk kesimpulan.")
+    if any_citation_breakdown_col:
+        print("Catatan: NoCit%/InvOnly%/Fabric%/Precis adalah breakdown TAMBAHAN di luar NF2% "
+              "(definisi NF2% TIDAK berubah) -- lihat docs/NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md. "
+              "Hanya terisi utk run yang ditulis SETELAH fix placeholder-citation ini.")
 
 
 def main():

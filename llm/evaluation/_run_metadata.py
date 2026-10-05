@@ -52,6 +52,82 @@ class RunMetadataNotFoundError(Exception):
     never guess/fall back to filename-only inference for fusion_mode."""
 
 
+# Short names used ONLY inside run_label (e.g. "C-uniform-grounded"), per
+# docs/GROUNDING_FACTOR_UI.md's factorial table -- fusion_mode itself is
+# ALWAYS stored/returned in full ("uniform"/"trust_weighted"); this is a
+# display-only shortening.
+_FUSION_MODE_SHORT = {"uniform": "uniform", "trust_weighted": "trust"}
+
+# B's transitional hack (now removed from the generator scripts, see
+# docs/GROUNDING_FACTOR_UI.md "run_label design conflict"): for a short
+# window, B wrote its grounding state INTO fusion_mode (values "plain"/
+# "grounded") because it had no dedicated field yet. Any run_history
+# entry written during that window must still resolve correctly -- never
+# rewritten, just read correctly here.
+_B_LEGACY_FUSION_MODE_AS_GROUNDING = {"plain": "off", "grounded": "on"}
+
+# Historical default grounding behavior BEFORE the "grounding"/
+# "require_grounding" fields existed at all (used only when a record has
+# NEITHER field, e.g. a run from before any of this -- including before
+# the legacy B hack above). B never grounded by default; C/D always did.
+_HISTORICAL_DEFAULT_GROUNDING = {"A": None, "B": "off", "C": "on", "D": "on"}
+
+
+def derive_run_label(condition: str, record: dict) -> dict:
+    """Single source of truth for the 3-axis run_label (condition +
+    fusion_mode short name, for C + grounding on/off) -- used by BOTH
+    this module and backend/app/services/history_service.py (manually
+    synced, same pattern as _history_id() -- see module docstring).
+
+    Returns {"run_label", "fusion_mode" (full value, never shortened),
+    "grounding" ("on"/"off"/None for A), "grounding_inferred" (bool --
+    True if "grounding"/"require_grounding" was missing/ambiguous and the
+    value had to be inferred from older data or a historical default,
+    rather than read directly)}.
+
+    Resolution order for `grounding`:
+      1. record["grounding"] ("on"/"off") if present -- the current,
+         dedicated field. Not inferred.
+      2. record["require_grounding"] (bool) if present. Not inferred.
+      3. Condition B ONLY: record["fusion_mode"] in ("plain", "grounded")
+         -- the removed transitional hack. Inferred (the SIGNAL is
+         accurate, just not from the canonical field).
+      4. Historical default per condition (B off, C/D on), if
+         require_citation/grounding concept applies at all. Inferred.
+    A never has a grounding axis (`grounding` is None, label is just "A").
+    """
+    if condition == "A":
+        return {"run_label": "A", "fusion_mode": None, "grounding": None, "grounding_inferred": False}
+
+    fusion_mode = record.get("fusion_mode")
+    grounding_inferred = False
+
+    if record.get("grounding") in ("on", "off"):
+        grounding = record["grounding"]
+    elif record.get("require_grounding") is not None:
+        grounding = "on" if record["require_grounding"] else "off"
+    elif condition == "B" and fusion_mode in _B_LEGACY_FUSION_MODE_AS_GROUNDING:
+        grounding = _B_LEGACY_FUSION_MODE_AS_GROUNDING[fusion_mode]
+        fusion_mode = None  # that value was never a real fusion_mode -- don't leak it as one
+        grounding_inferred = True
+    else:
+        grounding = _HISTORICAL_DEFAULT_GROUNDING.get(condition)
+        grounding_inferred = grounding is not None
+
+    parts = [condition]
+    if condition == "C" and fusion_mode:
+        parts.append(_FUSION_MODE_SHORT.get(fusion_mode, fusion_mode))
+    if grounding is not None:
+        parts.append("grounded" if grounding == "on" else "plain")
+
+    return {
+        "run_label": "-".join(parts),
+        "fusion_mode": fusion_mode,
+        "grounding": grounding,
+        "grounding_inferred": grounding_inferred,
+    }
+
+
 def infer_condition_from_filename(path) -> str:
     name = Path(path).name
     for prefix, condition in CONDITION_PREFIXES.items():
@@ -88,17 +164,21 @@ def _load_history_records(history_path: Path) -> list[dict]:
 
 
 def resolve_run_metadata(result_file_path: str) -> dict:
-    """Returns a dict with: run_id, condition, run_label, fusion_mode,
-    retrieval_version, generator_prompt_version, source_file.
+    """Returns a dict with: run_id, condition, run_label, fusion_mode
+    (full value, e.g. "trust_weighted", never shortened), grounding
+    ("on"/"off"/None), grounding_inferred (bool), retrieval_version,
+    generator_prompt_version, source_file, batch_id (may be None for
+    older runs launched before batch_id was recorded).
 
-    run_label is f"{condition}-{fusion_mode}" when fusion_mode is set
-    (e.g. "C-uniform", "C-trust_weighted"), otherwise just the condition
-    letter (e.g. "A", "B", "D" -- none of these currently have a
-    fusion_mode/variant concept).
+    run_label is the 3-axis factorial label from derive_run_label() --
+    e.g. "A", "B-plain", "B-grounded", "C-uniform-grounded",
+    "C-trust-plain", "D-grounded" -- see docs/GROUNDING_FACTOR_UI.md.
 
     Raises RunMetadataNotFoundError if no run_history.jsonl entry's
     output_path matches this file -- callers must stop and tell the user
-    rather than silently falling back to a guess.
+    rather than silently falling back to a guess. (grounding itself CAN
+    be inferred when missing -- that's a documented, bounded fallback,
+    not the same as this error, which fires when there's NO entry at all.)
     """
     result_path = Path(result_file_path).resolve()
     condition = infer_condition_from_filename(result_path)
@@ -128,7 +208,6 @@ def resolve_run_metadata(result_file_path: str) -> dict:
     # MOST RECENT entry describes what's actually on disk right now.
     latest = max(matches, key=lambda r: r.get("run_started_at") or "")
 
-    fusion_mode = latest.get("fusion_mode")
     if condition == "C":
         retrieval_version = latest.get("c_retrieval_version")
     elif condition == "D":
@@ -136,14 +215,17 @@ def resolve_run_metadata(result_file_path: str) -> dict:
     else:
         retrieval_version = None
 
-    run_label = f"{condition}-{fusion_mode}" if fusion_mode else condition
+    label_info = derive_run_label(condition, latest)
 
     return {
         "run_id": _history_id(condition, latest),
         "condition": condition,
-        "run_label": run_label,
-        "fusion_mode": fusion_mode,
+        "run_label": label_info["run_label"],
+        "fusion_mode": label_info["fusion_mode"],
+        "grounding": label_info["grounding"],
+        "grounding_inferred": label_info["grounding_inferred"],
         "retrieval_version": retrieval_version,
         "generator_prompt_version": latest.get("prompt_version"),
         "source_file": str(result_path),
+        "batch_id": latest.get("batch_id"),
     }

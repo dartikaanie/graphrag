@@ -17,6 +17,8 @@ to tmp_path and point history_service.HISTORY_PATHS at it.
 
 import json
 
+import pytest
+
 from app.services import history_service
 
 
@@ -252,3 +254,176 @@ def test_c_retrieval_version_v2_recorded_verbatim_on_new_record(tmp_path, monkey
     detail = history_service.get_history_detail(history_id)
 
     assert detail["params"]["c_retrieval_version"] == "v2"
+
+
+# ---------------------------------------------------------------------------
+# run_label -- 3-axis factorial label (docs/GROUNDING_FACTOR_UI.md), surfaced
+# on get_history_detail()'s top level (not inside params -- it's identity,
+# not a tunable param). derive_run_label()'s own exhaustive 9-label +
+# legacy-inference coverage lives in llm/evaluation/tests/test__run_metadata.py
+# (the manually-synced twin of this function) -- these tests only prove the
+# BACKEND copy is wired into get_history_detail() correctly.
+# ---------------------------------------------------------------------------
+
+def test_history_detail_surfaces_run_label_for_c_uniform_grounded(tmp_path, monkeypatch):
+    history_path = tmp_path / "c_graphrag" / "logs" / "run_history.jsonl"
+    record = {
+        "run_started_at": "2026-09-29T00:00:00+00:00",
+        "condition": "C",
+        "status": "success",
+        "provider": "openai", "model": "gpt-4o-mini",
+        "n_sample_target": 10, "n_processed": 10, "seed": 42,
+        "fusion_mode": "uniform",
+        "grounding": "on",
+        "output_path": str(tmp_path / "condition_c_label_test.jsonl"),
+        "duration_sec": 1.0,
+    }
+    _write_run_history(history_path, record)
+    monkeypatch.setitem(history_service.HISTORY_PATHS, "C", history_path)
+
+    history_id = history_service._history_id("C", record)
+    detail = history_service.get_history_detail(history_id)
+
+    assert detail["run_label"] == "C-uniform-grounded"
+    assert detail["grounding"] == "on"
+    assert detail["grounding_inferred"] is False
+    assert detail["params"]["fusion_mode"] == "uniform"  # full value, unaffected by the shortened label
+
+
+def test_history_detail_surfaces_run_label_for_b_legacy_fusion_mode_hack(tmp_path, monkeypatch):
+    """B briefly recorded its grounding state inside fusion_mode
+    ("plain"/"grounded") before the dedicated "grounding" field existed --
+    the dashboard must still show the correct run_label for those
+    existing entries, marked inferred, and never leak "plain"/"grounded"
+    back out as params.fusion_mode."""
+    history_path = tmp_path / "b_rag" / "logs" / "run_history.jsonl"
+    record = {
+        "run_started_at": "2026-09-29T00:00:00+00:00",
+        "condition": "B",
+        "status": "success",
+        "provider": "openai", "model": "gpt-4o-mini",
+        "n_sample_target": 10, "n_processed": 10, "seed": 42,
+        "fusion_mode": "grounded",
+        "output_path": str(tmp_path / "condition_b_legacy_test.jsonl"),
+        "duration_sec": 1.0,
+    }
+    _write_run_history(history_path, record)
+    monkeypatch.setitem(history_service.HISTORY_PATHS, "B", history_path)
+
+    history_id = history_service._history_id("B", record)
+    detail = history_service.get_history_detail(history_id)
+
+    assert detail["run_label"] == "B-grounded"
+    assert detail["grounding_inferred"] is True
+    assert detail["params"]["fusion_mode"] is None
+
+
+def test_history_detail_refuses_a_deliberately_mixed_config_hash_output_file(tmp_path, monkeypatch):
+    """The dashboard-summary half of the 2026-10-05 pilot incident fix:
+    get_history_detail() must never silently summarize an output file
+    whose records come from two DIFFERENT configs/prompt_versions (e.g. a
+    stale pre-v3 file that a v3 run partially resumed into) -- it must
+    raise, not average/report across the mix. See
+    llm.manifest.assert_single_config_hash / MixedConfigHashError."""
+    import sys
+
+    sys.path.insert(0, str(history_service.REPO_ROOT))
+    from llm.manifest import MixedConfigHashError
+
+    output_path = tmp_path / "condition_c_mixed.jsonl"
+    with open(output_path, "w") as f:
+        f.write(json.dumps({"question_id": 1, "cosine_similarity": 0.5, "config_hash": "aaaa111111"}) + "\n")
+        f.write(json.dumps({"question_id": 2, "cosine_similarity": 0.6, "config_hash": "bbbb222222"}) + "\n")
+
+    history_path = tmp_path / "c_graphrag" / "logs" / "run_history.jsonl"
+    record = {
+        "run_started_at": "2026-10-05T00:00:00+00:00",
+        "condition": "C",
+        "status": "success",
+        "provider": "openai", "model": "gpt-4o-mini",
+        "n_sample_target": 2, "n_processed": 2, "seed": 42,
+        "output_path": str(output_path),
+        "duration_sec": 1.0,
+    }
+    _write_run_history(history_path, record)
+    monkeypatch.setitem(history_service.HISTORY_PATHS, "C", history_path)
+
+    history_id = history_service._history_id("C", record)
+    with pytest.raises(MixedConfigHashError):
+        history_service.get_history_detail(history_id)
+
+
+def test_history_detail_computes_citation_split_from_output_file_when_run_history_lacks_it(tmp_path, monkeypatch):
+    """The 2026-10-05 pilot re-run bug: engine_service.py's run_condition_b/
+    c/d never called compute_citation_report(), so run_history.jsonl
+    entries for dashboard-launched runs have NO pct_citation_valid/
+    pct_citation_no_citation/pct_citation_invalid_only/
+    fabricated_citation_rate/citation_precision fields at all --
+    get_history_detail() must recompute them straight from the output
+    file's own has_citation/has_valid_citation/llm_answer/
+    retrieved_context fields, with no re-run needed."""
+    output_path = tmp_path / "condition_c_citation_test.jsonl"
+    with open(output_path, "w") as f:
+        # 1 valid citation, 1 with no citation at all -- 50/50 split.
+        f.write(json.dumps({
+            "question_id": 1, "cosine_similarity": 0.5,
+            "llm_answer": "See [SO-123].", "has_citation": True, "has_valid_citation": True,
+            "retrieved_context": [{"question_id": 123, "answer_id": 999}],
+        }) + "\n")
+        f.write(json.dumps({
+            "question_id": 2, "cosine_similarity": 0.6,
+            "llm_answer": "No citation here.", "has_citation": False, "has_valid_citation": False,
+            "retrieved_context": [],
+        }) + "\n")
+
+    history_path = tmp_path / "c_graphrag" / "logs" / "run_history.jsonl"
+    record = {
+        "run_started_at": "2026-10-05T00:00:00+00:00",
+        "condition": "C",
+        "status": "success",
+        "provider": "openai", "model": "gpt-4o-mini",
+        "n_sample_target": 2, "n_processed": 2, "seed": 42,
+        "output_path": str(output_path),
+        "duration_sec": 1.0,
+        # no pct_citation_* / fabricated_citation_rate / citation_precision
+        # fields at all -- exactly what a dashboard-launched pre-fix run
+        # looks like.
+    }
+    _write_run_history(history_path, record)
+    monkeypatch.setitem(history_service.HISTORY_PATHS, "C", history_path)
+
+    history_id = history_service._history_id("C", record)
+    detail = history_service.get_history_detail(history_id)
+
+    summary = detail["summary"]
+    assert summary["pct_citation_valid"] == 50.0
+    assert summary["pct_citation_no_citation"] == 50.0
+    assert summary["pct_citation_invalid_only"] == 0.0
+    assert summary["fabricated_citation_rate"] == 0.0
+    assert summary["citation_precision"] is not None
+
+
+def test_history_detail_skips_citation_split_for_condition_a_records_without_has_citation(tmp_path, monkeypatch):
+    """Condition A never has the has_citation concept at all -- the
+    fallback must not compute a misleading 100%-no-citation split for it."""
+    output_path = tmp_path / "condition_a_no_citation_concept.jsonl"
+    with open(output_path, "w") as f:
+        f.write(json.dumps({"question_id": 1, "cosine_similarity": 0.5, "llm_answer": "An answer."}) + "\n")
+
+    history_path = tmp_path / "a_pure_llm" / "logs" / "run_history.jsonl"
+    record = {
+        "run_started_at": "2026-10-05T00:00:00+00:00",
+        "condition": "A",
+        "status": "success",
+        "provider": "openai", "model": "gpt-4o-mini",
+        "n_sample_target": 1, "n_processed": 1, "seed": 42,
+        "output_path": str(output_path),
+        "duration_sec": 1.0,
+    }
+    _write_run_history(history_path, record)
+    monkeypatch.setitem(history_service.HISTORY_PATHS, "A", history_path)
+
+    history_id = history_service._history_id("A", record)
+    detail = history_service.get_history_detail(history_id)
+
+    assert "pct_citation_valid" not in detail["summary"]

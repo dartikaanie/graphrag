@@ -1,5 +1,7 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import { useCompareConsistency, useHistoryDetails, type SampleConsistencyResult } from '@/api/hooks'
+import { JudgeV1ResultsSection } from '@/components/JudgeV1ResultsSection'
+import { downloadMarkdown, mdTable } from '@/lib/markdown'
 import { fmtDuration } from '@/lib/format'
 import type { RunState } from '@/types/run'
 
@@ -15,6 +17,24 @@ const ROWS: MetricRow[] = [
   { label: 'Avg Cosine Similarity', get: (r) => r.summary?.cosine_similarity_mean, fmt: (v) => v.toFixed(4), higherIsBetter: true },
   { label: '% Similarity > 0.5', get: (r) => r.summary?.pct_similarity_above_0_5, fmt: (v) => `${v.toFixed(1)}%`, higherIsBetter: true },
   { label: 'NF2 — Valid Citation %', get: (r) => r.summary?.pct_with_valid_citation, fmt: (v) => `${v.toFixed(1)}%`, higherIsBetter: true },
+  // 3-way citation split -- the other two slices of the same 100% as
+  // "Valid Citation %" above, plus a precision score across the whole run.
+  { label: 'NoCit %', get: (r) => r.summary?.pct_citation_no_citation, fmt: (v) => `${v.toFixed(1)}%`, higherIsBetter: false },
+  { label: 'InvOnly %', get: (r) => r.summary?.pct_citation_invalid_only, fmt: (v) => `${v.toFixed(1)}%`, higherIsBetter: false },
+  { label: 'Fabric %', get: (r) => r.summary?.fabricated_citation_rate, fmt: (v) => `${v.toFixed(1)}%`, higherIsBetter: false },
+  { label: 'Precis', get: (r) => r.summary?.citation_precision, fmt: (v) => v.toFixed(3), higherIsBetter: true },
+  {
+    label: 'Context Items Used — Mean',
+    get: (r) => r.summary?.n_context_items_used_mean,
+    fmt: (v) => v.toFixed(2),
+    higherIsBetter: true,
+  },
+  {
+    label: 'Context Items Used — Min',
+    get: (r) => r.summary?.n_context_items_used_min,
+    fmt: (v) => String(v),
+    higherIsBetter: true,
+  },
   { label: 'Avg Retrieval Latency (s)', get: (r) => r.summary?.avg_retrieval_latency_sec, fmt: (v) => v.toFixed(2), higherIsBetter: false },
   { label: 'Total Run Time', get: (r) => r.summary?.duration_sec, fmt: (v) => fmtDuration(v), higherIsBetter: false },
 ]
@@ -85,22 +105,6 @@ const PARAM_ROWS: ParamRow[] = [
   },
 ]
 
-// Markdown table cells can't contain a raw "|" or newline -- escape/strip
-// so a stray value (shouldn't happen with these formatters, but defensive)
-// never breaks the table structure.
-function mdEscape(v: string): string {
-  return v.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
-}
-
-function mdTable(header: string[], rows: string[][]): string {
-  const lines = [
-    `| ${header.map(mdEscape).join(' | ')} |`,
-    `|${header.map(() => '---').join('|')}|`,
-    ...rows.map((row) => `| ${row.map(mdEscape).join(' | ')} |`),
-  ]
-  return lines.join('\n')
-}
-
 function columnLabel(run: RunState): string {
   return `Condition ${run.condition} (${run.run_id})`
 }
@@ -163,18 +167,6 @@ function buildComparisonMarkdown(runs: RunState[], consistency: SampleConsistenc
     '',
   ]
   return lines.join('\n')
-}
-
-function downloadMarkdown(filename: string, content: string): void {
-  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
 }
 
 export function HistoryComparePage() {
@@ -305,6 +297,8 @@ export function HistoryComparePage() {
               </tbody>
             </table>
           </div>
+
+          <JudgeV1ResultsSection runLabels={runs.map((r) => r.run_label).filter((l): l is string => !!l)} />
         </>
       )}
     </div>

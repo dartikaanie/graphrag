@@ -60,7 +60,11 @@ export function RunConditionPage() {
   const [enableSemanticExpansion, setEnableSemanticExpansion] = useState(true)
   const [nLowLevel, setNLowLevel] = useState(3)
   const [nHighLevel, setNHighLevel] = useState(3)
-  const [requireGrounding, setRequireGrounding] = useState(true)
+  // Default: True for C/D (their historical behavior); False for B
+  // ("B-plain" -- B never had a grounding constraint before prompt-parity
+  // v3, docs/PROMPT_PARITY_V3.md, so an unaware user opening this form
+  // shouldn't suddenly get "B-grounded" by default).
+  const [requireGrounding, setRequireGrounding] = useState(condition !== 'B')
   const [logFullCandidates, setLogFullCandidates] = useState(false)
   const [questionId, setQuestionId] = useState('')
 
@@ -68,7 +72,10 @@ export function RunConditionPage() {
   const isGraph = condition === 'C'
   const isDualLevel = condition === 'D'
   const isConditionB = condition === 'B'
-  const supportsGrounding = isGraph || isDualLevel
+  // B only supports grounding when require_citation is also on (grounding
+  // is meaningless for B's third, citation-less "plain RAG" mode) -- see
+  // build_rag_messages()'s require_grounding param, llm/prompts.py.
+  const supportsGrounding = isGraph || isDualLevel || (isConditionB && requireCitation)
   const supportsLogFullCandidates = isConditionB || isGraph
 
   const handleRun = () => {

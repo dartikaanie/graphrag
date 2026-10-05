@@ -233,3 +233,30 @@ def test_llm_provider(provider: str, api_key: str, model: str, ollama_host: str)
         return False, f"Unknown provider '{provider}'"
     except Exception as e:
         return False, str(e)
+
+
+def resolved_archive_dest() -> str | None:
+    """GRAPHRAG_ARCHIVE_DIR from the environment (.env) -- the SAME default
+    archive_results.py's CLI uses, so the dashboard's "Archive all results"
+    button shows the user the exact destination before they click it."""
+    return os.getenv("GRAPHRAG_ARCHIVE_DIR")
+
+
+def run_archive(dest: str | None, dry_run: bool = False) -> dict[str, Any]:
+    """Calls the SAME archive() function archive_results.py's CLI uses --
+    not a reimplementation -- so the dashboard button and the CLI menu
+    item can never silently diverge in behavior."""
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[3]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    import archive_results
+
+    effective_dest = dest or resolved_archive_dest()
+    if not effective_dest:
+        raise ValueError("No destination given and GRAPHRAG_ARCHIVE_DIR is not set in .env")
+
+    result = archive_results.archive(Path(effective_dest), dry_run=dry_run)
+    result["dest"] = effective_dest
+    return result

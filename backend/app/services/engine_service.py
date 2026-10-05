@@ -152,6 +152,86 @@ def resolve_oversample_pool(params: dict[str, Any]) -> int:
     return int(params.get("oversample_pool") or DEFAULT_OVERSAMPLE_POOL)
 
 
+def compute_run_config_hash(condition: str, params: dict[str, Any]) -> str:
+    """The config_hash a run with these dashboard params WOULD get, without
+    actually launching it -- used by the Factorial Batch page's "already
+    completed" skip-detection (POST /api/runs/check-completed) so it can
+    compare against existing run_history.jsonl entries' config_hash using
+    the EXACT SAME formula run_condition_a/b/c/d use, rather than a
+    separate, driftable field-by-field comparison (the pre-config_hash
+    skip-detection bug class: a client-side check that doesn't fully
+    mirror the resume gate can both false-positive AND false-negative).
+    Single-question mode isn't meaningfully "resumable" (each single run
+    gets a unique run_id-suffixed filename already), so this only applies
+    to batch mode -- callers should treat single-mode params as never
+    already-completed.
+    """
+    condition = condition.upper()
+    oversample_pool = resolve_oversample_pool(params)
+    n_sample = int(params.get("n_sample") or 1)
+    seed = int(params.get("seed") or 42)
+    provider = params["provider"]
+    model = params["model"]
+
+    if condition == "A":
+        cond = _condition_a_module()
+        config = cond.build_config(provider, model, n_sample, seed, oversample_pool)
+    elif condition == "B":
+        cond = _condition_b_module()
+        top_k = int(params.get("top_k") or 5)
+        require_citation = bool(params.get("require_citation", True))
+        require_grounding = bool(params.get("require_grounding", False))
+        config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
+                                    require_citation, require_grounding)
+    elif condition == "C":
+        cond = _condition_c_module()
+        top_k = int(params.get("top_k") or 5)
+        n_anchor = int(params.get("n_anchor") or 3)
+        n_semantic_expansion = int(params.get("n_semantic_expansion") or 3)
+        fusion_mode = params.get("fusion_mode") or "trust_weighted"
+        fusion_w_path_trust = float(params.get("fusion_w_path_trust") if params.get("fusion_w_path_trust") is not None else 0.7)
+        fusion_w_intrinsic = float(params.get("fusion_w_intrinsic") if params.get("fusion_w_intrinsic") is not None else 0.3)
+        semantic_expansion_trust_cap = float(params.get("semantic_expansion_trust_cap") if params.get("semantic_expansion_trust_cap") is not None else 0.4)
+        require_grounding = params.get("require_grounding")
+        require_grounding = True if require_grounding is None else bool(require_grounding)
+        enable_semantic_expansion = params.get("enable_semantic_expansion")
+        enable_semantic_expansion = True if enable_semantic_expansion is None else bool(enable_semantic_expansion)
+        config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_anchor,
+                                    n_semantic_expansion, fusion_mode, fusion_w_path_trust, fusion_w_intrinsic,
+                                    semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion)
+    elif condition == "D":
+        cond = _condition_d_module()
+        top_k = int(params.get("top_k") or 5)
+        n_low_level = int(params.get("n_low_level") or 3)
+        n_high_level = int(params.get("n_high_level") or 3)
+        require_grounding = params.get("require_grounding")
+        require_grounding = True if require_grounding is None else bool(require_grounding)
+        config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
+                                    n_low_level, n_high_level, require_grounding)
+    else:
+        raise ValueError(f"Unknown condition '{condition}'")
+
+    return _compute_config_hash(config)
+
+
+def is_run_already_completed(condition: str, params: dict[str, Any]) -> tuple[bool, str]:
+    """(already_completed, config_hash) -- `already_completed` is True iff
+    some run_history.jsonl entry for this condition has a MATCHING
+    config_hash AND status "success". An older entry with no config_hash
+    at all (pre-this-fix) never matches -- it genuinely isn't verifiable
+    as the SAME config, so it must not count as "already done" (matches
+    read_already_done()'s resume-gate semantics, see llm/manifest.py)."""
+    from app.services import history_service
+
+    config_hash = compute_run_config_hash(condition, params)
+    records = history_service._load_condition_history(condition.upper())
+    completed = any(
+        r.get("config_hash") == config_hash and r.get("status") == "success"
+        for r in records
+    )
+    return completed, config_hash
+
+
 def _duckdb_connect() -> duckdb.DuckDBPyConnection:
     """Every duckdb.connect() in this module goes through here so the same
     memory/thread cap applies everywhere -- see module docstring point 3.
@@ -265,6 +345,35 @@ def _judge_module():
 
 
 @lru_cache
+def _judge_v1_module():
+    """llm_judge_hallucination_v1.py -- a SEPARATE module from the legacy
+    judge's _judge_module() above, never touched/depended on by it. Its
+    own top-level `sys.path.insert(0, str(Path(__file__).resolve()
+    .parent))` self-heals the bare sibling imports (_judge_common,
+    _run_metadata, judge_prompt_v1, judge_clients) it needs, the same way
+    importing it directly as a script would. append_manifest() (imported
+    from _judge_common) reads THAT module's own LOG_DIR global at call
+    time -- same as every other condition module's LOG_DIR override
+    pattern, this must be set to an absolute path or it'd try to create
+    a bare "logs/" relative to the backend process's cwd."""
+    mod = importlib.import_module("llm.evaluation.llm_judge_hallucination_v1")
+    judge_common = importlib.import_module("_judge_common")
+    judge_common.LOG_DIR = REPO_ROOT / "llm" / "evaluation" / "logs"
+    judge_common.RESULTS_DIR = REPO_ROOT / "llm" / "evaluation" / "results"
+    return mod
+
+
+@lru_cache
+def _judge_agreement_module():
+    return importlib.import_module("llm.evaluation.judge_agreement")
+
+
+@lru_cache
+def _judge_clients_module():
+    return importlib.import_module("llm.evaluation.judge_clients")
+
+
+@lru_cache
 def _embed_model():
     from sentence_transformers import SentenceTransformer
 
@@ -287,16 +396,51 @@ def _anchor_output_path(output_path: Path, condition_folder: str) -> Path:
     return (REPO_ROOT / "llm" / condition_folder / output_path).resolve()
 
 
-def _read_already_done(output_path: Path) -> set[int]:
-    already_done: set[int] = set()
-    if output_path.exists():
-        with open(output_path) as f:
-            for line in f:
-                try:
-                    already_done.add(_json.loads(line)["question_id"])
-                except Exception:
-                    continue
-    return already_done
+# _read_already_done is llm.manifest.read_already_done, used directly at
+# every call site below (prompt_version-gated -- see that function's
+# docstring for why: a stale output file from an OLDER prompt_version must
+# never be silently treated as "this run already finished").
+from llm.citations import compute_citation_report as _compute_citation_report  # noqa: E402
+from llm.manifest import compute_config_hash as _compute_config_hash  # noqa: E402
+from llm.manifest import read_already_done as _read_already_done  # noqa: E402
+from llm.manifest import sum_usage_tokens as _sum_usage_tokens  # noqa: E402
+from llm.manifest import write_manifest as _write_manifest  # noqa: E402
+
+
+def _manifest_status(cancelled: bool, results: list) -> str:
+    """Same 3-value vocabulary as the CLI scripts' write_manifest() calls
+    (llm/manifest.py) -- "completed" only when generation actually ran to
+    completion with >=1 new record; a cancelled run is "interrupted"; an
+    empty `results` list (dashboard's "no_results" status) is "failed",
+    since nothing usable came out of it."""
+    if cancelled:
+        return "interrupted"
+    return "completed" if results else "failed"
+
+
+def _run_log_path(condition_folder: str, run_id: str) -> Path:
+    """Per-run log file for a dashboard-launched run -- previously this
+    content only ever went to the server's console (log=print), so a run
+    launched from the UI had no durable record of what happened during
+    generation, unlike a CLI run (which always gets a timestamped .log
+    file via setup_logging()). Stored at logs/dashboard_<run_id>.log next
+    to that condition's run_history.jsonl, and referenced by path in the
+    manifest (write_manifest(..., log_path=...))."""
+    return REPO_ROOT / "llm" / condition_folder / "logs" / f"dashboard_{run_id}.log"
+
+
+def _make_run_logger(log_path: Path) -> Callable[[Any], None]:
+    """Returns a log(msg) function that both prints (console, same as
+    before) AND appends to `log_path` -- passed anywhere this module
+    previously passed bare `print`/`cond.log`."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _log(msg: Any = "") -> None:
+        print(msg)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"{msg}\n")
+
+    return _log
 
 
 def _make_on_progress(run_id: str):
@@ -398,6 +542,11 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
     run_started_at = datetime.now(timezone.utc)
     run_registry.update_run(run_id, status="running", started_at=run_started_at.isoformat())
 
+    run_log_path = _run_log_path("a_pure_llm", run_id)
+    log = _make_run_logger(run_log_path)
+    original_cond_log = cond.log
+    cond.log = log
+
     provider = params["provider"]
     model = params["model"]
 
@@ -412,11 +561,12 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
     n_candidates_after_token_filter: int | None = None
 
     try:
-        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
+        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=log, with_meta=True)
 
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), cond)
             output_path = Path("results") / f"condition_a_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
+            config = cond.build_config(provider, model, 1, 42, None)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -432,11 +582,14 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
-            output_path = cond.build_output_path("results", provider, model, n_sample, seed)
+            config = cond.build_config(provider, model, n_sample, seed, oversample_pool)
+            output_path = cond.build_output_path("results", provider, model, n_sample, seed,
+                                                  oversample_pool=oversample_pool)
 
+        config_hash = _compute_config_hash(config)
         output_path = _anchor_output_path(output_path, "a_pure_llm")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        already_done = _read_already_done(output_path)
+        already_done = _read_already_done(output_path, cond.PROMPT_VERSION, config_hash)
 
         run_registry.update_run(
             run_id,
@@ -449,6 +602,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, model, output_path, already_done,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+            config=config, config_hash=config_hash,
         )
 
         cancelled = run_registry.is_cancelled(run_id)
@@ -456,6 +610,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
         cond.append_run_history({
+            "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "status": "cancelled" if cancelled else ("success" if results else "no_results"),
@@ -466,16 +621,26 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             "seed": params.get("seed"),
             "oversample_pool": oversample_pool,
             "n_candidates_after_token_filter": n_candidates_after_token_filter,
+            "config_hash": config_hash,
             # Condition A never retrieves anything, so log_full_candidates has
             # no effect here -- recorded anyway (honestly reflecting whatever
             # was submitted) purely so History/Compare shows the SAME field
             # across all four conditions rather than omitting it for A alone.
             "log_full_candidates": bool(params.get("log_full_candidates")),
             "output_path": str(output_path),
+            "log_path": str(run_log_path),
             "duration_sec": duration,
             "source": "dashboard",
             **summary,
         })
+        _write_manifest(
+            output_path, run_label="A", status=_manifest_status(cancelled, results),
+            config=config, config_hash=config_hash, log_path=str(run_log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
+            item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
+                         "failed": params.get("n_sample", 1) - len(results)},
+            prompt_version=cond.PROMPT_VERSION, total_tokens=_sum_usage_tokens(results),
+        )
         run_registry.update_run(
             run_id,
             status="cancelled" if cancelled else "completed",
@@ -489,6 +654,8 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             finished_at=datetime.now(timezone.utc).isoformat(),
             error=str(e),
         )
+    finally:
+        cond.log = original_cond_log
 
 
 def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
@@ -511,8 +678,24 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
     oversample_pool: int | None = None
     n_candidates_after_token_filter: int | None = None
 
+    # Computed up front (not just near the process_sample() call below) so
+    # build_output_path() can fold grounding into the filename -- without
+    # this, B-plain and B-grounded (both require_citation=True, only
+    # require_grounding differs) compute the IDENTICAL filename and the
+    # second one silently sees the first's output as "already done" (half
+    # of the 2026-10-05 pilot no-op bug; the other half, a stale file from
+    # an OLDER prompt_version, is fixed by the PROMPT_VERSION gate on
+    # _read_already_done() below).
+    require_citation = bool(params.get("require_citation", True))
+    require_grounding = bool(params.get("require_grounding", False))
+
+    run_log_path = _run_log_path("b_rag", run_id)
+    log = _make_run_logger(run_log_path)
+    original_cond_log = cond.log
+    cond.log = log
+
     try:
-        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
+        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=log, with_meta=True)
         con = _duckdb_connect()
 
         if params["mode"] == "single":
@@ -520,6 +703,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             output_path = Path("results") / f"condition_b_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
             seed = 42
+            config = cond.build_config(provider, model, 1, seed, None, top_k, require_citation, require_grounding)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -534,11 +718,18 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
-            output_path = cond.build_output_path("results", provider, model, n_sample, seed)
+            config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
+                                        require_citation, require_grounding)
+            output_path = cond.build_output_path(
+                "results", provider, model, n_sample, seed,
+                require_citation=require_citation, require_grounding=require_grounding,
+                oversample_pool=oversample_pool, top_k=top_k,
+            )
 
+        config_hash = _compute_config_hash(config)
         output_path = _anchor_output_path(output_path, "b_rag")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        already_done = _read_already_done(output_path)
+        already_done = _read_already_done(output_path, cond.PROMPT_VERSION, config_hash)
 
         run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
 
@@ -554,11 +745,12 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             chunk_df, embed_model, index_cache_dir, index_pool, token_chunk_limit, embed_model_name, rebuild=False,
         )
 
-        require_citation = bool(params.get("require_citation", True))
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, top_k, model, output_path, already_done,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
-            require_citation=require_citation, log_full_candidates=log_full_candidates,
+            require_citation=require_citation, require_grounding=require_grounding,
+            log_full_candidates=log_full_candidates,
+            config=config, config_hash=config_hash,
         )
 
         cancelled = run_registry.is_cancelled(run_id)
@@ -568,6 +760,21 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             n_valid_citation = sum(1 for r in results if r.get("has_valid_citation"))
             summary["pct_with_citation"] = round(n_citation / len(results) * 100, 1)
             summary["pct_with_valid_citation"] = round(n_valid_citation / len(results) * 100, 1)
+            # 3-way citation split (NoCit%/InvOnly%/Fabric%/Precis in History
+            # Compare) -- the CLI's main() always computed this via
+            # compute_citation_report(), but this dashboard entry point
+            # never did, so every dashboard-launched run's run_history entry
+            # was missing these 4 fields (History Compare showed "—" for
+            # all of them). get_history_detail() ALSO now recomputes this
+            # on read straight from the output file as a fallback, so
+            # already-written entries (like the 2026-10-05 pilot re-run)
+            # show correctly without needing this fix or a re-run.
+            citation_report = _compute_citation_report(results)
+            summary["pct_citation_valid"] = citation_report["pct_valid"]
+            summary["pct_citation_no_citation"] = citation_report["pct_no_citation"]
+            summary["pct_citation_invalid_only"] = citation_report["pct_invalid_only"]
+            summary["fabricated_citation_rate"] = citation_report["fabricated_citation_rate"]
+            summary["citation_precision"] = citation_report["citation_precision"]
         if results:
             latencies = [r["retrieval_latency_sec"] for r in results if r.get("retrieval_latency_sec") is not None]
             if latencies:
@@ -575,6 +782,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
         cond.append_run_history({
+            "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "condition": "B",
@@ -587,14 +795,27 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             "oversample_pool": oversample_pool,
             "n_candidates_after_token_filter": n_candidates_after_token_filter,
             "require_citation": require_citation,
+            "require_grounding": require_grounding,
+            "grounding": (("on" if require_grounding else "off") if require_citation else None),
+            "config_hash": config_hash,
             "log_full_candidates": log_full_candidates,
             "index_pool": index_pool,
             "top_k": top_k,
             "output_path": str(output_path),
+            "log_path": str(run_log_path),
             "duration_sec": duration,
             "source": "dashboard",
             **summary,
         })
+        run_label = ("B-grounded" if require_grounding else "B-plain") if require_citation else "B"
+        _write_manifest(
+            output_path, run_label=run_label, status=_manifest_status(cancelled, results),
+            config=config, config_hash=config_hash, log_path=str(run_log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
+            item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
+                         "failed": params.get("n_sample", 1) - len(results)},
+            prompt_version=cond.PROMPT_VERSION, total_tokens=_sum_usage_tokens(results),
+        )
         run_registry.update_run(
             run_id, status="cancelled" if cancelled else "completed",
             finished_at=datetime.now(timezone.utc).isoformat(), summary=summary,
@@ -603,6 +824,8 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         run_registry.update_run(
             run_id, status="failed", finished_at=datetime.now(timezone.utc).isoformat(), error=str(e),
         )
+    finally:
+        cond.log = original_cond_log
 
 
 def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
@@ -634,13 +857,20 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     n_candidates_after_token_filter: int | None = None
 
     driver = None
+    run_log_path = _run_log_path("c_graphrag", run_id)
+    log = _make_run_logger(run_log_path)
+    original_cond_log = cond.log
+    cond.log = log
     try:
-        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
+        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=log, with_meta=True)
         con = _duckdb_connect()
 
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
             output_path = Path("results") / f"condition_c_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
+            config = cond.build_config(provider, model, 1, 42, None, top_k, n_anchor, n_semantic_expansion,
+                                        fusion_mode, fusion_w_path_trust, fusion_w_intrinsic,
+                                        semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -655,22 +885,29 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
+            config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_anchor,
+                                        n_semantic_expansion, fusion_mode, fusion_w_path_trust, fusion_w_intrinsic,
+                                        semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion)
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed,
                 fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
                 require_grounding=require_grounding, enable_semantic_expansion=enable_semantic_expansion,
+                oversample_pool=oversample_pool, top_k=top_k, n_anchor=n_anchor,
+                n_semantic_expansion=n_semantic_expansion,
+                semantic_expansion_trust_cap=semantic_expansion_trust_cap,
             )
 
+        config_hash = _compute_config_hash(config)
         output_path = _anchor_output_path(output_path, "c_graphrag")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        already_done = _read_already_done(output_path)
+        already_done = _read_already_done(output_path, cond.PROMPT_VERSION, config_hash)
 
         run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
 
         eval_question_ids = sample_df["Id"].astype(int).tolist()
         all_answer_ids_map = cond.get_all_answer_ids_for_questions(con, _answers_parquet(), eval_question_ids)
 
-        driver, database = cond.connect_neo4j(print)
+        driver, database = cond.connect_neo4j(log)
         kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
         faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
@@ -684,6 +921,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             require_grounding=require_grounding, enable_semantic_expansion=enable_semantic_expansion,
             log_full_candidates=log_full_candidates,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+            config=config, config_hash=config_hash,
         )
 
         cancelled = run_registry.is_cancelled(run_id) or stats["interrupted"]
@@ -694,6 +932,12 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             latencies = [r["retrieval_latency_sec"] for r in results if r.get("retrieval_latency_sec") is not None]
             summary["pct_with_citation"] = round(n_citation / len(results) * 100, 1)
             summary["pct_with_valid_citation"] = round(n_valid_citation / len(results) * 100, 1)
+            citation_report = _compute_citation_report(results)
+            summary["pct_citation_valid"] = citation_report["pct_valid"]
+            summary["pct_citation_no_citation"] = citation_report["pct_no_citation"]
+            summary["pct_citation_invalid_only"] = citation_report["pct_invalid_only"]
+            summary["fabricated_citation_rate"] = citation_report["fabricated_citation_rate"]
+            summary["citation_precision"] = citation_report["citation_precision"]
             if latencies:
                 summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
 
@@ -702,6 +946,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         summary["require_grounding"] = require_grounding
         summary["enable_semantic_expansion"] = enable_semantic_expansion
         cond.append_run_history({
+            "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
             "c_retrieval_version": cond.C_RETRIEVAL_VERSION,
             "run_started_at": run_started_at.isoformat(),
@@ -722,13 +967,28 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "fusion_w_answer_intrinsic_trust": fusion_w_intrinsic,
             "semantic_expansion_trust_cap": semantic_expansion_trust_cap,
             "require_grounding": require_grounding,
+            "grounding": "on" if require_grounding else "off",
             "enable_semantic_expansion": enable_semantic_expansion,
+            "config_hash": config_hash,
             "log_full_candidates": log_full_candidates,
             "output_path": str(output_path),
+            "log_path": str(run_log_path),
             "duration_sec": duration,
             "source": "dashboard",
             **summary,
         })
+        from llm.evaluation._run_metadata import derive_run_label
+        run_label = derive_run_label("C", {
+            "fusion_mode": fusion_mode, "grounding": "on" if require_grounding else "off",
+        })["run_label"]
+        _write_manifest(
+            output_path, run_label=run_label, status=_manifest_status(cancelled, results),
+            config=config, config_hash=config_hash, log_path=str(run_log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
+            item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
+                         "failed": params.get("n_sample", 1) - len(results)},
+            prompt_version=cond.PROMPT_VERSION, total_tokens=_sum_usage_tokens(results),
+        )
         run_registry.update_run(
             run_id, status="cancelled" if cancelled else "completed",
             finished_at=datetime.now(timezone.utc).isoformat(), summary=summary,
@@ -740,6 +1000,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     finally:
         if driver is not None:
             driver.close()
+        cond.log = original_cond_log
 
 
 def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
@@ -765,13 +1026,19 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
     n_candidates_after_token_filter: int | None = None
 
     driver = None
+    run_log_path = _run_log_path("d_lightrag", run_id)
+    log = _make_run_logger(run_log_path)
+    original_cond_log = cond.log
+    cond.log = log
     try:
-        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=print)
+        llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=log, with_meta=True)
         con = _duckdb_connect()
 
         if params["mode"] == "single":
             sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
             output_path = Path("results") / f"condition_d_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
+            config = cond.build_config(provider, model, 1, 42, None, top_k, n_low_level, n_high_level,
+                                        require_grounding)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -786,20 +1053,24 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
+            config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
+                                        n_low_level, n_high_level, require_grounding)
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed, require_grounding=require_grounding,
+                oversample_pool=oversample_pool, top_k=top_k, n_low_level=n_low_level, n_high_level=n_high_level,
             )
 
+        config_hash = _compute_config_hash(config)
         output_path = _anchor_output_path(output_path, "d_lightrag")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        already_done = _read_already_done(output_path)
+        already_done = _read_already_done(output_path, cond.PROMPT_VERSION, config_hash)
 
         run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
 
         eval_question_ids = sample_df["Id"].astype(int).tolist()
         all_answer_ids_map = cond.get_all_answer_ids_for_questions(con, _answers_parquet(), eval_question_ids)
 
-        driver, database = cond.connect_neo4j(print)
+        driver, database = cond.connect_neo4j(log)
         kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
         faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
@@ -810,6 +1081,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             top_k, n_low_level, n_high_level, token_chunk_limit, model, output_path, already_done,
             require_grounding=require_grounding,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+            config=config, config_hash=config_hash,
         )
 
         cancelled = run_registry.is_cancelled(run_id) or stats["interrupted"]
@@ -820,6 +1092,12 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             latencies = [r["retrieval_latency_sec"] for r in results if r.get("retrieval_latency_sec") is not None]
             summary["pct_with_citation"] = round(n_citation / len(results) * 100, 1)
             summary["pct_with_valid_citation"] = round(n_valid_citation / len(results) * 100, 1)
+            citation_report = _compute_citation_report(results)
+            summary["pct_citation_valid"] = citation_report["pct_valid"]
+            summary["pct_citation_no_citation"] = citation_report["pct_no_citation"]
+            summary["pct_citation_invalid_only"] = citation_report["pct_invalid_only"]
+            summary["fabricated_citation_rate"] = citation_report["fabricated_citation_rate"]
+            summary["citation_precision"] = citation_report["citation_precision"]
             if latencies:
                 summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
 
@@ -827,6 +1105,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         summary["duration_sec"] = duration
         summary["require_grounding"] = require_grounding
         cond.append_run_history({
+            "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
             "d_retrieval_version": cond.D_RETRIEVAL_VERSION,
             "run_started_at": run_started_at.isoformat(),
@@ -843,16 +1122,28 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             "n_low_level": n_low_level,
             "n_high_level": n_high_level,
             "require_grounding": require_grounding,
+            "grounding": "on" if require_grounding else "off",
+            "config_hash": config_hash,
             # Condition D's process_sample() doesn't accept/use
             # log_full_candidates at all (only B/C do) -- recorded anyway
             # (honestly reflecting whatever was submitted) for the same
             # cross-condition-consistency reason as Condition A above.
             "log_full_candidates": bool(params.get("log_full_candidates")),
             "output_path": str(output_path),
+            "log_path": str(run_log_path),
             "duration_sec": duration,
             "source": "dashboard",
             **summary,
         })
+        run_label = "D-grounded" if require_grounding else "D-plain"
+        _write_manifest(
+            output_path, run_label=run_label, status=_manifest_status(cancelled, results),
+            config=config, config_hash=config_hash, log_path=str(run_log_path),
+            started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
+            item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
+                         "failed": params.get("n_sample", 1) - len(results)},
+            prompt_version=cond.PROMPT_VERSION, total_tokens=_sum_usage_tokens(results),
+        )
         run_registry.update_run(
             run_id, status="cancelled" if cancelled else "completed",
             finished_at=datetime.now(timezone.utc).isoformat(), summary=summary,
@@ -864,6 +1155,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
     finally:
         if driver is not None:
             driver.close()
+        cond.log = original_cond_log
 
 
 CONDITION_RESULTS_DIR = {
@@ -1002,6 +1294,399 @@ def start_judge_run(run_id: str, params: dict[str, Any]) -> None:
             _JUDGE_SEMAPHORE.release()
     finally:
         _leave_queue(_JUDGE_QUEUE_LOCK, _JUDGE_QUEUE, run_id)
+
+
+# ---------------------------------------------------------------------
+# Judge-v1 (hallucination, reference-based) -- Phase 2 dashboard UI.
+# Fully separate from the legacy judge's _JUDGE_SEMAPHORE/_JUDGE_QUEUE
+# above -- judge-v1 jobs may run WHILE a generation run OR a legacy
+# judge run is executing (API-only, not memory/DuckDB-heavy), but only
+# ONE judge-v1 job at a time (per docs/agent_prompt_phase2_judge_ui.md
+# Step 1.4) -- hence Semaphore(1), not a concurrency limit >1.
+# ---------------------------------------------------------------------
+_JUDGE_V1_SEMAPHORE = threading.Semaphore(1)
+_JUDGE_V1_QUEUE_LOCK = threading.Lock()
+_JUDGE_V1_QUEUE: list[str] = []
+
+# One canonical output file PER judge_id, shared across every dashboard-
+# launched judge-v1 job regardless of which runs were selected -- makes
+# resume (llm_judge_hallucination_v1.load_already_done) correct no matter
+# how run selections vary between launches, since it's keyed on
+# (run_id, question_id, judge_id, prompt_version), not on "which file".
+def judge_v1_output_paths(judge_id: str) -> tuple[Path, Path, Path]:
+    """The canonical dashboard output file for this judge_id ALSO encodes
+    the judge prompt version (e.g. "judge-v1") in its filename -- a
+    future judge-v2 (a different PROMPT_VERSION in its own module) would
+    therefore compute a DIFFERENT filename automatically and can never
+    silently append into a judge-v1 file. Readers additionally refuse a
+    file containing more than one prompt_version/blinding_version (see
+    judge_agreement.load_judge_records()) as defense in depth for a
+    manually-overridden --out path."""
+    prompt_version = _judge_v1_module().PROMPT_VERSION
+    base = REPO_ROOT / "llm" / "evaluation" / "results" / f"jv1_dashboard_{judge_id}_{prompt_version}.jsonl"
+    failures = base.with_name(f"jv1_dashboard_{judge_id}_{prompt_version}_failures.jsonl")
+    resolved = base.with_name(f"jv1_dashboard_{judge_id}_{prompt_version}_failures_resolved.jsonl")
+    return base, failures, resolved
+
+
+def judge_v1_run_log_path(job_run_id: str) -> Path:
+    return REPO_ROOT / "llm" / "evaluation" / "logs" / f"dashboard_judge_v1_{job_run_id}.log"
+
+
+def _judge_v1_refuse_reason(run_id: str) -> str | None:
+    """None if the run is judgeable; otherwise a human-readable reason to
+    show in the plan/launch response. Checked BEFORE calling load_items()
+    so a mixed-config-hash file produces a clean per-run plan-row error
+    instead of crashing the whole plan/launch call."""
+    from app.services import history_service, invalid_runs_service, superseded_runs_service
+    from llm.manifest import MixedConfigHashError, assert_single_config_hash
+
+    if run_id in invalid_runs_service.load_invalid_run_ids():
+        return "run is marked invalid (logs/invalid_runs.jsonl) -- refused"
+    if run_id in superseded_runs_service.load_superseded_run_ids():
+        return "run is marked superseded (logs/superseded_runs.jsonl) -- refused"
+    try:
+        detail = history_service.get_history_detail(run_id)
+    except MixedConfigHashError as e:
+        # get_history_detail() itself already refuses to summarize a
+        # mixed-config-hash output file (raises, doesn't return) -- catch
+        # it here too so THIS caller gets a clean per-run plan/launch
+        # row instead of a 500.
+        return str(e)
+    if not detail or not detail.get("output_path"):
+        return "run not found or has no output file"
+    output_path = Path(detail["output_path"])
+    if not output_path.exists():
+        return f"output file missing: {output_path}"
+    try:
+        records = []
+        with open(output_path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(_json.loads(line))
+        assert_single_config_hash(records, str(output_path))
+    except MixedConfigHashError as e:
+        return str(e)
+    return None
+
+
+def _judge_token_latency_stats(judge_model: str) -> tuple[float | None, float | None, float | None, str | None]:
+    """(avg_input_tokens, avg_output_tokens, avg_latency_sec, source) for
+    this judge_model, used by plan_judge_v1() to estimate tokens/cost/time
+    when a run hasn't been judged yet. Fallback chain:
+      1. Real judge-v1 records for this judge_model, from ANY
+         llm/evaluation/results/jv1_*.jsonl file -- this is a BOUNDED,
+         judge-v1-specific directory glob purely for estimation (not an
+         authoritative data read), so it naturally also covers "records
+         for this exact judge_id + prompt_version" as a subset (the
+         current canonical file is itself one of the globbed files) --
+         there's no need for a separate, narrower first pass.
+      2. None (caller falls back to the registry's own
+         default_input_tokens_per_item/default_output_tokens_per_item/
+         default_latency_sec_per_item) -- source is then "default estimate".
+    """
+    results_dir = REPO_ROOT / "llm" / "evaluation" / "results"
+    input_vals: list[float] = []
+    output_vals: list[float] = []
+    latency_vals: list[float] = []
+    if results_dir.exists():
+        for path in sorted(results_dir.glob("jv1_*.jsonl")):
+            try:
+                with open(path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            r = _json.loads(line)
+                        except Exception:
+                            continue
+                        if r.get("judge_model") != judge_model or r.get("call_failed"):
+                            continue
+                        if isinstance(r.get("prompt_tokens"), (int, float)):
+                            input_vals.append(r["prompt_tokens"])
+                        if isinstance(r.get("completion_tokens"), (int, float)):
+                            output_vals.append(r["completion_tokens"])
+                        if isinstance(r.get("latency_s"), (int, float)):
+                            latency_vals.append(r["latency_s"])
+            except OSError:
+                continue
+    if input_vals and output_vals:
+        avg_in = sum(input_vals) / len(input_vals)
+        avg_out = sum(output_vals) / len(output_vals)
+        avg_lat = sum(latency_vals) / len(latency_vals) if latency_vals else None
+        return avg_in, avg_out, avg_lat, "from history"
+    return None, None, None, None
+
+
+def plan_judge_v1(run_ids: list[str], judge_ids: list[str], workers: dict[str, int]) -> dict[str, Any]:
+    """Dry-run: per (run, judge) -- items to judge (resume-aware), est.
+    tokens/cost/time. Refused runs (invalid/superseded/mixed-hash/missing)
+    get a `refused_reason` and no per-judge rows."""
+    from app.services import history_service
+
+    mod = _judge_v1_module()
+    judge_registry = _judge_clients_module().JUDGE_REGISTRY
+    rows: list[dict[str, Any]] = []
+    # Cache per judge_id -- the fallback scan is the same for every run in
+    # this plan() call, no need to re-glob results/ once per row.
+    stats_cache: dict[str, tuple[float | None, float | None, float | None, str | None]] = {}
+
+    for run_id in run_ids:
+        reason = _judge_v1_refuse_reason(run_id)
+        if reason:
+            rows.append({"run_id": run_id, "refused_reason": reason})
+            continue
+
+        detail = history_service.get_history_detail(run_id)
+        output_path = Path(detail["output_path"])
+        with open(output_path) as f:
+            records = [_json.loads(line) for line in f if line.strip()]
+        n_items = len(records)
+
+        for judge_id in judge_ids:
+            out_path, _, _ = judge_v1_output_paths(judge_id)
+            done_keys = mod.load_already_done(out_path) if out_path.exists() else set()
+            config = judge_registry.get(judge_id)
+            judge_model = config.model if config else None
+            already_judged = sum(
+                1 for r in records
+                if (run_id, r.get("config_hash"), r.get("question_id"), judge_id,
+                    judge_model, mod.PROMPT_VERSION, mod.BLINDING_VERSION) in done_keys
+            )
+            to_judge = n_items - already_judged
+
+            # Token/latency estimate -- real history (any judge-v1 output
+            # file for this judge_model) first, the registry's own
+            # defaults otherwise. `token_source` is surfaced in the row so
+            # the UI can label which one was used ("from history" /
+            # "default estimate") -- never silently guessed without saying so.
+            avg_in = avg_out = avg_lat = None
+            token_source = None
+            if config is not None:
+                if judge_model not in stats_cache:
+                    stats_cache[judge_model] = _judge_token_latency_stats(judge_model)
+                avg_in, avg_out, avg_lat, token_source = stats_cache[judge_model]
+                if avg_in is None:
+                    avg_in, avg_out = config.default_input_tokens_per_item, config.default_output_tokens_per_item
+                    token_source = "default estimate"
+                if avg_lat is None:
+                    avg_lat = config.default_latency_sec_per_item
+
+            est_tokens_in = round(avg_in * to_judge) if avg_in is not None else None
+            est_tokens_out = round(avg_out * to_judge) if avg_out is not None else None
+            # "Unknown" (never $0) only for a judge_id missing from the
+            # registry entirely -- with the default-estimate fallback
+            # above, a REGISTERED judge_id always has SOME token estimate,
+            # so cost is only ever genuinely $0 when to_judge is 0 (nothing
+            # left to judge), never a silent stand-in for "we don't know".
+            est_cost = None
+            if config is not None and est_tokens_in is not None and est_tokens_out is not None:
+                est_cost = round(
+                    est_tokens_in / 1_000_000 * config.price_per_m_input
+                    + est_tokens_out / 1_000_000 * config.price_per_m_output,
+                    4,
+                )
+
+            w = max(1, workers.get(judge_id, 4))
+            est_time_sec = round(to_judge / w * avg_lat) if (to_judge and avg_lat is not None) else 0
+
+            rows.append({
+                "run_id": run_id, "run_label": detail.get("run_label"), "judge_id": judge_id,
+                "role": config.role if config else None,
+                "items_total": n_items, "already_judged": already_judged, "items_to_judge": to_judge,
+                "est_tokens_in": est_tokens_in, "est_tokens_out": est_tokens_out,
+                "est_cost_usd": est_cost, "cost_unknown": config is None,
+                "est_time_sec": est_time_sec, "token_source": token_source,
+            })
+
+    valid_rows = [r for r in rows if "refused_reason" not in r]
+    per_judge: dict[str, dict[str, Any]] = {}
+    for judge_id in judge_ids:
+        judge_rows = [r for r in valid_rows if r["judge_id"] == judge_id]
+        known_cost_rows = [r for r in judge_rows if not r["cost_unknown"]]
+        w = max(1, workers.get(judge_id, 4))
+        total_items_to_judge = sum(r["items_to_judge"] for r in judge_rows)
+
+        config = judge_registry.get(judge_id)
+        avg_lat = config.default_latency_sec_per_item if config else 30.0
+        if config is not None:
+            _, _, hist_lat, _ = stats_cache.get(config.model, (None, None, None, None))
+            if hist_lat is not None:
+                avg_lat = hist_lat
+
+        # Sequential per judge (one run after another; workers only
+        # parallelize WITHIN a run) -- a judge's total wall-clock is its
+        # own items-to-judge summed across every selected run, divided by
+        # its worker count, times its average per-item latency. NOT a
+        # max() of single-row times, which badly understates a multi-run
+        # batch's real wall-clock (the bug this fix addresses).
+        total_time_sec = round(total_items_to_judge / w * avg_lat) if total_items_to_judge else 0
+
+        per_judge[judge_id] = {
+            "items_to_judge": total_items_to_judge,
+            "est_tokens_in": sum(r["est_tokens_in"] or 0 for r in judge_rows) or None,
+            "est_tokens_out": sum(r["est_tokens_out"] or 0 for r in judge_rows) or None,
+            "est_cost_usd": round(sum(r["est_cost_usd"] or 0 for r in known_cost_rows), 4) if known_cost_rows else None,
+            "cost_unknown_rows": sum(1 for r in judge_rows if r["cost_unknown"]),
+            "est_time_sec": total_time_sec,
+        }
+
+    totals = {
+        "items_to_judge": sum(p["items_to_judge"] for p in per_judge.values()),
+        "est_tokens_in": sum(p["est_tokens_in"] or 0 for p in per_judge.values()) or None,
+        "est_tokens_out": sum(p["est_tokens_out"] or 0 for p in per_judge.values()) or None,
+        "est_cost_usd": round(sum(p["est_cost_usd"] or 0 for p in per_judge.values()), 4)
+        if any(p["est_cost_usd"] is not None for p in per_judge.values()) else None,
+        "cost_unknown_rows": sum(p["cost_unknown_rows"] for p in per_judge.values()),
+        # Judges run in PARALLEL (each is its own sequential queue of
+        # runs) -- the whole job's wall-clock is the SLOWEST judge, not a
+        # sum across judges.
+        "est_time_sec": max((p["est_time_sec"] for p in per_judge.values()), default=0),
+        "per_judge": per_judge,
+    }
+    return {"rows": rows, "totals": totals}
+
+
+def _build_judge_v1_items(run_ids: list[str], limit: int | None = None) -> list[dict[str, Any]]:
+    """load_items() over each selected run's own output_path -- re-checks
+    the same refusal conditions (defense in depth: a run could become
+    invalid/superseded between plan and launch). `limit`: per-file item
+    cap, same meaning as load_items()'s own --limit -- used for a cheap
+    smoke-test launch (e.g. 2 items) through this SAME path, not a
+    separate code path."""
+    from app.services import history_service
+
+    mod = _judge_v1_module()
+    paths = []
+    for run_id in run_ids:
+        reason = _judge_v1_refuse_reason(run_id)
+        if reason:
+            raise ValueError(f"{run_id}: {reason}")
+        detail = history_service.get_history_detail(run_id)
+        paths.append(detail["output_path"])
+    return mod.load_items(paths, limit=limit)
+
+
+def run_judge_v1_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> None:
+    """The dashboard's judge-v1 job driver -- mirrors
+    run_judge_batch_dashboard()'s shape (legacy judge) but drives
+    llm_judge_hallucination_v1.run_batch() for POSSIBLY SEVERAL judge_ids
+    at once (one run_batch() call per judge_id, sequential -- run_batch()
+    itself already parallelizes across items via its own `workers`)."""
+    mod = _judge_v1_module()
+    run_started_at = datetime.now(timezone.utc)
+    run_registry.update_run(job_run_id, status="running", started_at=run_started_at.isoformat())
+
+    run_ids = params["run_ids"]
+    judge_ids = params["judge_ids"]
+    workers = params.get("workers") or {}
+    log_path = judge_v1_run_log_path(job_run_id)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def log(msg: Any = "") -> None:
+        print(msg)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"{msg}\n")
+
+    try:
+        from app.services import history_service
+
+        items = _build_judge_v1_items(run_ids, limit=params.get("limit"))
+        # Actual output FILE PATHS, not run_ids -- judge_v1_lookup_service's
+        # run_label/is_other_config resolution reads these via
+        # _run_metadata.resolve_run_metadata(), which needs a path matching
+        # a run_history.jsonl output_path, not a dashboard history_id.
+        run_file_paths = [history_service.get_history_detail(rid)["output_path"] for rid in run_ids]
+        questions_parquet = str(_questions_parquet())
+        per_judge_summary: dict[str, Any] = {}
+        total_done = 0
+        total_target = len(items) * len(judge_ids)
+        run_registry.update_run(job_run_id, progress={"current": 0, "total": total_target})
+
+        for judge_id in judge_ids:
+            if run_registry.is_cancelled(job_run_id):
+                break
+            out_path, failures_path, resolved_path = judge_v1_output_paths(judge_id)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            w = max(1, int(workers.get(judge_id, 4)))
+
+            def on_progress(event: dict[str, Any]) -> None:
+                nonlocal total_done
+                total_done += 1
+                run_registry.update_run(job_run_id, progress={"current": total_done, "total": total_target})
+                run_registry.append_result(job_run_id, {
+                    "question_id": event.get("question_id"), "judge_id": judge_id,
+                    "status": event.get("status"),
+                })
+
+            summary = mod.run_batch(
+                items, [judge_id], questions_parquet, out_path, failures_path, workers=w,
+                resolved_path=resolved_path, on_progress=on_progress,
+                check_cancel=lambda: run_registry.is_cancelled(job_run_id),
+            )
+            per_judge_summary[judge_id] = summary
+            log(f"[{judge_id}] judged={summary['judged']} skipped={summary['skipped']} failed={summary['failed']}")
+
+            from llm.manifest import sum_usage_tokens, write_manifest
+            finished_at = datetime.now(timezone.utc)
+            with open(out_path) as f:
+                out_records = [_json.loads(line) for line in f if line.strip()]
+            write_manifest(
+                out_path, run_label=None, status="interrupted" if run_registry.is_cancelled(job_run_id) else "completed",
+                config={"run_ids": run_ids, "judge_id": judge_id, "workers": w},
+                started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
+                item_counts={"attempted": len(items), "succeeded": summary["judged"], "failed": summary["failed"]},
+                prompt_version=mod.PROMPT_VERSION, judge_version=mod.PROMPT_VERSION,
+                blinding_version=getattr(mod, "BLINDING_VERSION", None),
+                total_tokens=sum_usage_tokens(out_records), extra_output_files=[failures_path],
+                log_path=str(log_path),
+            )
+
+            mod.append_manifest("judge_v1_run_history.jsonl", {
+                "run_started_at": run_started_at.isoformat(),
+                "run_files": run_file_paths, "judge": judge_id, "workers": w,
+                "out": str(out_path), "prompt_version": mod.PROMPT_VERSION, "source": "dashboard",
+                **summary,
+            })
+
+        cancelled = run_registry.is_cancelled(job_run_id)
+        duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
+        run_registry.update_run(
+            job_run_id, status="cancelled" if cancelled else "completed",
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            summary={"per_judge": per_judge_summary, "duration_sec": duration},
+        )
+    except Exception as e:
+        run_registry.update_run(
+            job_run_id, status="failed", finished_at=datetime.now(timezone.utc).isoformat(), error=str(e),
+        )
+
+
+def start_judge_v1_run(job_run_id: str, params: dict[str, Any]) -> None:
+    """Entry point routers/judge_v1.py's background thread calls. Only
+    ONE judge-v1 job at a time (Semaphore(1)) -- see module-level note
+    above. Never gates on _HEAVY_RUN_LOCK or the legacy judge's
+    _JUDGE_SEMAPHORE: judge-v1 jobs are API-only and may run alongside
+    either."""
+    settings_service.apply_to_environment()
+    run_registry.update_run(job_run_id, status="queued")
+    _enter_queue(_JUDGE_V1_QUEUE_LOCK, _JUDGE_V1_QUEUE, job_run_id)
+    try:
+        _JUDGE_V1_SEMAPHORE.acquire()
+        try:
+            _leave_queue(_JUDGE_V1_QUEUE_LOCK, _JUDGE_V1_QUEUE, job_run_id)
+            if run_registry.is_cancelled(job_run_id):
+                run_registry.update_run(
+                    job_run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                return
+            run_judge_v1_batch_dashboard(job_run_id, params)
+        finally:
+            _JUDGE_V1_SEMAPHORE.release()
+    finally:
+        _leave_queue(_JUDGE_V1_QUEUE_LOCK, _JUDGE_V1_QUEUE, job_run_id)
 
 
 RUNNERS: dict[str, Callable[[str, dict[str, Any]], None]] = {
