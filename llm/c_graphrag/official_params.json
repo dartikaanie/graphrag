@@ -1,0 +1,10 @@
+{
+  "status": "pending_selection",
+  "c_retrieval_version": null,
+  "alpha": null,
+  "sample_split": "test",
+  "max_hops": 2,
+  "edge_types": ["EMBED_SIM", "HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR"],
+  "use_author_trust": false,
+  "accepted_only": false
+}
