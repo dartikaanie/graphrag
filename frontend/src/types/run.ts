@@ -40,8 +40,20 @@ export interface RunCreateParams {
   prompt_version?: string | null
   /** Response-only, Condition D only -- null for every other condition. */
   d_retrieval_version?: string | null
-  /** Response-only, Condition C only -- null for every other condition. */
+  /** Condition C only. Sendable in a request ("v2"/"v3", see
+   * docs/DECISION_C_SCORING.md) and also returned on a response record
+   * (null for every other condition). */
   c_retrieval_version?: string | null
+  /** Condition C v3 only. */
+  alpha?: number | null
+  /** Condition C only -- "test" (default) or "dev" (Dev (n=50) preset). */
+  sample_split?: string
+  /** Condition C v3 exploratory switches -- see
+   * docs/DECISION_C_SCORING.md's "Exploratory switches" section. */
+  max_hops?: number
+  edge_types?: string[] | null
+  use_author_trust?: boolean
+  accepted_only?: boolean
   question_id?: number | null
   /** Factorial Batch page only -- shared by every run in one "Confirm &
    * Launch" click (see FactorialBatchPage.tsx), recorded into

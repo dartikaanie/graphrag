@@ -86,7 +86,7 @@ def derive_run_label(condition: str, record: dict[str, Any]) -> dict[str, Any]:
     """See llm/evaluation/_run_metadata.py::derive_run_label() -- EXACT
     SAME formula, kept here as a manually-synced duplicate."""
     if condition == "A":
-        return {"run_label": "A", "fusion_mode": None, "grounding": None, "grounding_inferred": False}
+        return {"run_label": "A", "fusion_mode": None, "grounding": None, "grounding_inferred": False, "is_dev": False}
 
     fusion_mode = record.get("fusion_mode")
     grounding_inferred = False
@@ -106,14 +106,22 @@ def derive_run_label(condition: str, record: dict[str, Any]) -> dict[str, Any]:
     parts = [condition]
     if condition == "C" and fusion_mode:
         parts.append(_FUSION_MODE_SHORT.get(fusion_mode, fusion_mode))
+    if condition == "C" and record.get("c_retrieval_version") == "v3" and record.get("alpha") is not None:
+        parts.append(f"a={record['alpha']}")
     if grounding is not None:
         parts.append("grounded" if grounding == "on" else "plain")
 
+    is_dev = record.get("sample_split") == "dev"
+    label = "-".join(parts)
+    if is_dev:
+        label += " [dev]"
+
     return {
-        "run_label": "-".join(parts),
+        "run_label": label,
         "fusion_mode": fusion_mode,
         "grounding": grounding,
         "grounding_inferred": grounding_inferred,
+        "is_dev": is_dev,
     }
 
 
@@ -142,6 +150,7 @@ def _load_condition_history(condition: str) -> list[dict[str, Any]]:
             # value, "plain"/"grounded") -- never let that leak out as if
             # it were a real fusion_mode.
             record["fusion_mode"] = label_info["fusion_mode"]
+            record["is_dev"] = label_info["is_dev"]
             records.append(record)
     return records
 

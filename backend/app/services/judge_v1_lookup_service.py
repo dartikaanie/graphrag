@@ -94,21 +94,34 @@ def _batch_id_for_job(record: dict[str, Any]) -> str | None:
     _run_labels_for_job -- the run_files' own run_history entries carry
     batch_id, not the judge job record itself. Older runs launched
     before batch_id was recorded (or a file that can't be resolved)
-    contribute None; the first non-None value found wins (a job's
-    run_files should all share one batch anyway)."""
+    contribute None from this first pass; the first non-None RECORDED
+    value found wins (a job's run_files should all share one batch
+    anyway). If none of the run_files have a recorded batch_id (the
+    common case for any pilot run predating that feature), falls back
+    to the SAME inferred-clustering GET /api/history/batches would
+    compute -- without this fallback, a job covering pre-batch_id-era
+    runs would never resolve to a batch_id at all, leaving it with no
+    "View results" link anywhere in the UI (see batch_grouping_service.
+    find_batch_id_for_output_paths()'s docstring)."""
     run_files = record.get("run_files", [])
     if not run_files:
         return None
     mod = _run_metadata_module()
+    resolved_paths = []
     for raw in run_files:
+        path = str(_resolve_path(raw))
+        resolved_paths.append(path)
         try:
-            meta = mod.resolve_run_metadata(str(_resolve_path(raw)))
+            meta = mod.resolve_run_metadata(path)
             batch_id = meta.get("batch_id")
             if batch_id:
                 return batch_id
         except Exception:
             continue
-    return None
+
+    from app.services import batch_grouping_service
+
+    return batch_grouping_service.find_batch_id_for_output_paths(resolved_paths)
 
 
 def _served_model_mismatch_count(record: dict[str, Any]) -> int:

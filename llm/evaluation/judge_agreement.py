@@ -84,6 +84,14 @@ def _assert_single_judge_version(records: list[dict], field: str, source_label: 
 
 
 def load_judge_records(paths: list[str]) -> list[dict]:
+    """Checks prompt_version/blinding_version uniqueness BOTH within
+    each individual file AND across every file given together -- the
+    per-file check alone would miss the case of being handed one
+    judge-v1 file and one judge-v2 file in the SAME call (each
+    internally consistent, but mixed as a combined read). Callers that
+    deliberately want to compare v1 against v2 (the v1-vs-v2 comparison
+    view) must read each version's records with a SEPARATE
+    load_judge_records() call, never combined into one."""
     records = []
     for path in paths:
         with open(path) as f:
@@ -96,6 +104,8 @@ def load_judge_records(paths: list[str]) -> list[dict]:
         _assert_single_judge_version(path_records, "prompt_version", path)
         _assert_single_judge_version(path_records, "blinding_version", path)
         records.extend(path_records)
+    _assert_single_judge_version(records, "prompt_version", ", ".join(paths))
+    _assert_single_judge_version(records, "blinding_version", ", ".join(paths))
     return records
 
 
@@ -168,6 +178,18 @@ def compute_kappas(pairs: list[tuple]) -> dict:
     secondary_labels = [s for _, s in ordinal_pairs]
     weighted = cohen_kappa_score(primary_labels, secondary_labels, labels=ORDINAL_LABELS, weights="linear")
     unweighted = cohen_kappa_score(primary_labels, secondary_labels, labels=ORDINAL_LABELS)
+    # sklearn returns NaN (not an exception) when there's no variance to
+    # measure agreement over (e.g. exactly one ordinal pair, or every
+    # pair sharing the same single label) -- NaN is not valid JSON, so
+    # every API response that serializes this dict would 500 without
+    # this normalization. None correctly says "kappa undefined here",
+    # same meaning as the n_used=0 case just above.
+    import math
+
+    if isinstance(weighted, float) and math.isnan(weighted):
+        weighted = None
+    if isinstance(unweighted, float) and math.isnan(unweighted):
+        unweighted = None
     return {"weighted": weighted, "unweighted": unweighted, "n_used": len(ordinal_pairs), "n_excluded": excluded}
 
 
@@ -550,6 +572,50 @@ def compute_run_label_summary(records: list[dict], judge_id: str) -> dict[str, d
             "parse_error_rate": round(n_parse_error / n, 3) if n else None,
             "consistency_rate": round(sum(1 for v in consistent_values if v) / len(consistent_values), 3)
             if consistent_values else None,
+        }
+    return out
+
+
+def compute_run_label_summary_v2_extra(records: list[dict], judge_id: str) -> dict[str, dict]:
+    """Step 4 of docs/agent_prompt_judge_v2.md -- judge-v2-ONLY metrics,
+    additive alongside compute_run_label_summary() (which already works
+    unchanged on v2 records since the label vocabulary/consistency
+    field are the same): completeness distribution (FULL/PARTIAL/NONE),
+    the "factual and complete" rate (FAKTUAL + completeness=FULL),
+    % items with >=1 reference_conflict claim (listed for human
+    review), and the attempted_claims_conflict rate. Records without
+    these v2-only fields (e.g. a call_failed row) are excluded from
+    each respective denominator, never counted as a default value."""
+    records = [r for r in records if r["judge_id"] == judge_id]
+    by_run_label: dict[str, list[dict]] = defaultdict(list)
+    for r in records:
+        by_run_label[r["run_label"]].append(r)
+
+    out: dict[str, dict] = {}
+    for run_label, recs in by_run_label.items():
+        n = len(recs)
+        completeness_values = [r.get("completeness") for r in recs if r.get("completeness") is not None]
+        completeness_dist: dict[str, int] = defaultdict(int)
+        for v in completeness_values:
+            completeness_dist[v] += 1
+
+        n_factual_complete = sum(
+            1 for r in recs if r.get("label") == "FAKTUAL" and r.get("completeness") == "FULL"
+        )
+        n_with_reference_conflict = sum(
+            1 for r in recs if any(c.get("reference_conflict") for c in (r.get("claims") or []))
+        )
+        attempted_claims_conflict_values = [
+            r.get("attempted_claims_conflict") for r in recs if r.get("attempted_claims_conflict") is not None
+        ]
+
+        out[run_label] = {
+            "completeness_distribution": dict(completeness_dist),
+            "factual_and_complete_rate": round(n_factual_complete / n, 3) if n else None,
+            "pct_with_reference_conflict": round(100 * n_with_reference_conflict / n, 2) if n else None,
+            "attempted_claims_conflict_rate": round(
+                sum(1 for v in attempted_claims_conflict_values if v) / len(attempted_claims_conflict_values), 3,
+            ) if attempted_claims_conflict_values else None,
         }
     return out
 

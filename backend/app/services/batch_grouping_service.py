@@ -101,3 +101,33 @@ def group_into_batches(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     batches.sort(key=lambda b: b["launched_at"] or "", reverse=True)
     return batches
+
+
+def find_batch_id_for_output_paths(output_paths: list[str], show_superseded: bool = True) -> str | None:
+    """Resolves a judge-v1/context-relevance-v1 job's run_files back to
+    the batch_id GET /api/history/batches would show for them --
+    recorded batch_id if the underlying generation runs have one,
+    otherwise the SAME inferred-clustering id computed here. Judge jobs
+    carry no batch_id of their own (they're keyed on run_files, see
+    judge_v1_lookup_service.py/ctxrel_v1_lookup_service.py's _job_id()),
+    so without this, any job whose runs predate recorded batch_id
+    tracking would never get a working "View results" link -- it would
+    silently fall into an "Unknown batch" bucket with no way to reach
+    JudgeV1ResultsPage for it at all. Returns None only if NONE of the
+    given paths match any known run (e.g. a moved/deleted file)."""
+    from pathlib import Path
+
+    from app.services import history_service
+
+    normalized = {str(Path(p).resolve()) for p in output_paths if p}
+    if not normalized:
+        return None
+
+    records, _ = history_service.list_history(None, None, None, page=1, page_size=100000, show_superseded=show_superseded)
+    batches = group_into_batches(records)
+    for b in batches:
+        for r in b["runs"]:
+            output_path = r.get("output_path")
+            if output_path and str(Path(output_path).resolve()) in normalized:
+                return b["batch_id"]
+    return None

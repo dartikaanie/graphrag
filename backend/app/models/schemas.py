@@ -122,6 +122,22 @@ class RunCreateRequest(BaseModel):
     # cutoff) into each record, enabling real Recall@k on a FUTURE run of
     # that analysis script. Does not affect retrieval/ranking/prompt at all.
     log_full_candidates: bool = False
+    # Condition C only -- retrieval v3 (relevance-aware ranking, see
+    # docs/DECISION_C_SCORING.md). c_retrieval_version defaults to "v2"
+    # (the original trust-only ranking, unchanged) so an old/unaware
+    # client keeps getting v2 behavior. alpha/sample_split/max_hops/
+    # edge_types/use_author_trust/accepted_only are only meaningful for
+    # v3 and are passed through to c_graphrag.build_config() /
+    # process_sample() as-is; see those functions' docstrings for the
+    # config_hash backward-compatibility rule (a key is included in the
+    # hash only when it differs from its default).
+    c_retrieval_version: str = "v2"  # "v2" | "v3"
+    alpha: float | None = None
+    sample_split: str = "test"  # "test" | "dev"
+    max_hops: int = 2
+    edge_types: list[str] | None = None
+    use_author_trust: bool = False
+    accepted_only: bool = False
     # single mode
     question_id: int | None = None
     # Factorial Batch page only -- shared by every run in one "Confirm &
@@ -241,6 +257,31 @@ class JudgeV1LaunchRequest(BaseModel):
     run_ids: list[str]
     judge_ids: list[str]
     workers: dict[str, int] = {}
+
+
+class JudgeV2PlanRequest(BaseModel):
+    run_ids: list[str]
+    judge_ids: list[str]
+    workers: dict[str, int] = {}
+
+
+class JudgeV2LaunchRequest(BaseModel):
+    run_ids: list[str]
+    judge_ids: list[str]
+    workers: dict[str, int] = {}
+
+
+class ContextRelevanceV1PlanRequest(BaseModel):
+    run_ids: list[str]
+    judge_ids: list[str]
+    workers: dict[str, int] = {}
+
+
+class ContextRelevanceV1LaunchRequest(BaseModel):
+    run_ids: list[str]
+    judge_ids: list[str]
+    workers: dict[str, int] = {}
+    limit: int | None = None
 
 
 class JudgeV1ExportHumanCsvRequest(BaseModel):

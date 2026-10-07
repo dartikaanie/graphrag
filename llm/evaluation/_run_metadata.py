@@ -97,7 +97,7 @@ def derive_run_label(condition: str, record: dict) -> dict:
     A never has a grounding axis (`grounding` is None, label is just "A").
     """
     if condition == "A":
-        return {"run_label": "A", "fusion_mode": None, "grounding": None, "grounding_inferred": False}
+        return {"run_label": "A", "fusion_mode": None, "grounding": None, "grounding_inferred": False, "is_dev": False}
 
     fusion_mode = record.get("fusion_mode")
     grounding_inferred = False
@@ -117,14 +117,22 @@ def derive_run_label(condition: str, record: dict) -> dict:
     parts = [condition]
     if condition == "C" and fusion_mode:
         parts.append(_FUSION_MODE_SHORT.get(fusion_mode, fusion_mode))
+    if condition == "C" and record.get("c_retrieval_version") == "v3" and record.get("alpha") is not None:
+        parts.append(f"a={record['alpha']}")
     if grounding is not None:
         parts.append("grounded" if grounding == "on" else "plain")
 
+    is_dev = record.get("sample_split") == "dev"
+    label = "-".join(parts)
+    if is_dev:
+        label += " [dev]"
+
     return {
-        "run_label": "-".join(parts),
+        "run_label": label,
         "fusion_mode": fusion_mode,
         "grounding": grounding,
         "grounding_inferred": grounding_inferred,
+        "is_dev": is_dev,
     }
 
 
