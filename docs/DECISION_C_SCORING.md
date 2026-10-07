@@ -35,7 +35,7 @@ Chosen: option 1. Reasons: direct precedent, one interpretable parameter, and α
 
 ## Selection procedure (fixed before seeing dev results)
 - Candidates: α ∈ {0, 0.25, 0.5, 0.75, 1}.
-- Stage 1 (retrieval only, no generation): for each α, retrieve contexts for the 50 dev questions and judge context relevance (primary judge; judge version as recorded in Amendment 1).
+- Stage 1 (retrieval only, no generation): for each α, retrieve contexts for the 50 dev questions and judge context relevance (primary judge; judge version as recorded in Amendments 1-2).
   - Primary criterion: % of questions with ≥1 RELEVANT context item. Differences of ≤1 question (2 percentage points) are ties.
   - Stage-1 tie-breaker: mean relevance score over all selected context items (RELEVANT = 1, PARTIAL = 0.5, IRRELEVANT = 0). Differences ≤ 0.02 are ties.
   - Ranking: by primary criterion, then tie-breaker, then larger α. The two highest-ranked α values go to stage 2.
@@ -46,7 +46,7 @@ Chosen: option 1. Reasons: direct precedent, one interpretable parameter, and α
   - If still tied: choose the larger α (the contribution under test is trust).
 - Keep-current rule (stage 2): if the chosen α is 1, keep the current score (C retrieval v2).
 - Judge-v2 must be frozen before stage 2 (prompt version, parser version, max_tokens, model registry entries). Record those here before running stage 2.
-- Context-relevance judge validity: before stage 1, run positive/negative controls. If controls fail, fix the context-relevance judge first and record that here (see Amendment 1).
+- Context-relevance judge validity: before stage 1, run positive/negative controls. If controls fail, fix the context-relevance judge first and record that here (see Amendments 1-2).
 
 ## Exploratory switches (not used for selection)
 max_hops, edge_types, use_author_trust, and accepted_only may be varied on the dev set to understand the system (e.g. relevance by hop and by edge type). Their results are reported descriptively. They do NOT change the selection outcome; the official runs use their defaults:
@@ -70,7 +70,7 @@ Written after the first control run and BEFORE any stage-1 run.
 
 ### What happened
 - The first control run used 1 positive and 1 negative item. The positive control (the dev question's own accepted answer) was judged PARTIAL instead of RELEVANT by ctxrel-v1 (primary). The negative control was correctly IRRELEVANT.
-- The run log printed `dev_offset=385`. The dev set is defined above as 0-based rows `iloc[384:434]`. Verification result: [to be filled: actual 0-based rows used, first 3 question IDs, and whether a fix was needed].
+- The run log printed `dev_offset=385`. The dev set is defined above as 0-based rows `iloc[384:434]`. Verification result (2026-10-07): the log printed a 1-based number; the code converts it with `start = dev_offset - 1`, so the rows used were 0-based `iloc[384:434]` (contiguous), as defined. First 3 question IDs: 20952138, 55753657, 60887798 (0-based positions 384, 385, 386; identical to the v3 smoke test). No overlap with the test sample (last test row, `iloc[383]`, is question 52558999). No functional fix was needed; the log line now prints both the 1-based number and the 0-based range, and a test pins the dev rows to 0-based 384-433.
 - No stage-1 retrieval relevance was judged. No selection-relevant result has been seen.
 
 ### Redefined controls
@@ -87,10 +87,53 @@ One item is too few to evaluate the judge, so the controls are redefined:
 - Stage 1 uses the judge version that passes. Its prompt version is recorded below before stage 1 runs.
 - The pilot's ctxrel-v1 results remain as reported, labeled with their version.
 
+### Record
+- Control fix (2026-10-07): the first control run omitted the question body; real stage-1 judging includes it. The controls were rebuilt to match stage-1 inputs exactly (question title, tags, and body; context item truncated to 400 tokens with cl100k_base, as in `fuse_and_rank`; raw HTML kept, as in retrieval). All control results below use the rebuilt controls.
+- Truncation check: 15 of 50 positive items were truncated; the primary judge rated 14 of those 15 RELEVANT (vs 30 of 35 untruncated), so truncation does not explain the failures.
+- Control results, ctxrel-v1 (primary / secondary): positives RELEVANT 88% / 74% (PARTIAL 12% / 26%, IRRELEVANT 0% / 0%); negatives IRRELEVANT 100% / 100%. Pass: **no** (primary 44/50 positives RELEVANT; threshold 45/50).
+- Failure pattern: every miss was a positive judged PARTIAL. The judges' reasons show RELEVANT being read as "completely solves the problem in the asker's exact way": accepted answers giving a workaround, an alternative approach, or the cause were judged PARTIAL.
+- Outputs: `llm/c_graphrag/results/controls/ctxrel_v1_controls_20261007T154329Z.jsonl` and `_summary.json` (control data only).
+- Revision: see Amendment 2.
+- Date: 2026-10-07
+
+---
+
+## Amendment 2 (2026-10-07): ctxrel-v2 and hard-negative controls
+
+Written after the ctxrel-v1 control results and BEFORE any ctxrel-v2 run or stage-1 run.
+
+### ctxrel-v2
+ctxrel-v2 changes only the label definitions; inputs, output format, and parser are the same as v1.
+- RELEVANT: the item contains information that directly helps solve or explain THIS question's problem: a fix, a workaround, the cause, a recommended approach or tool, or a key part of the solution. It need not be complete, match the exact versions or wording, or follow the approach the asker tried; an alternative approach that achieves the asker's underlying goal counts. The item may be cut off; only what is shown is judged.
+- PARTIAL: same technology or topic, but a different problem, or only tangentially useful.
+- IRRELEVANT: unrelated to this problem.
+- Sharing a technology, library, or keyword with the question is not enough on its own for RELEVANT.
+
+Full prompt committed at: [commit hash]
+
+### Third control type: hard negatives
+The existing negatives (no shared tag) cannot detect a judge that is too lenient on same-technology, different-problem items, which is the RELEVANT/PARTIAL boundary stage 1 depends on. A third control set is added:
+- **Hard negatives:** for each of the 50 dev questions, one accepted answer from a different question in the same candidate pool that shares at least one tag with it (selected with seed 42), excluding questions linked to it by `IS_RELATED_TO` (Linked/Duplicate). Same formatting and truncation as stage-1 items. Expected: NOT RELEVANT (PARTIAL or IRRELEVANT).
+- Dev questions with no eligible hard negative are reported and excluded from the hard-negative denominator.
+
+### Pass thresholds (primary judge decides; secondary reported)
+- Positives: ≥ 90% RELEVANT
+- Easy negatives (no shared tag): ≥ 90% IRRELEVANT
+- Hard negatives (shared tag): ≥ 80% NOT RELEVANT
+
+The hard-negative threshold is lower because a same-tag question can occasionally address a genuinely similar problem.
+
+ctxrel-v1 is also run on the hard negatives, for comparison only (it already failed on positives and cannot be used for stage 1).
+
+### Iteration limit
+- If ctxrel-v2 fails, at most one further revision (ctxrel-v3) is allowed. It is tuned only on control items and recorded here, with its commit hash, before it runs.
+- If no version passes after that, stage 1 uses the version with the highest primary positive-control rate among those meeting both negative thresholds, and this is reported as a limitation.
+
 ### Record (fill in before stage 1)
-- Control results, ctxrel-v1 (primary / secondary): positive RELEVANT [x]% / [x]%, negative IRRELEVANT [x]% / [x]%, pass: [yes/no]
-- If revised: ctxrel-v2 prompt committed at [commit hash], control results (primary / secondary): positive RELEVANT [x]% / [x]%, negative IRRELEVANT [x]% / [x]%, pass: [yes/no]
-- Context-relevance judge version used for stage 1: [ctxrel-v1 / ctxrel-v2]
+- Hard negatives: [n eligible] of 50 dev questions had an eligible hard negative.
+- ctxrel-v1 hard negatives (primary / secondary): NOT RELEVANT [x]% / [x]%
+- ctxrel-v2 (primary / secondary): positives RELEVANT [x]% / [x]%; easy negatives IRRELEVANT [x]% / [x]%; hard negatives NOT RELEVANT [x]% / [x]%. Pass: [yes/no]
+- Context-relevance judge version used for stage 1: [ ]
 - Date: [YYYY-MM-DD]
 
 ---
