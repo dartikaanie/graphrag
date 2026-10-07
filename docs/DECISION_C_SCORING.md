@@ -160,6 +160,7 @@ Written after a dry build of the Amendment 2 hard negatives on real data (no jud
 All code used for the control runs (runner, judge module with ctxrel-v2, hard-negative builder, dev-offset test) is committed before any run; control outputs and manifests record that commit.
 
 ### Record (fill in before stage 1)
+
 - Code commit used for the control runs: [hash dari agent]
 - Hard negatives (dry build, 2026-10-07): donor pool 1,087 questions (1,471 candidates minus 384 test-sample questions; all have cached vectors). 47 of 50 dev questions had an eligible donor; no eligible donor for 61453942 (teiid), 4316334 (blackberry), 50814048 (hyperledger-fabric). Test-sample donors: 0; 4 donors are other dev questions. Donor cosine similarity median 0.457 (range 0.009-0.801, IQR 0.381-0.571); donors sharing ≥2 tags: 5; truncated items: 14 of 47. Low-similarity donors (when few eligible donors exist) behave like easy negatives; this is reported as a limitation.
 - ctxrel-v1 hard negatives (primary / secondary): NOT RELEVANT [x]% / [x]%
