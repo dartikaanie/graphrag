@@ -161,7 +161,7 @@ All code used for the control runs (runner, judge module with ctxrel-v2, hard-ne
 
 ### Record (fill in before stage 1)
 
-- Code commit used for the control runs: [hash dari agent]
+- Code commit used for the control runs: control code at `1c1b99e3a377bc5f7a8ad1d780b54061a22eb70b`; the runs execute at a later HEAD that differs only by untracking `.DS_Store` (`68755f8`) and this decision-record update. The run outputs record the exact HEAD and a clean tree.
 - Hard negatives (dry build, 2026-10-07): donor pool 1,087 questions (1,471 candidates minus 384 test-sample questions; all have cached vectors). 47 of 50 dev questions had an eligible donor; no eligible donor for 61453942 (teiid), 4316334 (blackberry), 50814048 (hyperledger-fabric). Test-sample donors: 0; 4 donors are other dev questions. Donor cosine similarity median 0.457 (range 0.009-0.801, IQR 0.381-0.571); donors sharing ≥2 tags: 5; truncated items: 14 of 47. Low-similarity donors (when few eligible donors exist) behave like easy negatives; this is reported as a limitation.
 - ctxrel-v1 hard negatives (primary / secondary): NOT RELEVANT [x]% / [x]%
 - ctxrel-v2 (primary / secondary): positives RELEVANT [x]% / [x]%; easy negatives IRRELEVANT [x]% / [x]%; hard negatives NOT RELEVANT [x]% / [x]%. Pass: [yes/no]
