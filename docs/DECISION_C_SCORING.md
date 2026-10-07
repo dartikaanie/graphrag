@@ -159,14 +159,22 @@ Written after a dry build of the Amendment 2 hard negatives on real data (no jud
 ### Reproducibility
 All code used for the control runs (runner, judge module with ctxrel-v2, hard-negative builder, dev-offset test) is committed before any run; control outputs and manifests record that commit.
 
-### Record (fill in before stage 1)
+### Record
 
 - Code commit used for the control runs: control code at `1c1b99e3a377bc5f7a8ad1d780b54061a22eb70b`; the runs execute at a later HEAD that differs only by untracking `.DS_Store` (`68755f8`) and this decision-record update. The run outputs record the exact HEAD and a clean tree.
+- Control runs executed at HEAD `[HEAD recorded in the summary JSONs]` with `git_tree_clean = true`; control outputs committed as data at `[data commit hash]`.
 - Hard negatives (dry build, 2026-10-07): donor pool 1,087 questions (1,471 candidates minus 384 test-sample questions; all have cached vectors). 47 of 50 dev questions had an eligible donor; no eligible donor for 61453942 (teiid), 4316334 (blackberry), 50814048 (hyperledger-fabric). Test-sample donors: 0; 4 donors are other dev questions. Donor cosine similarity median 0.457 (range 0.009-0.801, IQR 0.381-0.571); donors sharing ≥2 tags: 5; truncated items: 14 of 47. Low-similarity donors (when few eligible donors exist) behave like easy negatives; this is reported as a limitation.
-- ctxrel-v1 hard negatives (primary / secondary): NOT RELEVANT [x]% / [x]%
-- ctxrel-v2 (primary / secondary): positives RELEVANT [x]% / [x]%; easy negatives IRRELEVANT [x]% / [x]%; hard negatives NOT RELEVANT [x]% / [x]%. Pass: [yes/no]
-- Context-relevance judge version used for stage 1: [ ]
-- Date: [YYYY-MM-DD]
+- ctxrel-v1 hard negatives (primary / secondary): NOT RELEVANT 100% / 100% (R/P/I 0 / 14.9 / 85.1 and 0 / 6.4 / 93.6; n = 47). Comparison only; ctxrel-v1 had already failed on positives.
+- ctxrel-v2 (primary / secondary):
+  - positives RELEVANT 94% / 96% (R/P/I 94 / 6 / 0 and 96 / 4 / 0; n = 50);
+  - easy negatives IRRELEVANT 100% / 100% (n = 50);
+  - hard negatives NOT RELEVANT 100% / 97.9% (R/P/I 0 / 17.0 / 83.0 and 2.1 / 19.1 / 78.7; n = 47).
+  - Pass: **yes** (primary decides: 94% ≥ 90%, 100% ≥ 90%, 100% ≥ 80%).
+- ctxrel-v2 positives not judged RELEVANT by primary (all PARTIAL): q45387122 (the accepted answer is a dependency-version tweak), q12278877 (a link-out to Flex 3 vs Flex 4 differences), q53432433 (background on environment configuration). Three positives missed by v1 are RELEVANT under v2: q26179020, q4316334, q50814048.
+- Hard negatives judged RELEVANT: none by primary (v1 or v2). Secondary (v2) judged one RELEVANT: q57331553 → donor q46370607 ("Didn't find class android.support.v7.widget.CardView"), cosine 0.801, the most similar pair in the set. Primary PARTIAL hard negatives all had donor similarity 0.298-0.687.
+- Outputs: `llm/c_graphrag/results/controls/ctxrel_v1_controls_hard_negative_20261007T164814Z.jsonl` (+ `_summary.json`) and `llm/c_graphrag/results/controls/ctxrel_v2_controls_positive-easy_negative-hard_negative_20261007T165007Z.jsonl` (+ `_summary.json`).
+- Context-relevance judge version used for stage 1: **ctxrel-v2**
+- Date: 2026-10-07
 
 ---
 
