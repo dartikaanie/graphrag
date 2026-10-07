@@ -1,0 +1,140 @@
+{
+  "timestamp_utc": "20261007T164814Z",
+  "ctxrel_version": "ctxrel-v1",
+  "control_sets": [
+    "hard_negative"
+  ],
+  "judge_ids": [
+    "primary",
+    "secondary"
+  ],
+  "deciding_judge_id": "primary",
+  "token_chunk_limit": 400,
+  "seed": 42,
+  "thresholds": {
+    "positive": 0.9,
+    "easy_negative": 0.9,
+    "hard_negative": 0.8
+  },
+  "dev_question_ids": [
+    20952138,
+    55753657,
+    60887798,
+    47712318,
+    125143,
+    65032123,
+    71829283,
+    19951718,
+    20372892,
+    73145269,
+    30940698,
+    45387122,
+    72944746,
+    65748781,
+    74605353,
+    55892278,
+    44558343,
+    22157590,
+    42102028,
+    71408390,
+    49376836,
+    52310342,
+    44172515,
+    16524192,
+    14610888,
+    24615005,
+    62574045,
+    14019246,
+    57331553,
+    50061146,
+    40506059,
+    69868179,
+    2157289,
+    56467081,
+    60436134,
+    67427589,
+    66767217,
+    26179020,
+    12278877,
+    25665494,
+    33405250,
+    27612931,
+    61453942,
+    77482226,
+    69993521,
+    4316334,
+    53432433,
+    50814048,
+    12722405,
+    76615231
+  ],
+  "hard_negative_definition": "amendment-3",
+  "git_commit": "1138eb8096f11ca88db2ca8e6bde13badfe386e3",
+  "git_tree_clean": true,
+  "git_status_porcelain": [
+    "?? llm/c_graphrag/results/controls/ctxrel_v1_controls_20261007T154329Z.jsonl",
+    "?? llm/c_graphrag/results/controls/ctxrel_v1_controls_20261007T154329Z_summary.json",
+    "?? llm/c_graphrag/results/controls/ctxrel_v1_controls_primary_first_1plus1_run.jsonl"
+  ],
+  "n_items": 47,
+  "n_items_per_set": {
+    "hard_negative": 47
+  },
+  "no_easy_negative": [],
+  "no_hard_negative": [
+    61453942,
+    4316334,
+    50814048
+  ],
+  "hard_negative_missing_vector": [],
+  "n_eligible_donors_without_vector": 0,
+  "per_judge": {
+    "primary": {
+      "hard_negative": {
+        "n": 47,
+        "counts": {
+          "RELEVANT": 0,
+          "PARTIAL": 7,
+          "IRRELEVANT": 40,
+          "ERROR": 0
+        },
+        "pct": {
+          "RELEVANT": 0.0,
+          "PARTIAL": 14.9,
+          "IRRELEVANT": 85.1,
+          "ERROR": 0.0
+        },
+        "pct_not_relevant": 100.0,
+        "match_rate": 1.0,
+        "threshold": 0.8,
+        "pass": true
+      },
+      "complete": false,
+      "pass": null
+    },
+    "secondary": {
+      "hard_negative": {
+        "n": 47,
+        "counts": {
+          "RELEVANT": 0,
+          "PARTIAL": 3,
+          "IRRELEVANT": 44,
+          "ERROR": 0
+        },
+        "pct": {
+          "RELEVANT": 0.0,
+          "PARTIAL": 6.4,
+          "IRRELEVANT": 93.6,
+          "ERROR": 0.0
+        },
+        "pct_not_relevant": 100.0,
+        "match_rate": 1.0,
+        "threshold": 0.8,
+        "pass": true
+      },
+      "complete": false,
+      "pass": null
+    }
+  },
+  "passed": null
+}
