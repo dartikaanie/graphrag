@@ -57,18 +57,122 @@ RESULTS_DIR = Path(__file__).resolve().parent / "results"  # absolute -- stable 
 # (b) Retrieval-only runs per alpha -- no API cost.
 # ---------------------------------------------------------------------
 
+class IncompleteRetrievalOutput(RuntimeError):
+    """A retrieval-only output file does not hold exactly one valid record
+    per dev question -- it must never be used as an α result."""
+
+
+def scan_retrieval_output(output_path, sample_qids, config_hash: str) -> dict:
+    """Reads a retrieval-only JSONL. A record is VALID iff it parses,
+    its question_id is a dev question, its config_hash matches, and it
+    has a `retrieved_context` list. Returns {"valid": {qid: line}, (first
+    valid record per qid, file order), "duplicates": [qid, ...],
+    "invalid_lines": [(line_no, reason), ...]}."""
+    sample_qids = {int(q) for q in sample_qids}
+    valid: dict[int, str] = {}
+    duplicates, invalid = [], []
+    path = Path(output_path)
+    if not path.exists():
+        return {"valid": valid, "duplicates": duplicates, "invalid_lines": invalid}
+    with open(path, encoding="utf-8") as f:
+        for n, raw in enumerate(f, start=1):
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                invalid.append((n, "unparseable (truncated?) line"))
+                continue
+            qid = rec.get("question_id") if isinstance(rec, dict) else None
+            if not isinstance(qid, int) or qid not in sample_qids:
+                invalid.append((n, f"question_id {qid!r} is not a dev question"))
+            elif rec.get("config_hash") != config_hash:
+                invalid.append((n, f"config_hash {rec.get('config_hash')!r} != {config_hash!r}"))
+            elif not isinstance(rec.get("retrieved_context"), list):
+                invalid.append((n, "no retrieved_context list"))
+            elif qid in valid:
+                duplicates.append(qid)
+            else:
+                valid[qid] = line
+    return {"valid": valid, "duplicates": duplicates, "invalid_lines": invalid}
+
+
+def verify_retrieval_output_complete(output_path, sample_qids, config_hash: str) -> int:
+    """Raises IncompleteRetrievalOutput unless the file holds exactly one
+    valid record for EVERY dev question and nothing else. Returns n."""
+    scan = scan_retrieval_output(output_path, sample_qids, config_hash)
+    missing = sorted({int(q) for q in sample_qids} - set(scan["valid"]))
+    if missing or scan["duplicates"] or scan["invalid_lines"]:
+        raise IncompleteRetrievalOutput(
+            f"{output_path}: {len(scan['valid'])}/{len(set(sample_qids))} dev questions complete; "
+            f"missing={missing[:10]}{'...' if len(missing) > 10 else ''} duplicates={scan['duplicates'][:10]} "
+            f"invalid_lines={scan['invalid_lines'][:5]}"
+        )
+    return len(scan["valid"])
+
+
+def _resume_sidecar(output_path) -> Path:
+    return Path(str(output_path) + ".resume.json")  # git-ignored (*.resume.json)
+
+
+def prepare_retrieval_resume(output_path, sample_qids, config_hash: str, git_commit: str | None) -> set[int]:
+    """Decides what an existing retrieval-only file may contribute:
+      - no file, no sidecar, or a sidecar from a different config_hash /
+        git commit (or with no commit) -> start FRESH (file removed): a
+        record written by different code must never be mixed in;
+      - otherwise -> keep only VALID records (scan_retrieval_output), one
+        per question, rewrite the file with just those (dropping
+        truncated, foreign, or duplicate lines), and return their qids
+        as `already_done`.
+    Writes/refreshes the sidecar {config_hash, git_commit} either way."""
+    path, sidecar = Path(output_path), _resume_sidecar(output_path)
+    meta = None
+    if sidecar.exists():
+        try:
+            meta = json.loads(sidecar.read_text())
+        except (json.JSONDecodeError, OSError):
+            meta = None
+    reusable = (path.exists() and isinstance(meta, dict) and git_commit is not None
+                and meta.get("config_hash") == config_hash and meta.get("git_commit") == git_commit)
+    already_done: set[int] = set()
+    if reusable:
+        scan = scan_retrieval_output(path, sample_qids, config_hash)
+        tmp = path.with_name(path.name + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            for line in scan["valid"].values():
+                f.write(line + "\n")
+        os.replace(tmp, path)
+        already_done = set(scan["valid"])
+    elif path.exists():
+        path.unlink()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(json.dumps({"config_hash": config_hash, "git_commit": git_commit}))
+    return already_done
+
+
 def run_retrieval_only_for_alpha(
     sample_df, alpha: float, driver, database, faiss_index, faiss_ids, faiss_embeddings,
     id_to_row, all_answer_ids_map, embed_model, embedding_cache, questions_parquet: str,
     output_dir: str, seed: int, n_sample: int, provider: str = "openai", model: str = "gpt-4o-mini",
     top_k: int = 5, n_anchor: int = 3, n_semantic_expansion: int = 3, token_chunk_limit: int = 400,
-    oversample_pool: int = 1536, ctxrel_version: str | None = None,
+    oversample_pool: int = 1536, ctxrel_version: str | None = None, git_commit: str | None = None,
 ) -> dict:
     """Runs C retrieval-only v3 for one alpha on the dev split, writes a
     config-hashed output file + manifest + run_history entry (so
     _run_metadata.resolve_run_metadata() -- which ctxrel-v1's load_items()
     requires -- can resolve it), and returns {"output_path", "config_hash",
-    "n_questions"}."""
+    "n_questions", "n_resumed", "history_path"}.
+
+    RESUME (prepare_retrieval_resume): a partial file left by a crashed
+    run of the SAME config and SAME git commit is resumed -- only its
+    valid per-question records are kept, and only the missing questions
+    are retrieved. COMPLETENESS: before the manifest/run_history entry is
+    written, verify_retrieval_output_complete() requires exactly one valid
+    record per dev question; otherwise IncompleteRetrievalOutput is raised
+    and NO run_history entry exists, so load_items() refuses the file
+    (RunMetadataNotFoundError) -- a partial file can never become an α
+    result."""
     import c_graphrag as cg
     from llm.manifest import compute_config_hash, write_manifest
 
@@ -86,38 +190,42 @@ def run_retrieval_only_for_alpha(
         c_retrieval_version="v3", alpha=alpha, sample_split="dev",
     )
     config_hash = compute_config_hash(config)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_path.exists():
-        output_path.unlink()  # sweep runs are meant to be fresh/reproducible, not resumed mid-sweep
+    sample_qids = [int(q) for q in sample_df["Id"]]
+    already_done = prepare_retrieval_resume(output_path, sample_qids, config_hash, git_commit)
 
     run_started_at = datetime.now(timezone.utc)
     results, stats = cg.process_sample(
         sample_df, None, None, embed_model, driver, database,
         faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
         top_k, n_anchor, n_semantic_expansion, token_chunk_limit, model, output_path,
+        already_done=already_done,
         c_retrieval_version="v3", alpha=alpha, embedding_cache=embedding_cache, retrieval_only=True,
         config=config, config_hash=config_hash,
     )
     finished_at = datetime.now(timezone.utc)
+    n_complete = verify_retrieval_output_complete(output_path, sample_qids, config_hash)
 
     history_path = cg.append_run_history({
         "prompt_version": "retrieval-only", "c_retrieval_version": "v3", "alpha": alpha,
         "sample_split": "dev", "run_started_at": run_started_at.isoformat(), "condition": "C",
         "status": "success", "provider": provider, "model": model, "n_sample_target": n_sample,
-        "n_processed": len(results), "seed": seed, "oversample_pool": oversample_pool,
+        "n_processed": n_complete, "n_resumed": len(already_done), "seed": seed,
+        "oversample_pool": oversample_pool,
         "fusion_mode": fusion_mode, "output_path": str(output_path), "config_hash": config_hash,
         "duration_sec": round((finished_at - run_started_at).total_seconds(), 1),
-        "retrieval_only": True, "ctxrel_version": ctxrel_version,
+        "retrieval_only": True, "ctxrel_version": ctxrel_version, "git_commit": git_commit,
+        "embedding_cache_disabled": getattr(embedding_cache, "disabled", None),
     })
     write_manifest(
         output_path, run_label=None, status="completed",
         config=config, config_hash=config_hash,
         started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
-        item_counts={"attempted": len(sample_df), "succeeded": len(results), "failed": 0},
+        item_counts={"attempted": len(sample_df), "succeeded": n_complete, "failed": 0,
+                     "resumed": len(already_done)},
         prompt_version="retrieval-only", judge_version=ctxrel_version,
     )
-    return {"output_path": str(output_path), "config_hash": config_hash, "n_questions": len(results),
-            "history_path": str(history_path)}
+    return {"output_path": str(output_path), "config_hash": config_hash, "n_questions": n_complete,
+            "n_resumed": len(already_done), "history_path": str(history_path)}
 
 
 # ---------------------------------------------------------------------
@@ -274,26 +382,59 @@ def fetch_is_related_to_neighbors(driver, database: str, question_ids: list[int]
 CONTROL_OUTPUT_PREFIX = "llm/c_graphrag/results/controls/"
 
 
-def git_state() -> dict:
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _repo_relative(path) -> str | None:
+    try:
+        return Path(path).resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return None
+
+
+def parse_porcelain_z(raw: str) -> list[tuple[str, str]]:
+    """`git status --porcelain -z` -> [(XY, path)] (rename/copy entries
+    carry an extra NUL-separated source path, which is skipped). -z
+    avoids git's quoting of paths with spaces/special characters."""
+    tokens = raw.split("\0")
+    entries, i = [], 0
+    while i < len(tokens):
+        tok = tokens[i]
+        i += 1
+        if not tok:
+            continue
+        xy, path = tok[:2], tok[3:]
+        entries.append((xy, path))
+        if "R" in xy or "C" in xy:
+            i += 1
+    return entries
+
+
+def git_state(exempt_paths=()) -> dict:
     """Commit + working-tree state of the repo, recorded on every control
-    output/manifest. `git_tree_clean` ignores entries under
-    results/controls/ (the control outputs themselves -- an earlier
-    control run's files must not make the next run "dirty"); every
-    porcelain entry, including those, is recorded verbatim."""
+    output/manifest. `git_tree_clean` ignores ONLY: entries under
+    results/controls/ (control outputs -- an earlier control run's files
+    must not make the next run "dirty"), the exact files in `exempt_paths`
+    (this same run's own outputs, e.g. its retrieval-only files and run
+    history), and git-ignored files (never listed by git status). Every
+    other change -- modified, staged, deleted, or untracked -- is dirty.
+    All entries are recorded verbatim."""
     import subprocess
 
-    repo = Path(__file__).resolve().parents[2]
-
     def _git(*args):
-        return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True).stdout
+        return subprocess.run(["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True).stdout
 
+    exempt = {r for r in (_repo_relative(p) for p in exempt_paths) if r}
     try:
         commit = _git("rev-parse", "HEAD").strip()
-        porcelain = [l for l in _git("status", "--porcelain", "--untracked-files=all").splitlines() if l.strip()]
+        entries = parse_porcelain_z(_git("status", "--porcelain", "-z", "--untracked-files=all"))
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        return {"git_commit": None, "git_tree_clean": False, "git_status_porcelain": [f"<git error: {e}>"]}
-    relevant = [l for l in porcelain if not l[3:].strip('"').startswith(CONTROL_OUTPUT_PREFIX)]
-    return {"git_commit": commit, "git_tree_clean": not relevant, "git_status_porcelain": porcelain}
+        return {"git_commit": None, "git_tree_clean": False, "git_status_porcelain": [f"<git error: {e}>"],
+                "git_exempted": []}
+    exempted = [p for _, p in entries if p.startswith(CONTROL_OUTPUT_PREFIX) or p in exempt]
+    relevant = [p for _, p in entries if p not in exempted]
+    return {"git_commit": commit, "git_tree_clean": not relevant,
+            "git_status_porcelain": [f"{xy} {p}" for xy, p in entries], "git_exempted": exempted}
 
 
 def _load_question_bodies_text(questions_parquet: str, question_ids: list[int]) -> dict[int, str]:
@@ -341,7 +482,7 @@ def run_controls(sample_df, ctxrel_version: str, judge_ids=CONTROL_JUDGE_IDS, qu
                  workers: int = 4, deciding_judge_id: str = "primary", token_chunk_limit: int = 400,
                  seed: int = 42, control_sets=CONTROL_SETS, hard_pool_df=None,
                  related_ids: dict | None = None, question_vectors: dict | None = None,
-                 require_clean_tree: bool = True) -> dict:
+                 require_clean_tree: bool = True, exempt_paths=()) -> dict:
     """Judges every control item in `control_sets` with every judge in
     `judge_ids`, using context-relevance prompt `ctxrel_version` and the
     SAME judge input as the real stage-1 judging (title + tags +
@@ -360,11 +501,12 @@ def run_controls(sample_df, ctxrel_version: str, judge_ids=CONTROL_JUDGE_IDS, qu
     if deciding_judge_id not in judge_ids:
         deciding_judge_id = judge_ids[0]
 
-    git = git_state()
+    git = git_state(exempt_paths)
     if require_clean_tree and not git["git_tree_clean"]:
+        dirty = [e for e in git["git_status_porcelain"] if e[3:] not in git["git_exempted"]]
         return {"passed": False, "results": [], "info": {}, "git": git,
-                "error": "working tree is not clean (outside results/controls/) -- commit the code first; "
-                         f"git status: {git['git_status_porcelain']}"}
+                "error": "working tree is not clean (outside results/controls/ and this run's own outputs) -- "
+                         f"commit the code first; dirty entries: {dirty}"}
 
     items, info = build_control_items(sample_df, token_chunk_limit=token_chunk_limit, seed=seed,
                                       hard_pool_df=hard_pool_df, related_ids=related_ids,
@@ -834,6 +976,13 @@ def run_stage1_sweep(
         _print_controls_result(controls)
         return 0 if controls["passed"] else 1
 
+    git_at_start = git_state()
+    print(f"      git_commit={git_at_start['git_commit']} git_tree_clean={git_at_start['git_tree_clean']}")
+    if not git_at_start["git_tree_clean"] and not plan_only and not allow_dirty:
+        dirty = [e for e in git_at_start["git_status_porcelain"] if e[3:] not in git_at_start["git_exempted"]]
+        print(f"[STOP] Working tree is not clean -- commit first (or --plan-only / --allow-dirty). Dirty: {dirty}")
+        return 1
+
     print("[2/6] Connecting to Neo4j + loading the FAISS cache (shared, read-only)...")
     driver, database = cg.connect_neo4j(print)
     faiss_index, faiss_ids, faiss_embeddings, id_to_row = cg.load_faiss_cache(Path(kg_workspace_dir), print)
@@ -845,17 +994,23 @@ def run_stage1_sweep(
     try:
         print(f"[3/6] Retrieval-only C v3 for alpha in {DEFAULT_ALPHA_VALUES} (no API cost)...")
         retrieval_output_paths: dict[float, str] = {}
+        own_outputs: list[str] = []
         for alpha in DEFAULT_ALPHA_VALUES:
             info = run_retrieval_only_for_alpha(
                 sample_df, alpha, driver, database, faiss_index, faiss_ids, faiss_embeddings,
                 id_to_row, all_answer_ids_map, embed_model, embedding_cache, questions_parquet,
                 output_dir=str(RESULTS_DIR), seed=seed, n_sample=n_dev, oversample_pool=oversample_pool,
-                ctxrel_version=ctxrel_version,
+                ctxrel_version=ctxrel_version, git_commit=git_at_start["git_commit"],
             )
             retrieval_output_paths[alpha] = info["output_path"]
-            print(f"      alpha={alpha} -> {info['output_path']} ({info['n_questions']} questions)")
+            own_outputs += [info["output_path"], info["history_path"]]
+            print(f"      alpha={alpha} -> {info['output_path']} ({info['n_questions']} questions complete, "
+                  f"{info['n_resumed']} resumed)")
     finally:
         embedding_cache.close()
+    if embedding_cache.disabled:
+        print(f"      [note] embedding cache was disabled during this run ({embedding_cache.disabled_reason}); "
+              f"embeddings were computed directly -- results unaffected.")
 
     hard_pool_df, related_ids, question_vectors = _prepare_control_inputs(
         answers_parquet, candidates, sample_df, CONTROL_SETS, kg_workspace_dir, seed)
@@ -882,11 +1037,13 @@ def run_stage1_sweep(
     controls = run_controls(sample_df, ctxrel_version, control_judge_ids, questions_parquet, workers=workers,
                             deciding_judge_id=judge_id, control_sets=CONTROL_SETS,
                             hard_pool_df=hard_pool_df, related_ids=related_ids,
-                            question_vectors=question_vectors, require_clean_tree=not allow_dirty)
+                            question_vectors=question_vectors, require_clean_tree=not allow_dirty,
+                            exempt_paths=own_outputs)
     _print_controls_result(controls)
     if not controls["passed"]:
         print(f"[STOP] Controls failed -- {ctxrel_version} cannot be used for the main sweep judging. "
-              "Retrieval-only outputs above are still valid and will be reused on the next attempt.")
+              "Retrieval-only outputs above are complete and will be reused on the next attempt "
+              "at the same commit.")
         return 1
 
     print(f"[5/6] Judging {len(dedup_items)} deduplicated context items with judge_id={judge_id}, "
@@ -902,7 +1059,9 @@ def run_stage1_sweep(
         ctxrel_output_path, run_label=None,
         config={"ctxrel_version": ctxrel_version, "judge_id": judge_id, "n_dev": n_dev, "dev_offset": dev_offset,
                 "seed": seed, "retrieval_output_paths": {str(a): p for a, p in retrieval_output_paths.items()},
-                "controls_output_path": controls.get("output_path")},
+                "controls_output_path": controls.get("output_path"),
+                "git_commit": git_at_start["git_commit"], "git_tree_clean_at_start": git_at_start["git_tree_clean"],
+                "git_state_at_judging": controls.get("git")},
         started_at_utc=judging_started.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
         item_counts={"attempted": batch_result["judged"] + batch_result["failed"],
                      "succeeded": batch_result["judged"], "failed": batch_result["failed"]},
@@ -969,8 +1128,10 @@ if __name__ == "__main__":
     parser.add_argument("--kg-workspace-dir", default=os.getenv(
         "KG_WORKSPACE_DIR", str(Path(__file__).resolve().parents[2] / "01_data_cleaning" / "_kg_workspace")))
     parser.add_argument("--embed-model", default=os.getenv("EMBED_MODEL", "all-MiniLM-L6-v2"))
-    parser.add_argument("--embedding-cache-path", default=os.getenv(
-        "C_EMBEDDING_CACHE_PATH", str(Path(__file__).resolve().parent / "embedding_cache.sqlite3")))
+    from embedding_cache import default_cache_path
+    parser.add_argument("--embedding-cache-path", default=str(default_cache_path()),
+                         help="Candidate-embedding cache (speed-up only; fail-safe). Default: "
+                              "C_EMBEDDING_CACHE_PATH, else a local non-synced cache dir (see embedding_cache.py).")
     parser.add_argument("--n-dev", type=int, default=50)
     parser.add_argument("--dev-offset", type=int, default=385)
     parser.add_argument("--seed", type=int, default=42)

@@ -227,7 +227,8 @@ def test_run_controls_refuses_dirty_tree_without_calling_judge(monkeypatch, tmp_
 
     calls = _patch_judge(monkeypatch, tmp_path, lambda jid, m: "RELEVANT")
     monkeypatch.setattr(stage1_sweep, "git_state",
-                        lambda: {"git_commit": "abc", "git_tree_clean": False, "git_status_porcelain": [" M x.py"]})
+                        lambda exempt_paths=(): {"git_commit": "abc", "git_tree_clean": False,
+                                                 "git_status_porcelain": [" M x.py"], "git_exempted": []})
     result = run_controls(_sample_df(_rows_two_disjoint()), "ctxrel-v2", questions_parquet="unused",
                           hard_pool_df=_hard_pool(), question_vectors=_vectors())
     assert result["passed"] is False and "not clean" in result["error"]
@@ -244,9 +245,9 @@ def test_git_state_ignores_control_outputs_only(monkeypatch):
         return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    porcelain = "?? llm/c_graphrag/results/controls/ctxrel_v2_controls_x.jsonl\n"
+    porcelain = "?? llm/c_graphrag/results/controls/ctxrel_v2_controls_x.jsonl\0"
     assert stage1_sweep.git_state()["git_tree_clean"] is True
-    porcelain += " M llm/c_graphrag/stage1_sweep.py\n"
+    porcelain += " M llm/c_graphrag/stage1_sweep.py\0"
     state = stage1_sweep.git_state()
     assert state["git_tree_clean"] is False and state["git_commit"] == "deadbeef"
     assert len(state["git_status_porcelain"]) == 2
@@ -273,7 +274,8 @@ def _patch_judge(monkeypatch, tmp_path, label_for):
     monkeypatch.setattr(stage1_sweep, "_load_question_bodies_text",
                         lambda qp, qids: {q: f"body of {q}" for q in qids})
     monkeypatch.setattr(stage1_sweep, "git_state",
-                        lambda: {"git_commit": "abc123", "git_tree_clean": True, "git_status_porcelain": []})
+                        lambda exempt_paths=(): {"git_commit": "abc123", "git_tree_clean": True, "git_status_porcelain": [],
+                                                 "git_exempted": []})
 
     def _fake_call(client, config, messages):
         seen_messages.append(messages)
@@ -498,3 +500,184 @@ def test_compute_alpha_metrics_and_markdown_report(tmp_path):
     assert "HAS_ACCEPTED_ANSWER" in markdown
     assert "Selection helper output" in markdown
     assert "keep_current" in markdown
+
+
+# ---------------------------------------------------------------------
+# Retrieval-only resume: per-question completeness
+# ---------------------------------------------------------------------
+
+def _rec(qid, config_hash="H", ctx=True):
+    r = {"question_id": qid, "config_hash": config_hash}
+    if ctx:
+        r["retrieved_context"] = [{"answer_id": qid * 10, "chunk_text": "t"}]
+    return json.dumps(r)
+
+
+def test_scan_keeps_only_valid_unique_dev_records(tmp_path):
+    from stage1_sweep import scan_retrieval_output
+
+    p = tmp_path / "out.jsonl"
+    p.write_text("\n".join([_rec(1), _rec(2, config_hash="OTHER"), _rec(99), _rec(3, ctx=False), _rec(1),
+                            '{"question_id": 4, "config_ha']) + "\n")
+    scan = scan_retrieval_output(p, [1, 2, 3, 4], "H")
+    assert set(scan["valid"]) == {1}
+    assert scan["duplicates"] == [1]
+    assert len(scan["invalid_lines"]) == 4
+
+
+def test_verify_complete_rejects_partial_and_accepts_complete(tmp_path):
+    from stage1_sweep import IncompleteRetrievalOutput, verify_retrieval_output_complete
+
+    p = tmp_path / "out.jsonl"
+    p.write_text("")                                  # the 0-byte file a crash leaves behind
+    with pytest.raises(IncompleteRetrievalOutput):
+        verify_retrieval_output_complete(p, [1, 2], "H")
+    p.write_text(_rec(1) + "\n")
+    with pytest.raises(IncompleteRetrievalOutput):
+        verify_retrieval_output_complete(p, [1, 2], "H")
+    p.write_text(_rec(1) + "\n" + _rec(2) + "\n" + _rec(2) + "\n")
+    with pytest.raises(IncompleteRetrievalOutput):     # duplicate
+        verify_retrieval_output_complete(p, [1, 2], "H")
+    p.write_text(_rec(2) + "\n" + _rec(1) + "\n")
+    assert verify_retrieval_output_complete(p, [1, 2], "H") == 2
+
+
+def test_prepare_resume_requires_same_commit_and_config(tmp_path):
+    from stage1_sweep import _resume_sidecar, prepare_retrieval_resume
+
+    p = tmp_path / "out.jsonl"
+    p.write_text(_rec(1) + "\n" + '{"truncat')
+    # no sidecar (e.g. the file left by the crashed runs) -> fresh start
+    assert prepare_retrieval_resume(p, [1, 2], "H", "c1") == set()
+    assert not p.exists() and _resume_sidecar(p).exists()
+
+    p.write_text(_rec(1) + "\n" + _rec(7) + "\n" + '{"truncat')
+    assert prepare_retrieval_resume(p, [1, 2], "H", "c1") == {1}
+    assert p.read_text() == _rec(1) + "\n"            # truncated + foreign lines dropped
+
+    assert prepare_retrieval_resume(p, [1, 2], "H", "c2") == set()   # different commit -> fresh
+    assert not p.exists()
+    p.write_text(_rec(1) + "\n")
+    assert prepare_retrieval_resume(p, [1, 2], "H2", "c2") == set()  # different config -> fresh
+    p.write_text(_rec(1) + "\n")
+    assert prepare_retrieval_resume(p, [1, 2], "H", None) == set()   # unknown commit -> never resume
+
+
+def _fake_retrieval_env(monkeypatch, tmp_path, crash_after=None):
+    import c_graphrag as cg
+    import stage1_sweep
+
+    calls = []
+
+    def fake_process_sample(sample_df, *a, already_done=None, config_hash=None, **k):
+        output_path = a[15]  # process_sample(sample_df, ..., model, output_path, ...)
+        todo = [int(q) for q in sample_df["Id"] if int(q) not in (already_done or set())]
+        calls.append(todo)
+        with open(output_path, "a") as f:
+            for n, q in enumerate(todo):
+                if crash_after is not None and n == crash_after:
+                    f.write('{"question_id": %d, "trunc' % q)
+                    raise RuntimeError("disk I/O error")
+                f.write(_rec(q, config_hash=config_hash) + "\n")
+        return [], {}
+
+    monkeypatch.setattr(cg, "process_sample", fake_process_sample)
+    monkeypatch.setattr(cg, "append_run_history", lambda rec: (calls.append(("history", rec)), tmp_path / "h.jsonl")[1])
+    monkeypatch.setattr("llm.manifest.write_manifest", lambda *a, **k: calls.append(("manifest", k)))
+    return calls
+
+
+def _run_alpha(tmp_path, commit="c1"):
+    import pandas as pd
+
+    from stage1_sweep import run_retrieval_only_for_alpha
+
+    df = pd.DataFrame({"Id": [11, 12, 13, 14]})
+    return run_retrieval_only_for_alpha(df, 0.0, None, None, None, None, None, None, {}, None, None, "qp",
+                                        output_dir=str(tmp_path), seed=42, n_sample=4, git_commit=commit)
+
+
+def test_crashed_alpha_writes_no_history_then_resumes_to_complete(monkeypatch, tmp_path):
+    calls = _fake_retrieval_env(monkeypatch, tmp_path, crash_after=2)
+    with pytest.raises(RuntimeError):
+        _run_alpha(tmp_path)
+    assert not any(isinstance(c, tuple) for c in calls)   # no history/manifest for a partial file
+
+    calls = _fake_retrieval_env(monkeypatch, tmp_path)
+    info = _run_alpha(tmp_path)
+    assert calls[0] == [13, 14]                           # only the missing questions re-run
+    assert info["n_questions"] == 4 and info["n_resumed"] == 2
+    history = [c[1] for c in calls if isinstance(c, tuple) and c[0] == "history"]
+    assert history[0]["n_processed"] == 4 and history[0]["git_commit"] == "c1"
+
+
+def test_incomplete_output_raises_before_history(monkeypatch, tmp_path):
+    import c_graphrag as cg
+
+    from stage1_sweep import IncompleteRetrievalOutput
+
+    calls = _fake_retrieval_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(cg, "process_sample", lambda sample_df, *a, **k: ([], {}))  # silently writes nothing
+    with pytest.raises(IncompleteRetrievalOutput):
+        _run_alpha(tmp_path)
+    assert not any(isinstance(c, tuple) for c in calls)
+
+
+# ---------------------------------------------------------------------
+# Clean-tree check: this run's own outputs are exempt, nothing else
+# ---------------------------------------------------------------------
+
+def _fake_git(monkeypatch, entries):
+    import subprocess
+
+    raw = "".join(f"{e}\0" for e in entries)
+
+    def fake_run(cmd, **kw):
+        out = "deadbeef\n" if "rev-parse" in cmd else raw
+        return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+
+def test_git_state_exempts_only_this_runs_outputs(monkeypatch):
+    import stage1_sweep
+
+    own = "llm/c_graphrag/results/condition_c_x_dev_v3_abc.jsonl"
+    _fake_git(monkeypatch, [f"?? {own}", "?? logs/run_history.jsonl",
+                            "?? llm/c_graphrag/results/controls/ctxrel_v2_controls_x.jsonl"])
+    exempt = [stage1_sweep.REPO_ROOT / own, stage1_sweep.REPO_ROOT / "logs/run_history.jsonl"]
+    assert stage1_sweep.git_state(exempt)["git_tree_clean"] is True
+    assert stage1_sweep.git_state()["git_tree_clean"] is False          # without exemption: dirty
+
+    _fake_git(monkeypatch, [f"?? {own}", "?? llm/c_graphrag/results/condition_c_OTHER_dev.jsonl",
+                            " M llm/c_graphrag/stage1_sweep.py"])
+    state = stage1_sweep.git_state(exempt)
+    assert state["git_tree_clean"] is False
+    assert state["git_exempted"] == [own]
+
+
+def test_git_state_handles_spaces_and_renames(monkeypatch):
+    import stage1_sweep
+
+    _fake_git(monkeypatch, ["R  docs/new name.md", "docs/old name.md", "?? llm/c_graphrag/results/controls/a b.jsonl"])
+    state = stage1_sweep.git_state()
+    assert state["git_status_porcelain"] == ["R  docs/new name.md", "?? llm/c_graphrag/results/controls/a b.jsonl"]
+    assert state["git_tree_clean"] is False
+    _fake_git(monkeypatch, ["?? llm/c_graphrag/results/controls/a b.jsonl"])
+    assert stage1_sweep.git_state()["git_tree_clean"] is True
+
+
+def test_run_controls_passes_exemptions_to_clean_check(monkeypatch, tmp_path):
+    import stage1_sweep
+
+    _patch_judge(monkeypatch, tmp_path, _title_match_label)
+    seen = {}
+
+    def fake_git_state(exempt_paths=()):
+        seen["exempt"] = list(exempt_paths)
+        return {"git_commit": "abc", "git_tree_clean": True, "git_status_porcelain": [], "git_exempted": []}
+
+    monkeypatch.setattr(stage1_sweep, "git_state", fake_git_state)
+    run_controls(_sample_df(_rows_two_disjoint()), "ctxrel-v2", questions_parquet="unused",
+                 hard_pool_df=_hard_pool(), question_vectors=_vectors(), exempt_paths=["x.jsonl"])
+    assert seen["exempt"] == ["x.jsonl"]

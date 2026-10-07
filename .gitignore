@@ -44,3 +44,8 @@ Icon?
 # macOS Finder metadata -- never track
 .DS_Store
 **/.DS_Store
+
+# C v3 candidate-embedding cache (speed-up only; default lives outside the repo,
+# see llm/c_graphrag/embedding_cache.py) and retrieval-only resume sidecars
+embedding_cache.sqlite3*
+*.resume.json
