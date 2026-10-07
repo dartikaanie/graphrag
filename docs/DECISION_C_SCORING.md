@@ -109,7 +109,7 @@ ctxrel-v2 changes only the label definitions; inputs, output format, and parser 
 - IRRELEVANT: unrelated to this problem.
 - Sharing a technology, library, or keyword with the question is not enough on its own for RELEVANT.
 
-Full prompt committed at: [commit hash]
+Full prompt committed at: `4c1c73528302797f5b8fab78373c6a12753dc414` (`llm/evaluation/ctxrel_prompt_v2.py`; the v1 prompt text is unchanged and pinned by a hash test).
 
 ### Third control type: hard negatives
 The existing negatives (no shared tag) cannot detect a judge that is too lenient on same-technology, different-problem items, which is the RELEVANT/PARTIAL boundary stage 1 depends on. A third control set is added:
@@ -129,8 +129,39 @@ ctxrel-v1 is also run on the hard negatives, for comparison only (it already fai
 - If ctxrel-v2 fails, at most one further revision (ctxrel-v3) is allowed. It is tuned only on control items and recorded here, with its commit hash, before it runs.
 - If no version passes after that, stage 1 uses the version with the highest primary positive-control rate among those meeting both negative thresholds, and this is reported as a limitation.
 
+### Record
+The hard-negative definition above was replaced by Amendment 3 before any judge run. Results are recorded under Amendment 3.
+
+---
+
+## Amendment 3 (2026-10-07): harder hard negatives, donors restricted to non-test questions
+
+Written after a dry build of the Amendment 2 hard negatives on real data (no judge calls) and BEFORE any ctxrel-v2 run or stage-1 run.
+
+### Why
+- The Amendment 2 hard negatives were mostly easy: 46 of 47 shared exactly one tag, usually a broad one (`android` 8, `javascript` 5, `python` 3, `html`, `php`, `java`). Example: "Best way to convert RTMP to MP4" received a CSS background-colour answer because both are tagged `html`. Such items give little evidence about the RELEVANT/PARTIAL boundary these controls exist to test.
+- 14 of the 47 donors were test-sample questions (positions 1-384), so their accepted answers would have been used to tune the context-relevance judge.
+- The `IS_RELATED_TO` exclusion removed nothing in practice (six dev questions have linked neighbours, none of them in the pool).
+
+### New hard-negative definition (replaces the Amendment 2 definition)
+- **Donor pool:** questions in the same candidate pool (seed 42, oversample pool 1536, token filter) that are NOT in the test sample (0-based positions 0-383), excluding the dev question itself and any question linked to it by `IS_RELATED_TO` (either direction).
+- **Eligibility:** the donor shares at least one tag with the dev question.
+- **Selection:** among eligible donors, the one whose question embedding (all-MiniLM-L6-v2, L2-normalized, the existing FAISS-cache vectors) has the **highest cosine similarity** to the dev question. Ties broken by question ID ascending. No randomness.
+- **Item:** the donor's accepted answer, formatted and truncated exactly like a stage-1 context item.
+- **Expected:** NOT RELEVANT (PARTIAL or IRRELEVANT).
+- Dev questions with no eligible donor are reported and excluded from the hard-negative denominator.
+- The donor's cosine similarity, number of shared tags, and shared tags are recorded per item.
+
+### Unchanged
+- ctxrel-v2 prompt (committed at `4c1c735`), positive controls, easy negatives, pass thresholds (positives ≥ 90% RELEVANT, easy negatives ≥ 90% IRRELEVANT, hard negatives ≥ 80% NOT RELEVANT; primary judge decides), and the iteration limit from Amendment 2.
+- Because the most-similar same-tag donor can occasionally address a genuinely similar problem, the 80% threshold is kept rather than raised.
+
+### Reproducibility
+All code used for the control runs (runner, judge module with ctxrel-v2, hard-negative builder, dev-offset test) is committed before any run; control outputs and manifests record that commit.
+
 ### Record (fill in before stage 1)
-- Hard negatives: [n eligible] of 50 dev questions had an eligible hard negative.
+- Code commit used for the control runs: [commit hash]
+- Hard negatives: [n eligible] of 50 dev questions had an eligible donor; donor cosine similarity median [x] (range [x]-[x]); donors sharing ≥2 tags: [n].
 - ctxrel-v1 hard negatives (primary / secondary): NOT RELEVANT [x]% / [x]%
 - ctxrel-v2 (primary / secondary): positives RELEVANT [x]% / [x]%; easy negatives IRRELEVANT [x]% / [x]%; hard negatives NOT RELEVANT [x]% / [x]%. Pass: [yes/no]
 - Context-relevance judge version used for stage 1: [ ]
