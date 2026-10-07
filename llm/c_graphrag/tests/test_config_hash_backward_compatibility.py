@@ -31,7 +31,9 @@ def _pilot_v3_records(path: Path) -> list[dict]:
             if not line:
                 continue
             r = json.loads(line)
-            if r.get("config_hash") and "v3_" in str(r.get("output_path", "")):
+            # Pilot generation runs only -- stage-1 retrieval-only dev runs
+            # (whose filenames also contain "v3_") are a different record kind.
+            if r.get("config_hash") and "v3_" in str(r.get("output_path", "")) and not r.get("retrieval_only"):
                 records.append(r)
     return records
 
