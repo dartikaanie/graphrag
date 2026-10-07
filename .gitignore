@@ -39,3 +39,4 @@ llm/evaluation/results/*_failures_resolved.jsonl
 # (repo root, NOT under llm/*/logs/) stays tracked -- it's a small,
 # deliberately-curated audit record, not per-run noise.
 llm/*/logs/dashboard_*.log
+Icon?
