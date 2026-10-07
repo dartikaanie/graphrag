@@ -42,7 +42,9 @@ def test_format_tags_converts_sord_angle_bracket_format():
 
 
 def _done_key(run_id, qid, judge_id, model="m", prompt_version="judge-v2", blinding_version="blind-v2", config_hash="h1"):
-    return (run_id, config_hash, qid, judge_id, model, prompt_version, blinding_version)
+    # parse_version/max_tokens (2026-10-07 follow-up) trail as None --
+    # the records this helper matches against never set either field.
+    return (run_id, config_hash, qid, judge_id, model, prompt_version, blinding_version, None, None)
 
 
 def test_load_already_done_keys_match_v1s_resume_tuple_shape(tmp_path):
@@ -230,4 +232,8 @@ def test_resume_key_differs_from_v1_only_by_prompt_version():
         "run_id": "r1", "config_hash": "h1", "question_id": 1, "judge_id": "primary",
         "judge_model": "m1", "prompt_version": "judge-v2", "blinding_version": "blind-v2",
     }
-    assert _resume_key(record) == ("r1", "h1", 1, "primary", "m1", "judge-v2", "blind-v2")
+    # parse_version/max_tokens (2026-10-07 follow-up) trail as None here
+    # since this record doesn't set them -- see the dedicated
+    # parse_version/max_tokens resume-key tests below for the case where
+    # they do differ.
+    assert _resume_key(record) == ("r1", "h1", 1, "primary", "m1", "judge-v2", "blind-v2", None, None)

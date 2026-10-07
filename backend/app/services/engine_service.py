@@ -1539,10 +1539,16 @@ def _plan_judge_generic(
             done_keys = mod.load_already_done(out_path) if out_path.exists() else set()
             config = judge_registry.get(judge_id)
             judge_model = config.model if config else None
+            # parse_version/max_tokens (2026-10-07 follow-up) -- only
+            # judge-v2's module exposes these (judge-v1 has neither
+            # concept), via getattr so this stays generic across both
+            # `mod` modules; must match _judge_common.judge_resume_key()'s
+            # 9-field shape exactly or every record looks "not done".
             already_judged = sum(
                 1 for r in records
                 if (run_id, r.get("config_hash"), r.get("question_id"), judge_id,
-                    judge_model, mod.PROMPT_VERSION, mod.BLINDING_VERSION) in done_keys
+                    judge_model, mod.PROMPT_VERSION, mod.BLINDING_VERSION,
+                    getattr(mod, "PARSE_VERSION", None), getattr(mod, "REQUEST_MAX_TOKENS", None)) in done_keys
             )
             to_judge = n_items - already_judged
 

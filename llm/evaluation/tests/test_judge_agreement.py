@@ -326,6 +326,46 @@ def test_load_judge_records_refuses_mixed_prompt_version(tmp_path):
         load_judge_records([str(path)])
 
 
+def test_load_judge_records_refuses_mixed_parse_version(tmp_path):
+    """2026-10-07 follow-up: a judge-v2 file mixing records parsed under
+    different parse_judgment_v2() logic versions must be refused the
+    same way a mixed prompt_version file already was."""
+    import json
+
+    from judge_agreement import MixedJudgeVersionError, load_judge_records
+
+    path = tmp_path / "mixed_parse_version.jsonl"
+    with open(path, "w") as f:
+        f.write(json.dumps({"run_id": "r1", "question_id": 1, "judge_id": "primary",
+                             "prompt_version": "judge-v2", "blinding_version": "blind-v2",
+                             "parse_version": "pv1"}) + "\n")
+        f.write(json.dumps({"run_id": "r1", "question_id": 2, "judge_id": "primary",
+                             "prompt_version": "judge-v2", "blinding_version": "blind-v2",
+                             "parse_version": "pv2"}) + "\n")
+
+    with pytest.raises(MixedJudgeVersionError):
+        load_judge_records([str(path)])
+
+
+def test_load_judge_records_allows_judge_v1_records_with_no_parse_version_field(tmp_path):
+    """judge-v1 records have no parse_version field at all -- must not
+    be mistaken for a mixed-parse-version file (every value is None,
+    filtered out by _assert_single_judge_version's `if r.get(field)`)."""
+    import json
+
+    from judge_agreement import load_judge_records
+
+    path = tmp_path / "v1_no_parse_version.jsonl"
+    with open(path, "w") as f:
+        f.write(json.dumps({"run_id": "r1", "question_id": 1, "judge_id": "primary",
+                             "prompt_version": "judge-v1", "blinding_version": "blind-v1"}) + "\n")
+        f.write(json.dumps({"run_id": "r1", "question_id": 2, "judge_id": "primary",
+                             "prompt_version": "judge-v1", "blinding_version": "blind-v1"}) + "\n")
+
+    records = load_judge_records([str(path)])
+    assert len(records) == 2
+
+
 def test_load_judge_records_refuses_mixed_blinding_version(tmp_path):
     import json
 

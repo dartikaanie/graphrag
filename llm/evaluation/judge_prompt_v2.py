@@ -37,6 +37,28 @@ from judge_prompt_v1 import blind_candidate  # noqa: F401 -- re-exported, same b
 
 PROMPT_VERSION = "judge-v2"
 BLINDING_VERSION = "blind-v2"  # same blinding scheme as v1 -- reused, not redefined
+# Bumped whenever parse_judgment_v2()'s PARSING logic changes (not the
+# prompt) -- lets resume/mixed-version-guard code (see _judge_common.py's
+# JUDGE_RESUME_FIELDS and judge_agreement.load_judge_records()) tell a
+# record parsed under an older, stricter/looser parser apart from one
+# parsed under the current logic, even though the prompt itself (and
+# therefore PROMPT_VERSION) never changed. "pv1" is the first version to
+# carry this field at all -- every record that predates it has
+# parse_version == None, which already differs from "pv1", so the
+# resume-key change below is enough to make old parse-error records
+# re-judgeable without any extra special-casing.
+PARSE_VERSION = "pv1"
+
+# Narrow, explicit allow-lists for the ONLY benign non-conforming values
+# tolerated during parsing (2026-10-07 follow-up: the primary judge,
+# Llama-3.3-70B-Instruct, sometimes emits the JSON STRING "null" instead
+# of a real null for `severity`, and the JSON STRING "false" instead of
+# a real boolean for `reference_conflict`). Anything else unexpected
+# still produces parse_error -- this is deliberately NOT a general
+# type-coercion (Python's bare `bool(x)` on an arbitrary string is WRONG
+# for exactly this reason: bool("false") == True).
+_SEVERITY_NULLISH_STRINGS = {"null", "none"}
+_BOOLISH_STRINGS = {"true": True, "false": False}
 
 LABELS = ("FAKTUAL", "HALUSINASI_SEBAGIAN", "HALUSINASI_PENUH", "ABSTAIN")
 COMPLETENESS_VALUES = ("FULL", "PARTIAL", "NONE")
@@ -195,49 +217,82 @@ def parse_judgment_v2(raw: str) -> dict:
                            claims were listed anyway (a judge self-
                            contradiction -- rule 0 still wins, but this
                            is flagged for human review).
+    normalized_fields   : list of field names (one entry PER occurrence,
+                           not deduplicated -- e.g. ["severity",
+                           "severity", "reference_conflict"]) that had a
+                           benign non-conforming value normalized into
+                           its real type (see _SEVERITY_NULLISH_STRINGS/
+                           _BOOLISH_STRINGS above). Empty list if every
+                           field was already well-typed. Lets a caller
+                           count exactly how often each kind of
+                           normalization fired across a batch.
+    parse_version       : PARSE_VERSION -- present on EVERY record this
+                           function returns, including parse_error ones,
+                           so the mixed-parse-version guard and resume
+                           logic can see it even for a still-broken item.
     parse_error         : True if the JSON is unparseable OR any
                            required field is missing/invalid -- a
                            missing/invalid field is NEVER silently
-                           defaulted into a valid-looking record.
+                           defaulted into a valid-looking record. The
+                           narrow normalizations above are the ONLY
+                           exception to this rule, and only for the
+                           exact benign variants named above.
     """
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         m = re.search(r"\{.*\}", raw, flags=re.DOTALL)
         if not m:
-            return {"parse_error": True, "raw": raw}
+            return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
         try:
             data = json.loads(m.group(0))
         except json.JSONDecodeError:
-            return {"parse_error": True, "raw": raw}
+            return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
 
     if not isinstance(data, dict):
-        return {"parse_error": True, "raw": raw}
+        return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
 
     answer_attempted_raw = data.get("answer_attempted")
     if not isinstance(answer_attempted_raw, bool):
-        return {"parse_error": True, "raw": raw}
+        return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
     answer_attempted = answer_attempted_raw
 
     completeness = str(data.get("completeness", "")).strip().upper()
     if completeness not in COMPLETENESS_VALUES:
-        return {"parse_error": True, "raw": raw}
+        return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
 
     claims_raw = data.get("claims")
     if not isinstance(claims_raw, list):
-        return {"parse_error": True, "raw": raw}
+        return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
     claims: list[dict] = []
+    normalized_fields: list[str] = []
     for c in claims_raw:
         if not isinstance(c, dict):
-            return {"parse_error": True, "raw": raw}
+            return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
         verdict = str(c.get("verdict", "")).strip().upper()
         if verdict not in CLAIM_VERDICTS:
-            return {"parse_error": True, "raw": raw}
+            return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
+
         severity_raw = c.get("severity")
-        severity = str(severity_raw).strip().upper() if severity_raw else None
+        if severity_raw is None:
+            severity = None
+        elif isinstance(severity_raw, str) and severity_raw.strip().lower() in _SEVERITY_NULLISH_STRINGS:
+            severity = None
+            normalized_fields.append("severity")
+        else:
+            severity = str(severity_raw).strip().upper()
         if severity not in (None, "CORE", "MINOR"):
-            return {"parse_error": True, "raw": raw}
-        reference_conflict = bool(c.get("reference_conflict", False))
+            return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
+
+        rc_raw = c.get("reference_conflict", False)
+        if isinstance(rc_raw, bool):
+            reference_conflict = rc_raw
+        elif isinstance(rc_raw, str) and rc_raw.strip().lower() in _BOOLISH_STRINGS:
+            reference_conflict = _BOOLISH_STRINGS[rc_raw.strip().lower()]
+            normalized_fields.append("reference_conflict")
+        else:
+            return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
+
         claims.append({
             "claim": c.get("claim", ""), "verdict": verdict, "severity": severity,
             "reference_conflict": reference_conflict, "evidence": c.get("evidence", ""),
@@ -245,7 +300,7 @@ def parse_judgment_v2(raw: str) -> dict:
 
     judge_reported_label = str(data.get("label", "")).strip().upper()
     if judge_reported_label not in LABELS:
-        return {"parse_error": True, "raw": raw}
+        return {"parse_error": True, "raw": raw, "parse_version": PARSE_VERSION}
 
     official_label = derive_label_v2(answer_attempted, claims)
     attempted_claims_conflict = (not answer_attempted) and len(claims) > 0
@@ -261,5 +316,7 @@ def parse_judgment_v2(raw: str) -> dict:
         "claims": claims,
         "reasoning": data.get("reasoning", ""),
         "attempted_claims_conflict": attempted_claims_conflict,
+        "normalized_fields": normalized_fields,
         "prompt_version": PROMPT_VERSION,
+        "parse_version": PARSE_VERSION,
     }
