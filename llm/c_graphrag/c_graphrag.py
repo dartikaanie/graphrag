@@ -662,7 +662,16 @@ def compute_candidate_similarities(embed_model, query_emb: np.ndarray, texts: li
     embedding_cache.EmbeddingCache, optional) is checked per (answer_id,
     text) before encoding and populated for any miss -- a batched encode
     covers only the misses, never the whole pool when most of it is
-    already cached (e.g. repeated α-sweep runs over the same dev set)."""
+    already cached (e.g. repeated α-sweep runs over the same dev set).
+
+    Each text is encoded ON ITS OWN (batch_size=1): all-MiniLM-L6-v2's
+    output for a text varies by ~1e-7 with the other texts in its batch
+    (padding changes the matmul shapes), so batched encoding would make a
+    cached vector -- encoded in some EARLIER question's batch -- differ
+    from a fresh one. One text per call makes every embedding a function
+    of its text alone, so a run with the cache, without it, or with the
+    cache failing part-way (EmbeddingCache is fail-safe) gives bit-
+    identical similarities."""
     query_vec = np.asarray(query_emb, dtype=np.float32).reshape(-1)
     query_norm = np.linalg.norm(query_vec)
     if query_norm > 0:
@@ -684,7 +693,7 @@ def compute_candidate_similarities(embed_model, query_emb: np.ndarray, texts: li
         to_encode_text = texts
 
     if to_encode_text:
-        encoded = embed_model.encode(to_encode_text, convert_to_numpy=True, device="cpu", batch_size=32)
+        encoded = embed_model.encode(to_encode_text, convert_to_numpy=True, device="cpu", batch_size=1)
         encoded = np.asarray(encoded, dtype=np.float32)
         norms = np.linalg.norm(encoded, axis=1, keepdims=True)
         norms[norms == 0] = 1e-9
@@ -1393,9 +1402,10 @@ def main():
                          help="Run retrieval only (no LLM call) -- writes a contexts-only JSONL + "
                               "manifest. For the alpha sweep's stage 1 (see docs/"
                               "agent_prompt_c_retrieval_v3_devset.md Step 4.1).")
-    parser.add_argument("--embedding-cache-path", default=os.getenv(
-        "C_EMBEDDING_CACHE_PATH", str(Path(__file__).resolve().parent / "embedding_cache.sqlite3")),
-        help="v3 only: SQLite cache path for candidate-text embeddings (shared across an alpha sweep).")
+    from embedding_cache import default_cache_path
+    parser.add_argument("--embedding-cache-path", default=str(default_cache_path()),
+        help="v3 only: SQLite cache path for candidate-text embeddings (shared across an alpha sweep). "
+             "Default: C_EMBEDDING_CACHE_PATH, else a local non-synced cache dir (see embedding_cache.py).")
     args = parser.parse_args()
 
     global log
