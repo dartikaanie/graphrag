@@ -681,3 +681,12 @@ def test_run_controls_passes_exemptions_to_clean_check(monkeypatch, tmp_path):
     run_controls(_sample_df(_rows_two_disjoint()), "ctxrel-v2", questions_parquet="unused",
                  hard_pool_df=_hard_pool(), question_vectors=_vectors(), exempt_paths=["x.jsonl"])
     assert seen["exempt"] == ["x.jsonl"]
+
+
+def test_run_history_written_where_run_metadata_reads_regardless_of_cwd(tmp_path, monkeypatch):
+    import c_graphrag as cg
+    import _run_metadata
+
+    monkeypatch.chdir(tmp_path)          # e.g. stage1_sweep.py launched from the repo root
+    assert cg.LOG_DIR.is_absolute()
+    assert cg.LOG_DIR / "run_history.jsonl" == _run_metadata.HISTORY_PATHS["C"]

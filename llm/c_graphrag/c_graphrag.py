@@ -215,7 +215,11 @@ DEFAULT_ACCEPTED_ONLY = False
 AUTHOR_TRUST_BETA = 0.3  # see docs/DECISION_C_SCORING.md's use_author_trust section
 
 log = print
-LOG_DIR = Path("logs")
+# Anchored to this module's folder, NOT the caller's cwd: _run_metadata.py
+# (which ctxrel judging uses to resolve a run file) reads exactly
+# llm/c_graphrag/logs/run_history.jsonl, so a run started from the repo root
+# must still write there.
+LOG_DIR = Path(__file__).resolve().parent / "logs"
 
 
 def setup_logging(provider: str, model: str) -> tuple[logging.Logger, Path]:
