@@ -1,0 +1,82 @@
+{
+  "timestamp_utc": "20261007T154329Z",
+  "prompt_version": "ctxrel-v1",
+  "token_chunk_limit": 400,
+  "seed": 42,
+  "threshold": 0.9,
+  "n_items": 100,
+  "per_judge": {
+    "primary": {
+      "positive": {
+        "n": 50,
+        "counts": {
+          "RELEVANT": 44,
+          "PARTIAL": 6,
+          "IRRELEVANT": 0,
+          "ERROR": 0
+        },
+        "pct": {
+          "RELEVANT": 88.0,
+          "PARTIAL": 12.0,
+          "IRRELEVANT": 0.0,
+          "ERROR": 0.0
+        },
+        "pass": false
+      },
+      "negative": {
+        "n": 50,
+        "counts": {
+          "RELEVANT": 0,
+          "PARTIAL": 0,
+          "IRRELEVANT": 50,
+          "ERROR": 0
+        },
+        "pct": {
+          "RELEVANT": 0.0,
+          "PARTIAL": 0.0,
+          "IRRELEVANT": 100.0,
+          "ERROR": 0.0
+        },
+        "pass": true
+      },
+      "pass": false
+    },
+    "secondary": {
+      "positive": {
+        "n": 50,
+        "counts": {
+          "RELEVANT": 37,
+          "PARTIAL": 13,
+          "IRRELEVANT": 0,
+          "ERROR": 0
+        },
+        "pct": {
+          "RELEVANT": 74.0,
+          "PARTIAL": 26.0,
+          "IRRELEVANT": 0.0,
+          "ERROR": 0.0
+        },
+        "pass": false
+      },
+      "negative": {
+        "n": 50,
+        "counts": {
+          "RELEVANT": 0,
+          "PARTIAL": 0,
+          "IRRELEVANT": 50,
+          "ERROR": 0
+        },
+        "pct": {
+          "RELEVANT": 0.0,
+          "PARTIAL": 0.0,
+          "IRRELEVANT": 100.0,
+          "ERROR": 0.0
+        },
+        "pass": true
+      },
+      "pass": false
+    }
+  },
+  "deciding_judge_id": "primary",
+  "passed": false
+}
