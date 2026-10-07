@@ -65,3 +65,17 @@ def test_dev_and_test_use_same_permutation_same_seed():
     dev = sample_questions_split(df, 5, seed=42, split="dev", dev_offset=385)
     assert test.iloc[0]["Id"] == full_permuted.iloc[0]["Id"]
     assert dev.iloc[0]["Id"] == full_permuted.iloc[384]["Id"]
+
+
+def test_default_dev_offset_is_zero_based_384_to_433():
+    """Pins docs/DECISION_C_SCORING.md's dev set: with the DEFAULT
+    dev_offset (385, a 1-based position), dev must be exactly 0-based
+    positions 384..433 of the permutation (iloc[384:434]) -- the first
+    row right after the test sample's last row (0-based 383)."""
+    df = _fake_pool()
+    full_permuted = df.sample(frac=1.0, random_state=42).reset_index(drop=True)
+    dev = sample_questions_split(df, 50, seed=42, split="dev")
+    positions = [int(full_permuted.index[full_permuted["Id"] == i][0]) for i in dev["Id"]]
+    assert positions == list(range(384, 434))
+    test = sample_questions_split(df, 384, seed=42, split="test")
+    assert int(full_permuted.index[full_permuted["Id"] == test["Id"].iloc[-1]][0]) == 383
