@@ -287,8 +287,12 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
         reference_text = html_to_text(item["ground_truth_answer_html"])
         for judge_id in judge_ids:
             judge_model = clients[judge_id][1].model
+            # Trailing (None, None) -- parse_version/max_tokens (2026-10-07
+            # follow-up to judge_resume_key()'s shared 9-field shape); v1
+            # has neither concept, so these stay None, matching every v1
+            # record's own judge_resume_key() output.
             key = (item["run_id"], item.get("config_hash"), item["question_id"], judge_id,
-                   judge_model, PROMPT_VERSION, BLINDING_VERSION)
+                   judge_model, PROMPT_VERSION, BLINDING_VERSION, None, None)
             if key in done:
                 skipped += 1
                 continue

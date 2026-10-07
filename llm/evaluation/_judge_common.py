@@ -255,18 +255,27 @@ def cohens_kappa(labels_a: list[str], labels_b: list[str], label_set: list[str])
 
 JUDGE_RESUME_FIELDS = (
     "run_id", "config_hash", "question_id", "judge_id", "judge_model",
-    "prompt_version", "blinding_version",
+    "prompt_version", "blinding_version", "parse_version", "max_tokens",
 )
 
 
 def judge_resume_key(r: dict) -> tuple:
     """(run_id, config_hash, question_id, judge_id, judge_model,
-    prompt_version, blinding_version) -- ALL seven must match for a
-    record to count as "already done". Version-independent: prompt_
-    version/blinding_version are read from the RECORD's own fields, not
-    hardcoded, so a v1 record and a v2 record never collide (different
-    prompt_version values) even though they're read by the same
-    function. See llm_judge_hallucination_v1.py's original docstring
+    prompt_version, blinding_version, parse_version, max_tokens) -- ALL
+    nine must match for a record to count as "already done".
+    Version-independent: every one of these is read from the RECORD's
+    own fields, not hardcoded, so a v1 record and a v2 record never
+    collide (different prompt_version values) even though they're read
+    by the same function. `parse_version`/`max_tokens` don't exist on
+    v1 records at all (`r.get()` returns None for both), so this is a
+    behavior-preserving addition for v1: both sides of the comparison
+    are uniformly None, which never causes a spurious cache-miss. For
+    v2, a record parsed under an OLDER parse_version (or judged under a
+    different max_tokens) now naturally fails to match -- so fixing
+    parse_judgment_v2() (which bumps PARSE_VERSION) makes every
+    parse-error record from before the fix "not done" on the next run,
+    without any parse_error-specific special-casing here.
+    See llm_judge_hallucination_v1.py's original docstring
     for why each field is included."""
     return tuple(r.get(f) for f in JUDGE_RESUME_FIELDS)
 
@@ -334,7 +343,7 @@ JUDGE_RETRYABLE_MAX_ATTEMPTS = 6
 
 
 def call_judge_llm_with_retry(client, config, messages: list[dict], request_temperature: float = 0.0,
-                               log=print) -> tuple[dict | None, list[dict]]:
+                               log=print, max_tokens: int | None = None) -> tuple[dict | None, list[dict]]:
     """Returns (response_payload, attempts). response_payload is None
     only if every attempt failed. `attempts` lists EVERY attempt made
     (not just the last), so nothing about a retried call is dropped,
@@ -342,7 +351,16 @@ def call_judge_llm_with_retry(client, config, messages: list[dict], request_temp
     response metadata (not just parsed content): response id/model/
     created/system_fingerprint/finish_reason/usage, plus the request
     params actually sent -- enough to audit exactly what was asked for
-    and what came back."""
+    and what came back.
+
+    `max_tokens=None` (the default, unchanged from before this param
+    existed) means no cap is sent to the API at all -- v1 and v2 both
+    currently call this with no max_tokens argument, so this is a purely
+    additive, behavior-preserving param. When set, it's passed straight
+    through to the API call and also recorded in `request_params`, so a
+    reader can always see exactly what cap (if any) was in effect for a
+    given record -- see docs/JUDGE_V2_CHANGES.md's finish_reason=="length"
+    truncation safeguard."""
     import openai
 
     retryable = (
@@ -352,6 +370,10 @@ def call_judge_llm_with_retry(client, config, messages: list[dict], request_temp
         openai.InternalServerError,  # covers 5xx
     )
 
+    request_params = {"model": config.model, "temperature": request_temperature}
+    if max_tokens is not None:
+        request_params["max_tokens"] = max_tokens
+
     attempts: list[dict] = []
     for attempt in range(1, JUDGE_RETRYABLE_MAX_ATTEMPTS + 1):
         try:
@@ -360,6 +382,7 @@ def call_judge_llm_with_retry(client, config, messages: list[dict], request_temp
                 model=config.model,
                 messages=messages,
                 temperature=request_temperature,
+                **({"max_tokens": max_tokens} if max_tokens is not None else {}),
             )
             latency_s = time.monotonic() - start
             attempts.append({"attempt": attempt, "error": None, "status_code": None})
@@ -375,7 +398,7 @@ def call_judge_llm_with_retry(client, config, messages: list[dict], request_temp
                 "system_fingerprint": getattr(response, "system_fingerprint", None),
                 "finish_reason": response.choices[0].finish_reason,
                 "usage_full": usage.model_dump() if usage else None,
-                "request_params": {"model": config.model, "temperature": request_temperature},
+                "request_params": request_params,
             }, attempts
         except retryable as e:
             status_code = getattr(e, "status_code", None)

@@ -56,11 +56,18 @@ from _judge_common import write_judge_record as write_record  # noqa: E402
 from _run_metadata import RunMetadataNotFoundError, resolve_run_metadata  # noqa: E402
 from judge_clients import get_judge_client  # noqa: E402
 from llm.manifest import write_manifest  # noqa: E402
-from judge_prompt_v2 import BLINDING_VERSION, PROMPT_VERSION, build_messages, parse_judgment_v2  # noqa: E402
+from judge_prompt_v2 import BLINDING_VERSION, PARSE_VERSION, PROMPT_VERSION, build_messages, parse_judgment_v2  # noqa: E402
 
 log = print
 
 REQUEST_TEMPERATURE = 0.0
+# No cap is sent to the API today (see call_judge_with_retry() below --
+# call_judge_llm_with_retry() is called with no max_tokens argument).
+# Kept as its own constant (not just a bare None inline) so the ONE
+# place that would need to change if a cap is ever added is obvious --
+# both the actual API call and the resume-key pre-check below must stay
+# in sync with whatever this is set to.
+REQUEST_MAX_TOKENS = None
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +113,7 @@ def load_items(run_files: list[str], limit: int | None) -> list[dict]:
 
 
 def call_judge_with_retry(client, config, messages: list[dict]) -> tuple[dict | None, list[dict]]:
-    return call_judge_llm_with_retry(client, config, messages, REQUEST_TEMPERATURE, log)
+    return call_judge_llm_with_retry(client, config, messages, REQUEST_TEMPERATURE, log, REQUEST_MAX_TOKENS)
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +169,7 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str, referen
             "system_fingerprint": None, "finish_reason": None, "usage_full": None,
             "request_params": {"model": config.model, "temperature": REQUEST_TEMPERATURE},
             "served_model_mismatch": None,
+            "parse_version": None, "normalized_fields": [], "max_tokens": None, "truncated": None,
         })
         return base
 
@@ -190,6 +198,21 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str, referen
         "finish_reason": payload["finish_reason"],
         "usage_full": payload["usage_full"],
         "request_params": payload["request_params"],
+        "parse_version": parsed.get("parse_version"),
+        "normalized_fields": parsed.get("normalized_fields", []),
+        # request_params["max_tokens"] is None today (no cap is passed to
+        # the API -- see _judge_common.call_judge_llm_with_retry's
+        # max_tokens param), recorded as-is rather than guessed. Kept as
+        # its own top-level field (not just nested in request_params) so
+        # it's directly usable as a resume-key component (see
+        # _judge_common.JUDGE_RESUME_FIELDS) and directly visible without
+        # digging into request_params.
+        "max_tokens": payload["request_params"].get("max_tokens"),
+        # Safeguard for the n=384 run: finish_reason == "length" means
+        # the model was cut off mid-response -- flagged explicitly here
+        # rather than left for every reader to re-derive from
+        # finish_reason themselves.
+        "truncated": payload["finish_reason"] == "length",
     })
 
     base["served_model_mismatch"] = check_served_model_mismatch(payload["response_model"], config, judge_id, log)
@@ -220,8 +243,13 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
         reference_text = html_to_text(item["ground_truth_answer_html"])
         for judge_id in judge_ids:
             judge_model = clients[judge_id][1].model
+            # parse_version/max_tokens (2026-10-07 follow-up) -- a
+            # parse-error record written under an OLDER PARSE_VERSION (or
+            # a different REQUEST_MAX_TOKENS) no longer matches this key,
+            # so it's naturally treated as "not done" and gets re-judged,
+            # without any parse_error-specific special-casing here.
             key = (item["run_id"], item.get("config_hash"), item["question_id"], judge_id,
-                   judge_model, PROMPT_VERSION, BLINDING_VERSION)
+                   judge_model, PROMPT_VERSION, BLINDING_VERSION, PARSE_VERSION, REQUEST_MAX_TOKENS)
             if key in done:
                 skipped += 1
                 continue

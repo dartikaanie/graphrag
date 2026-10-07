@@ -51,7 +51,9 @@ def test_format_tags_converts_sord_angle_bracket_format():
 
 
 def _done_key(run_id, qid, judge_id, model="m", prompt_version="judge-v1", blinding_version="blind-v2", config_hash="h1"):
-    return (run_id, config_hash, qid, judge_id, model, prompt_version, blinding_version)
+    # parse_version/max_tokens (2026-10-07 follow-up) trail as None --
+    # the records this helper matches against never set either field.
+    return (run_id, config_hash, qid, judge_id, model, prompt_version, blinding_version, None, None)
 
 
 def test_load_already_done_keys_on_run_id_config_hash_question_id_judge_id_model_prompt_version_blinding_version(tmp_path):
@@ -385,4 +387,6 @@ def test_resume_key_includes_config_hash_judge_model_prompt_and_blinding_version
         "run_id": "r1", "config_hash": "h1", "question_id": 1, "judge_id": "primary",
         "judge_model": "m1", "prompt_version": "judge-v1", "blinding_version": "blind-v2",
     }
-    assert _resume_key(record) == ("r1", "h1", 1, "primary", "m1", "judge-v1", "blind-v2")
+    # parse_version/max_tokens (2026-10-07 follow-up) trail as None -- v1
+    # records never carry either field.
+    assert _resume_key(record) == ("r1", "h1", 1, "primary", "m1", "judge-v1", "blind-v2", None, None)

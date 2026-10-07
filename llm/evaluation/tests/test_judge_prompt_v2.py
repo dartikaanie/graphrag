@@ -127,3 +127,92 @@ def test_parse_judgment_v2_strips_markdown_fences():
 def test_parse_judgment_v2_missing_or_invalid_fields_are_parse_errors(broken_raw):
     parsed = parse_judgment_v2(broken_raw)
     assert parsed["parse_error"] is True
+    assert parsed["parse_version"] is not None
+
+
+# ---------------------------------------------------------------------
+# parse_judgment_v2 -- narrow tolerance (2026-10-07 follow-up): the JSON
+# STRING "null"/"none" for severity, and the JSON STRING "true"/"false"
+# for reference_conflict, are normalized into their real types. Every
+# other unexpected value for either field must STILL be a parse_error --
+# this is a narrow allow-list, not general type coercion.
+# ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("severity_value", ["null", "NULL", "Null", "none", "NONE"])
+def test_parse_judgment_v2_tolerates_string_null_severity(severity_value):
+    raw = _raw(claims=[{"claim": "x", "verdict": "SUPPORTED", "severity": severity_value,
+                         "reference_conflict": False, "evidence": "e"}])
+    parsed = parse_judgment_v2(raw)
+    assert parsed["parse_error"] is False
+    assert parsed["claims"][0]["severity"] is None
+    assert parsed["normalized_fields"] == ["severity"]
+
+
+def test_parse_judgment_v2_real_null_severity_not_counted_as_normalized():
+    """Real JSON null for severity isn't a benign-variant fix -- it was
+    already correct, so it must not inflate the normalized_fields count."""
+    raw = _raw(claims=[{"claim": "x", "verdict": "SUPPORTED", "severity": None,
+                         "reference_conflict": False, "evidence": "e"}])
+    parsed = parse_judgment_v2(raw)
+    assert parsed["parse_error"] is False
+    assert parsed["normalized_fields"] == []
+
+
+@pytest.mark.parametrize("rc_value,expected", [("true", True), ("TRUE", True), ("false", False), ("FALSE", False)])
+def test_parse_judgment_v2_tolerates_string_bool_reference_conflict(rc_value, expected):
+    raw = _raw(claims=[{"claim": "x", "verdict": "SUPPORTED", "severity": None,
+                         "reference_conflict": rc_value, "evidence": "e"}])
+    parsed = parse_judgment_v2(raw)
+    assert parsed["parse_error"] is False
+    assert parsed["claims"][0]["reference_conflict"] is expected
+    assert parsed["normalized_fields"] == ["reference_conflict"]
+
+
+def test_parse_judgment_v2_real_bool_reference_conflict_not_counted_as_normalized():
+    raw = _raw(claims=[{"claim": "x", "verdict": "SUPPORTED", "severity": None,
+                         "reference_conflict": False, "evidence": "e"}])
+    parsed = parse_judgment_v2(raw)
+    assert parsed["normalized_fields"] == []
+
+
+def test_parse_judgment_v2_missing_reference_conflict_defaults_false_not_normalized():
+    """Key absent entirely (not an unexpected-value case) keeps the old
+    default of False and is not reported as a normalization."""
+    raw = _raw(claims=[{"claim": "x", "verdict": "SUPPORTED", "severity": None, "evidence": "e"}])
+    parsed = parse_judgment_v2(raw)
+    assert parsed["parse_error"] is False
+    assert parsed["claims"][0]["reference_conflict"] is False
+    assert parsed["normalized_fields"] == []
+
+
+@pytest.mark.parametrize("severity_value", ["HIGH", "low", "nulll", 1, 1.0, []])
+def test_parse_judgment_v2_other_bad_severity_values_still_parse_error(severity_value):
+    raw = _raw(claims=[{"claim": "x", "verdict": "SUPPORTED", "severity": severity_value,
+                         "reference_conflict": False, "evidence": "e"}])
+    parsed = parse_judgment_v2(raw)
+    assert parsed["parse_error"] is True
+
+
+@pytest.mark.parametrize("rc_value", ["yes", "no", "1", "0", 1, 0, None, [], {}])
+def test_parse_judgment_v2_other_bad_reference_conflict_values_still_parse_error(rc_value):
+    raw = _raw(claims=[{"claim": "x", "verdict": "SUPPORTED", "severity": None,
+                         "reference_conflict": rc_value, "evidence": "e"}])
+    parsed = parse_judgment_v2(raw)
+    assert parsed["parse_error"] is True
+
+
+def test_parse_judgment_v2_multiple_claims_accumulate_normalized_fields_per_occurrence():
+    raw = _raw(claims=[
+        {"claim": "a", "verdict": "SUPPORTED", "severity": "null", "reference_conflict": "false", "evidence": "e"},
+        {"claim": "b", "verdict": "SUPPORTED", "severity": "none", "reference_conflict": False, "evidence": "e"},
+    ])
+    parsed = parse_judgment_v2(raw)
+    assert parsed["parse_error"] is False
+    assert parsed["normalized_fields"] == ["severity", "reference_conflict", "severity"]
+
+
+def test_parse_judgment_v2_parse_version_present_on_success():
+    import judge_prompt_v2
+
+    parsed = parse_judgment_v2(_raw())
+    assert parsed["parse_version"] == judge_prompt_v2.PARSE_VERSION

@@ -84,14 +84,23 @@ def _assert_single_judge_version(records: list[dict], field: str, source_label: 
 
 
 def load_judge_records(paths: list[str]) -> list[dict]:
-    """Checks prompt_version/blinding_version uniqueness BOTH within
-    each individual file AND across every file given together -- the
-    per-file check alone would miss the case of being handed one
-    judge-v1 file and one judge-v2 file in the SAME call (each
-    internally consistent, but mixed as a combined read). Callers that
-    deliberately want to compare v1 against v2 (the v1-vs-v2 comparison
-    view) must read each version's records with a SEPARATE
-    load_judge_records() call, never combined into one."""
+    """Checks prompt_version/blinding_version/parse_version uniqueness
+    BOTH within each individual file AND across every file given
+    together -- the per-file check alone would miss the case of being
+    handed one judge-v1 file and one judge-v2 file in the SAME call
+    (each internally consistent, but mixed as a combined read). Callers
+    that deliberately want to compare v1 against v2 (the v1-vs-v2
+    comparison view) must read each version's records with a SEPARATE
+    load_judge_records() call, never combined into one.
+
+    `parse_version` only exists on judge-v2 records (judge-v1 records
+    have no such field, so `r.get("parse_version")` is None for all of
+    them and the uniqueness check trivially passes with zero non-None
+    values seen) -- added 2026-10-07 so a v2 output file that mixes
+    records parsed under different parse_judgment_v2() logic versions
+    (e.g. before and after a parser fix, re-judged in place rather than
+    reparsed to a new file) is refused here, the same way a mixed
+    prompt_version file already was."""
     records = []
     for path in paths:
         with open(path) as f:
@@ -103,9 +112,11 @@ def load_judge_records(paths: list[str]) -> list[dict]:
                 path_records.append(json.loads(line))
         _assert_single_judge_version(path_records, "prompt_version", path)
         _assert_single_judge_version(path_records, "blinding_version", path)
+        _assert_single_judge_version(path_records, "parse_version", path)
         records.extend(path_records)
     _assert_single_judge_version(records, "prompt_version", ", ".join(paths))
     _assert_single_judge_version(records, "blinding_version", ", ".join(paths))
+    _assert_single_judge_version(records, "parse_version", ", ".join(paths))
     return records
 
 
