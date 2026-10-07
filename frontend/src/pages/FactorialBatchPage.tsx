@@ -1,9 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCheckCompleted, useConfigDefaults, useCreateRun } from '@/api/hooks'
+import type { OfficialCParams } from '@/api/hooks'
 import { InfoTooltip } from '@/components/InfoTooltip'
 import { PARAM_GLOSSARY } from '@/lib/paramGlossary'
 import type { RunCreateParams, RunCondition } from '@/types/run'
+
+const ALL_EDGE_TYPES = ['HAS_ACCEPTED_ANSWER', 'HAS_ANSWER', 'IS_RELATED_TO', 'TAG_COOCCUR', 'EMBED_SIM']
 
 function Field({
   label,
@@ -54,6 +57,13 @@ interface CParams {
   fusionWIntrinsic: number
   semanticExpansionTrustCap: number
   enableSemanticExpansion: boolean
+  cRetrievalVersion: string
+  alpha: number
+  sampleSplit: string
+  maxHops: number
+  edgeTypes: string[]
+  useAuthorTrust: boolean
+  acceptedOnly: boolean
 }
 
 interface DParams {
@@ -90,6 +100,13 @@ function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DPa
     fusion_w_intrinsic: cParams.fusionWIntrinsic,
     semantic_expansion_trust_cap: cParams.semanticExpansionTrustCap,
     enable_semantic_expansion: cParams.enableSemanticExpansion,
+    c_retrieval_version: cParams.cRetrievalVersion,
+    alpha: cParams.cRetrievalVersion === 'v3' ? cParams.alpha : undefined,
+    sample_split: cParams.sampleSplit,
+    max_hops: cParams.maxHops,
+    edge_types: cParams.edgeTypes,
+    use_author_trust: cParams.useAuthorTrust,
+    accepted_only: cParams.acceptedOnly,
   }
 
   const dShared = {
@@ -146,7 +163,7 @@ export function FactorialBatchPage() {
   const { data: defaults } = useConfigDefaults()
   const defaultOversamplePool = defaults?.default_oversample_pool ?? 1536
 
-  const [preset, setPreset] = useState<'pilot' | 'official' | 'custom'>('pilot')
+  const [preset, setPreset] = useState<'pilot' | 'dev' | 'official' | 'custom'>('pilot')
   const [provider, setProvider] = useState('openai')
   const [model, setModel] = useState('gpt-4o-mini')
   const [nSample, setNSample] = useState(10)
@@ -165,6 +182,23 @@ export function FactorialBatchPage() {
   const [semanticExpansionTrustCap, setSemanticExpansionTrustCap] = useState(0.4)
   const [enableSemanticExpansion, setEnableSemanticExpansion] = useState(true)
 
+  // Condition C retrieval v3 (docs/DECISION_C_SCORING.md) -- v2 is still
+  // the default so an unchanged page keeps launching exactly what it
+  // always did.
+  const [cRetrievalVersion, setCRetrievalVersion] = useState<'v2' | 'v3'>('v2')
+  const [alpha, setAlpha] = useState(1.0)
+  const [sampleSplit, setSampleSplit] = useState<'test' | 'dev'>('test')
+
+  // Exploratory switches -- collapsed "Advanced (exploratory)" section,
+  // never used for the stage-1/stage-2 selection itself (see the decision
+  // record's "Exploratory switches" section). Defaults reproduce current
+  // behavior.
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [maxHops, setMaxHops] = useState(2)
+  const [edgeTypes, setEdgeTypes] = useState<string[]>(ALL_EDGE_TYPES)
+  const [useAuthorTrust, setUseAuthorTrust] = useState(false)
+  const [acceptedOnly, setAcceptedOnly] = useState(false)
+
   // Condition D parameters -- identical across both D runs.
   const [nLowLevel, setNLowLevel] = useState(3)
   const [nHighLevel, setNHighLevel] = useState(3)
@@ -173,11 +207,71 @@ export function FactorialBatchPage() {
   const [launching, setLaunching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const applyPreset = (p: 'pilot' | 'official') => {
-    setPreset(p)
-    setNSample(p === 'pilot' ? 10 : 384)
-    setSeed(42)
+  const applyOfficialLock = (officialParams: OfficialCParams | null | undefined) => {
+    if (!officialParams || officialParams.status === 'pending_selection' || !officialParams.c_retrieval_version) return
+    setCRetrievalVersion(officialParams.c_retrieval_version as 'v2' | 'v3')
+    if (officialParams.alpha !== null) setAlpha(officialParams.alpha)
+    setSampleSplit(officialParams.sample_split as 'test' | 'dev')
+    setMaxHops(officialParams.max_hops)
+    setEdgeTypes(officialParams.edge_types)
+    setUseAuthorTrust(officialParams.use_author_trust)
+    setAcceptedOnly(officialParams.accepted_only)
   }
+
+  const applyPreset = (p: 'pilot' | 'dev' | 'official') => {
+    setPreset(p)
+    setSeed(42)
+    if (p === 'pilot') {
+      setNSample(10)
+      setSampleSplit('test')
+    } else if (p === 'dev') {
+      setNSample(50)
+      setSampleSplit('dev')
+    } else {
+      setNSample(384)
+      setSampleSplit('test')
+      applyOfficialLock(defaults?.official_c_params)
+    }
+  }
+
+  // "Official" locks Condition C's v3 params to docs/DECISION_C_SCORING.md
+  // (via /api/config/defaults -> official_c_params) -- any manual edit
+  // after selecting the preset that makes the current form values diverge
+  // from that lock must block launch, not silently launch something the
+  // decision record doesn't actually specify. Mirrors
+  // check_official_c_params_lock() in backend/app/routers/config.py --
+  // see test_config_router.py's tests for that shared logic.
+  const officialLockResult = useMemo((): { allowed: boolean; message: string | null; mismatchedKeys: string[] } => {
+    if (preset !== 'official' || !defaults?.official_c_params) return { allowed: true, message: null, mismatchedKeys: [] }
+    const o = defaults.official_c_params
+    if (o.status === 'pending_selection') {
+      return {
+        allowed: false,
+        message: "Official preset is locked pending the C retrieval v3 decision — see docs/DECISION_C_SCORING.md's Outcome section.",
+        mismatchedKeys: [],
+      }
+    }
+    const current = {
+      c_retrieval_version: cRetrievalVersion, alpha: cRetrievalVersion === 'v3' ? alpha : null,
+      sample_split: sampleSplit, max_hops: maxHops,
+      edge_types: [...edgeTypes].sort(), use_author_trust: useAuthorTrust, accepted_only: acceptedOnly,
+    }
+    const officialNormalized = {
+      c_retrieval_version: o.c_retrieval_version, alpha: o.alpha, sample_split: o.sample_split,
+      max_hops: o.max_hops, edge_types: [...o.edge_types].sort(),
+      use_author_trust: o.use_author_trust, accepted_only: o.accepted_only,
+    }
+    const diffs = Object.keys(officialNormalized).filter(
+      (k) => JSON.stringify((current as Record<string, unknown>)[k]) !== JSON.stringify((officialNormalized as Record<string, unknown>)[k]),
+    )
+    if (diffs.length === 0) return { allowed: true, message: null, mismatchedKeys: [] }
+    return {
+      allowed: false,
+      message: `Official preset parameters differ from docs/DECISION_C_SCORING.md on: ${diffs.join(', ')}.`,
+      mismatchedKeys: diffs,
+    }
+  }, [preset, defaults, cRetrievalVersion, alpha, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly])
+  const officialMismatch = officialLockResult.allowed ? null : officialLockResult.mismatchedKeys
 
   const effectiveOversamplePool = oversamplePool ? Number(oversamplePool) : defaultOversamplePool
 
@@ -185,13 +279,17 @@ export function FactorialBatchPage() {
     () =>
       buildFactorialRuns(
         { provider, model, nSample, seed, oversamplePool: effectiveOversamplePool, topK },
-        { nAnchor, nSemanticExpansion, fusionWPathTrust, fusionWIntrinsic, semanticExpansionTrustCap, enableSemanticExpansion },
+        {
+          nAnchor, nSemanticExpansion, fusionWPathTrust, fusionWIntrinsic, semanticExpansionTrustCap, enableSemanticExpansion,
+          cRetrievalVersion, alpha, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly,
+        },
         { nLowLevel, nHighLevel },
-        { c_retrieval_version: defaults?.c_retrieval_version, d_retrieval_version: defaults?.d_retrieval_version },
+        { c_retrieval_version: cRetrievalVersion === 'v3' ? 'v3' : defaults?.c_retrieval_version, d_retrieval_version: defaults?.d_retrieval_version },
       ),
     [
       provider, model, nSample, seed, effectiveOversamplePool, topK,
       nAnchor, nSemanticExpansion, fusionWPathTrust, fusionWIntrinsic, semanticExpansionTrustCap, enableSemanticExpansion,
+      cRetrievalVersion, alpha, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly,
       nLowLevel, nHighLevel, defaults,
     ],
   )
@@ -271,6 +369,12 @@ export function FactorialBatchPage() {
           Pilot (n=10)
         </button>
         <button
+          onClick={() => applyPreset('dev')}
+          className={`px-3 py-1.5 text-sm rounded-md border ${preset === 'dev' ? 'border-primary bg-primary-border text-primary' : 'border-border-strong text-text-primary hover:bg-bg'}`}
+        >
+          Dev (n=50)
+        </button>
+        <button
           onClick={() => applyPreset('official')}
           className={`px-3 py-1.5 text-sm rounded-md border ${preset === 'official' ? 'border-primary bg-primary-border text-primary' : 'border-border-strong text-text-primary hover:bg-bg'}`}
         >
@@ -282,7 +386,22 @@ export function FactorialBatchPage() {
         >
           Custom
         </button>
+        {sampleSplit === 'dev' && (
+          <span className="px-2 py-1 text-xs rounded-md bg-white border border-warning/40 text-warning self-center">dev split</span>
+        )}
       </div>
+
+      {!officialLockResult.allowed && (
+        <div className="mb-4 px-3 py-2.5 text-sm border border-danger/40 rounded-md bg-white text-danger">
+          {officialLockResult.message}
+          {officialMismatch && (
+            <>
+              {' '}Click "Official (n=384)" again to re-apply the lock, or switch to Custom if you mean to deviate
+              intentionally.
+            </>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-4 mb-4">
         <Field label="Provider"><input className={inputClass} value={provider} onChange={(e) => setProvider(e.target.value)} /></Field>
@@ -331,6 +450,91 @@ export function FactorialBatchPage() {
             <InfoTooltip text={PARAM_GLOSSARY.enable_semantic_expansion} />
           </span>
         </label>
+
+        <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-border">
+          <Field label="c_retrieval_version">
+            <select
+              className={inputClass} value={cRetrievalVersion}
+              onChange={(e) => { setCRetrievalVersion(e.target.value as 'v2' | 'v3'); setPreset('custom') }}
+            >
+              <option value="v2">v2 (trust only)</option>
+              <option value="v3">v3 (relevance-aware, docs/DECISION_C_SCORING.md)</option>
+            </select>
+          </Field>
+          <Field label="alpha">
+            <input
+              type="number" step="0.25" min="0" max="1" disabled={cRetrievalVersion !== 'v3'} className={inputClass}
+              value={alpha} onChange={(e) => { setAlpha(Number(e.target.value)); setPreset('custom') }}
+            />
+          </Field>
+          <Field label="sample_split">
+            <select
+              className={inputClass} value={sampleSplit}
+              onChange={(e) => { setSampleSplit(e.target.value as 'test' | 'dev'); setPreset('custom') }}
+            >
+              <option value="test">test</option>
+              <option value="dev">dev</option>
+            </select>
+          </Field>
+        </div>
+
+        <button
+          type="button" onClick={() => setShowAdvanced((v) => !v)}
+          className="mt-4 text-xs text-text-secondary hover:text-text-primary underline"
+        >
+          {showAdvanced ? 'Hide' : 'Show'} Advanced (exploratory) C parameters
+        </button>
+        {showAdvanced && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-xs text-text-secondary mb-3">
+              These never affect the stage-1/stage-2 selection outcome (see docs/DECISION_C_SCORING.md's
+              "Exploratory switches" section) — reported descriptively only.
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="max_hops">
+                <input
+                  type="number" min="1" max="2" className={inputClass} value={maxHops}
+                  onChange={(e) => { setMaxHops(Number(e.target.value)); setPreset('custom') }}
+                />
+              </Field>
+              <Field label="use_author_trust">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox" checked={useAuthorTrust}
+                    onChange={(e) => { setUseAuthorTrust(e.target.checked); setPreset('custom') }}
+                  />
+                  <span className="text-text-secondary">on</span>
+                </label>
+              </Field>
+              <Field label="accepted_only">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox" checked={acceptedOnly}
+                    onChange={(e) => { setAcceptedOnly(e.target.checked); setPreset('custom') }}
+                  />
+                  <span className="text-text-secondary">on</span>
+                </label>
+              </Field>
+            </div>
+            <div className="mt-3">
+              <span className="text-sm text-text-secondary block mb-1">edge_types</span>
+              <div className="flex gap-3 flex-wrap">
+                {ALL_EDGE_TYPES.map((et) => (
+                  <label key={et} className="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox" checked={edgeTypes.includes(et)}
+                      onChange={(e) => {
+                        setEdgeTypes((prev) => (e.target.checked ? [...prev, et] : prev.filter((x) => x !== et)))
+                        setPreset('custom')
+                      }}
+                    />
+                    {et}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="border border-border rounded-lg bg-surface p-4 mb-4">
@@ -400,7 +604,8 @@ export function FactorialBatchPage() {
                   <td className="py-1 pr-3">{r.params.oversample_pool}</td>
                   <td className="py-1 pr-3 whitespace-nowrap">
                     {r.condition === 'C' &&
-                      `top_k=${r.params.top_k}, n_anchor=${r.params.n_anchor}, n_exp=${r.params.n_semantic_expansion}, path=${r.params.fusion_w_path_trust}, intrinsic=${r.params.fusion_w_intrinsic}, cap=${r.params.semantic_expansion_trust_cap}, exp_on=${r.params.enable_semantic_expansion}`}
+                      `top_k=${r.params.top_k}, n_anchor=${r.params.n_anchor}, n_exp=${r.params.n_semantic_expansion}, path=${r.params.fusion_w_path_trust}, intrinsic=${r.params.fusion_w_intrinsic}, cap=${r.params.semantic_expansion_trust_cap}, exp_on=${r.params.enable_semantic_expansion}, `
+                      + `c_retrieval=${r.params.c_retrieval_version}${r.params.c_retrieval_version === 'v3' ? `, alpha=${r.params.alpha}` : ''}, split=${r.params.sample_split}`}
                     {r.condition === 'D' && `top_k=${r.params.top_k}, n_low=${r.params.n_low_level}, n_high=${r.params.n_high_level}`}
                     {r.condition !== 'C' && r.condition !== 'D' && `top_k=${r.params.top_k ?? '—'}`}
                   </td>
@@ -409,6 +614,9 @@ export function FactorialBatchPage() {
                       <span className="text-text-muted">skip (already completed)</span>
                     ) : (
                       <span className="text-primary">will launch</span>
+                    )}
+                    {r.params.sample_split === 'dev' && (
+                      <span className="ml-2 px-1.5 py-0.5 text-xs rounded bg-white border border-warning/40 text-warning">dev</span>
                     )}
                   </td>
                 </tr>
@@ -420,7 +628,7 @@ export function FactorialBatchPage() {
 
           <button
             onClick={handleLaunch}
-            disabled={launching}
+            disabled={launching || !officialLockResult.allowed}
             className="mt-4 px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary-hover disabled:opacity-50"
           >
             {launching ? 'Launching…' : `Confirm & Launch ${runs.length - alreadyCompleted.size} run(s)`}

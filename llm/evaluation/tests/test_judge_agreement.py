@@ -382,3 +382,97 @@ def test_compute_run_label_summary_consistency_rate_none_when_no_data():
     summary = compute_run_label_summary(records, "primary")["A"]
     assert summary["parse_error_rate"] == 0.0
     assert summary["consistency_rate"] is None
+
+
+def test_load_judge_records_refuses_mixed_version_across_separate_files(tmp_path):
+    """Each file individually is internally consistent (all judge-v1,
+    all judge-v2), but combining them in one load_judge_records() call
+    must still be refused -- the per-file check alone would miss this."""
+    import json
+
+    from judge_agreement import MixedJudgeVersionError, load_judge_records
+
+    v1_path = tmp_path / "jv1.jsonl"
+    v1_path.write_text(json.dumps({"run_id": "r1", "question_id": 1, "judge_id": "primary",
+                                    "prompt_version": "judge-v1", "blinding_version": "blind-v2"}) + "\n")
+    v2_path = tmp_path / "jv2.jsonl"
+    v2_path.write_text(json.dumps({"run_id": "r1", "question_id": 2, "judge_id": "primary",
+                                    "prompt_version": "judge-v2", "blinding_version": "blind-v2"}) + "\n")
+
+    with pytest.raises(MixedJudgeVersionError):
+        load_judge_records([str(v1_path), str(v2_path)])
+
+
+def test_load_judge_records_accepts_separate_calls_per_version(tmp_path):
+    """The v1-vs-v2 comparison view's correct usage pattern: one call
+    per version, never combined."""
+    import json
+
+    from judge_agreement import load_judge_records
+
+    v1_path = tmp_path / "jv1.jsonl"
+    v1_path.write_text(json.dumps({"run_id": "r1", "question_id": 1, "judge_id": "primary",
+                                    "prompt_version": "judge-v1", "blinding_version": "blind-v2"}) + "\n")
+    v2_path = tmp_path / "jv2.jsonl"
+    v2_path.write_text(json.dumps({"run_id": "r1", "question_id": 1, "judge_id": "primary",
+                                    "prompt_version": "judge-v2", "blinding_version": "blind-v2"}) + "\n")
+
+    v1_records = load_judge_records([str(v1_path)])
+    v2_records = load_judge_records([str(v2_path)])
+    assert v1_records[0]["prompt_version"] == "judge-v1"
+    assert v2_records[0]["prompt_version"] == "judge-v2"
+
+
+def test_compute_run_label_summary_v2_extra_math():
+    from judge_agreement import compute_run_label_summary_v2_extra
+
+    def v2_record(qid, label, completeness, claims=None, attempted_claims_conflict=False):
+        r = _record("r1", qid, "primary", label, run_label="A")
+        r["completeness"] = completeness
+        r["claims"] = claims or []
+        r["attempted_claims_conflict"] = attempted_claims_conflict
+        return r
+
+    records = [
+        v2_record(1, "FAKTUAL", "FULL"),
+        v2_record(2, "FAKTUAL", "PARTIAL"),
+        v2_record(3, "HALUSINASI_SEBAGIAN", "FULL",
+                   claims=[{"claim": "x", "reference_conflict": True}]),
+        v2_record(4, "ABSTAIN", "NONE", attempted_claims_conflict=True),
+    ]
+    summary = compute_run_label_summary_v2_extra(records, "primary")["A"]
+    assert summary["completeness_distribution"] == {"FULL": 2, "PARTIAL": 1, "NONE": 1}
+    # only record 1 is FAKTUAL + FULL
+    assert summary["factual_and_complete_rate"] == round(1 / 4, 3)
+    # only record 3 has a reference_conflict claim
+    assert summary["pct_with_reference_conflict"] == round(100 * 1 / 4, 2)
+    # only record 4 has attempted_claims_conflict=True
+    assert summary["attempted_claims_conflict_rate"] == round(1 / 4, 3)
+
+
+def test_compute_run_label_summary_v2_extra_empty_for_unknown_judge_id():
+    from judge_agreement import compute_run_label_summary_v2_extra
+
+    records = [_record("r1", 1, "primary", "FAKTUAL")]
+    assert compute_run_label_summary_v2_extra(records, "secondary") == {}
+
+
+def test_compute_kappas_never_returns_nan_json_incompatible(tmp_path):
+    """A degenerate single-ordinal-pair case (or any case with zero
+    label variance) makes sklearn return NaN, not raise -- NaN is not
+    valid JSON, so every API response serializing this dict would 500
+    without normalizing it to None (same meaning as the n_used=0 case)."""
+    import math
+
+    from judge_agreement import compute_kappas
+
+    pairs = [
+        (_record("r1", 1, "primary", "ABSTAIN"), _record("r1", 1, "secondary", "ABSTAIN")),
+        (_record("r1", 2, "primary", "FAKTUAL"), _record("r1", 2, "secondary", "FAKTUAL")),
+    ]
+    result = compute_kappas(pairs)
+    assert result["n_used"] == 1  # only the FAKTUAL/FAKTUAL pair is ordinal
+    assert result["weighted"] is None or not (isinstance(result["weighted"], float) and math.isnan(result["weighted"]))
+    assert result["unweighted"] is None or not (isinstance(result["unweighted"], float) and math.isnan(result["unweighted"]))
+    import json
+    json.dumps(result)  # must not raise

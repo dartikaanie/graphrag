@@ -86,3 +86,63 @@ def test_batch_launched_at_field_preferred_over_min_run_started_at():
     runs[1]["batch_launched_at"] = "2026-10-05T00:00:00+00:00"
     batches = svc.group_into_batches(runs)
     assert batches[0]["launched_at"] == "2026-10-05T00:00:00+00:00"
+
+
+def test_find_batch_id_for_output_paths_resolves_recorded_batch(tmp_path, monkeypatch):
+    """A judge job's run_files should resolve to the SAME batch_id GET
+    /api/history/batches shows for the underlying generation runs --
+    the real bug this closes: before this function existed, a job
+    covering runs with no RECORDED batch_id (the common case for any
+    pilot batch predating that feature) never resolved to any batch_id
+    at all, so it had no working "View results" link anywhere."""
+    from app.services import history_service
+
+    output_path = tmp_path / "out.jsonl"
+    output_path.write_text("")
+    record = {
+        "run_started_at": "2026-10-05T00:00:00+00:00", "condition": "A", "status": "success",
+        "output_path": str(output_path), "batch_id": "batch-xyz",
+    }
+
+    def fake_list_history(condition, date_from, date_to, page, page_size, show_superseded=False):
+        return [record], 1
+
+    monkeypatch.setattr(history_service, "list_history", fake_list_history)
+
+    result = svc.find_batch_id_for_output_paths([str(output_path)])
+    assert result == "batch-xyz"
+
+
+def test_find_batch_id_for_output_paths_resolves_inferred_batch(tmp_path, monkeypatch):
+    """Same as above, but for runs with NO recorded batch_id -- must
+    fall back to the inferred clustering, not return None."""
+    from app.services import history_service
+
+    output_path = tmp_path / "out.jsonl"
+    output_path.write_text("")
+    record = {
+        "run_started_at": "2026-10-05T00:00:00+00:00", "condition": "A", "status": "success",
+        "output_path": str(output_path), "n_sample_target": 10, "seed": 42,
+        "provider": "openai", "model": "gpt-4o-mini", "oversample_pool": 1536,
+    }
+
+    def fake_list_history(condition, date_from, date_to, page, page_size, show_superseded=False):
+        return [record], 1
+
+    monkeypatch.setattr(history_service, "list_history", fake_list_history)
+
+    result = svc.find_batch_id_for_output_paths([str(output_path)])
+    assert result is not None
+    assert result.startswith("inferred-")
+
+
+def test_find_batch_id_for_output_paths_returns_none_for_unmatched_path(tmp_path, monkeypatch):
+    from app.services import history_service
+
+    def fake_list_history(condition, date_from, date_to, page, page_size, show_superseded=False):
+        return [], 0
+
+    monkeypatch.setattr(history_service, "list_history", fake_list_history)
+
+    result = svc.find_batch_id_for_output_paths([str(tmp_path / "does_not_exist.jsonl")])
+    assert result is None

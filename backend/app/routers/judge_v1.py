@@ -139,6 +139,24 @@ def results_disagreements(judge_id_a: str = "primary", judge_id_b: str = "second
     return {"disagreements": disagreements}
 
 
+@router.get("/results/question-detail")
+def results_question_detail(run_id: str, question_ids: str):
+    """Full per-question export bundle (Step 2.3): question/body/tags,
+    reference answer, per-context-item relevance label, candidate raw +
+    blinded, citation outcome, and each judge's label/claims/reasoning/
+    served_model. `question_ids` is a comma-separated list."""
+    try:
+        qids = [int(q) for q in question_ids.split(",") if q.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="question_ids must be a comma-separated list of integers")
+    if not qids:
+        raise HTTPException(status_code=400, detail="question_ids must not be empty")
+    try:
+        return {"questions": engine_service.build_question_detail(run_id, qids)}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.post("/human-export")
 def human_export(body: JudgeV1ExportHumanCsvRequest):
     from app.services import history_service

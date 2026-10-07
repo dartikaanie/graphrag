@@ -194,6 +194,26 @@ C_RETRIEVAL_VERSION = "v2"
 # 11_densify_embedding_similarity.py), diskalakan oleh cosine score-nya.
 DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP = 0.4
 
+# C retrieval v3 (docs/DECISION_C_SCORING.md) -- defaults for every v3-
+# only / exploratory parameter, used BOTH as the actual default behavior
+# AND as the backward-compatibility threshold in build_config() below (a
+# key is included in the hashed dict ONLY when it differs from its
+# default, or -- for `alpha` -- when c_retrieval_version is "v3"). This
+# guarantees build_config() for a v2 run with no exploratory overrides
+# produces a dict BYTE-IDENTICAL to the one every existing run's
+# config_hash was computed from, so config_hash for every pre-existing
+# run never changes. See test_config_hash_backward_compatibility.py,
+# which recomputes all 9 real pilot runs' config_hash and asserts an
+# exact match. Defined here (near the top of the module, before
+# traverse_graph()/fuse_and_rank()/build_config() all reference them) so
+# every function below can use them as default argument values.
+DEFAULT_SAMPLE_SPLIT = "test"
+DEFAULT_MAX_HOPS = 2
+DEFAULT_EDGE_TYPES = ("HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR", "EMBED_SIM")
+DEFAULT_USE_AUTHOR_TRUST = False
+DEFAULT_ACCEPTED_ONLY = False
+AUTHOR_TRUST_BETA = 0.3  # see docs/DECISION_C_SCORING.md's use_author_trust section
+
 log = print
 LOG_DIR = Path("logs")
 
@@ -275,7 +295,13 @@ def sample_questions(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
     """NESTED SAMPLING -- IDENTIK Kondisi A/B (lihat komentar lengkap di
     a_baseline_replication.py). Permutasi SEKALI dgn seed tetap, ambil N
     pertama sbg PREFIX -- menjamin sample n=30 SUBSET PERSIS dari n=100/n=384,
-    SELAMA oversample_pool & seed identik di semua run/kondisi."""
+    SELAMA oversample_pool & seed identik di semua run/kondisi.
+
+    UNCHANGED since before the dev/test split existed -- byte-identical
+    to sample_questions_split(df, n, seed, split="test"), kept as its own
+    function (rather than a thin wrapper) so this function's behavior can
+    never be affected by a bug in the new split logic. See
+    test_sample_questions_split.py's byte-identical-to-test assertion."""
     log(f"[3/9] Mengambil {n} pertanyaan evaluasi PERTAMA dari permutasi tetap "
           f"(seed={seed}) -- prefix ini NESTED thd n_sample lain...")
     df_permuted = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
@@ -283,6 +309,38 @@ def sample_questions(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
         log(f"      [WARN] Populasi ({len(df_permuted)}) < target ({n}), pakai semua.")
         return df_permuted
     return df_permuted.head(n).reset_index(drop=True)
+
+
+def sample_questions_split(df: pd.DataFrame, n: int, seed: int, split: str = "test",
+                            dev_offset: int = 385) -> pd.DataFrame:
+    """Same deterministic permutation as sample_questions() (SAME
+    `df.sample(frac=1.0, random_state=seed)` call), but returns a
+    position SLICE instead of always `head(n)`:
+      - split="test" (default): positions 1..n (iloc[0:n]) -- BYTE-
+        IDENTICAL to sample_questions(df, n, seed) today. Existing CLI/
+        dashboard behavior is unaffected by this function existing.
+      - split="dev": positions dev_offset..dev_offset+n-1 (1-indexed in
+        docs/DECISION_C_SCORING.md's "positions 385-434" language ==
+        iloc[384:434] here, since dev_offset is given 1-indexed and
+        converted to a 0-indexed start below).
+    Disjointness from the test split (positions 1..384) is a property of
+    slicing non-overlapping ranges of the SAME permutation -- guaranteed
+    as long as dev_offset > the largest test n_sample ever used (384),
+    never re-derived from a different seed or a fresh shuffle.
+    """
+    df_permuted = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    if split == "test":
+        start = 0
+    elif split == "dev":
+        start = dev_offset - 1  # 1-indexed position -> 0-indexed start
+    else:
+        raise ValueError(f"Unknown sample_split '{split}' -- must be 'test' or 'dev'")
+
+    end = start + n
+    if end > len(df_permuted):
+        log(f"      [WARN] Populasi ({len(df_permuted)}) < requested slice end ({end}) "
+            f"for split='{split}' -- returning fewer rows than requested.")
+    return df_permuted.iloc[start:end].reset_index(drop=True)
 
 
 def get_accepted_answers(con, answers_parquet: str, accepted_answer_ids: list) -> pd.DataFrame:
@@ -406,23 +464,44 @@ def anchor_via_vector_search(query_emb: np.ndarray, index, ids_arr: np.ndarray,
 # ---------------------------------------------------------------------
 
 def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set,
-                    exclude_answer_ids: set) -> list:
+                    exclude_answer_ids: set, max_hops: int = DEFAULT_MAX_HOPS,
+                    edge_types: tuple | None = None) -> list:
     """CATATAN: traversal saat ini FIXED di 1-hop (jawaban langsung anchor)
     + 2-hop (anchor -> Question terkait -> jawabannya). Tidak digeneralisasi
     ke N-hop sembarang -- kalau nanti butuh >2 hop, tulis query tambahan
     dgn pola yang sama (JANGAN pakai variable-length path [*1..N] tanpa
     exclusion per-hop, karena leakage exclusion HARUS diterapkan di
-    SETIAP node yang dilewati, bukan cuma titik akhir)."""
+    SETIAP node yang dilewati, bukan cuma titik akhir).
+
+    `max_hops`/`edge_types` (C retrieval v3 exploratory switches, Step
+    4b): default (2, every type below) reproduces the query exactly as
+    it always ran. `max_hops=1` skips the 2-hop query entirely.
+    `edge_types` filters which relationship types each query's MATCH may
+    traverse -- the two 1-hop fetch types (HAS_ACCEPTED_ANSWER,
+    HAS_ANSWER) and the three 2-hop relation types (IS_RELATED_TO,
+    TAG_COOCCUR, EMBED_SIM) are each intersected with `edge_types`
+    independently, so e.g. edge_types=("HAS_ACCEPTED_ANSWER",) alone
+    disables HAS_ANSWER's 1-hop fetch AND (having no 2-hop relation
+    types left) the entire 2-hop query.
+    """
+    edge_types = set(edge_types) if edge_types is not None else set(DEFAULT_EDGE_TYPES)
+    fetch_types = [t for t in ("HAS_ACCEPTED_ANSWER", "HAS_ANSWER") if t in edge_types]
+    relation_types = [t for t in ("IS_RELATED_TO", "TAG_COOCCUR", "EMBED_SIM") if t in edge_types]
+
     exclude_q = list(exclude_question_ids) or [-1]
     exclude_a = list(exclude_answer_ids) or [-1]
 
     candidates = []
+    if not fetch_types:
+        return candidates
+
+    fetch_pattern = "|".join(fetch_types)
     with driver.session(database=database) as session:
         # 1-hop: jawaban langsung milik anchor
         result = session.run(
-            """
+            f"""
             UNWIND $anchor_ids AS anchor_id
-            MATCH (anchor:Question {id: anchor_id})-[r:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
+            MATCH (anchor:Question {{id: anchor_id}})-[r:{fetch_pattern}]->(a:Answer)
             WHERE NOT a.id IN $exclude_a
             RETURN anchor_id AS via_question_id, anchor.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
@@ -437,26 +516,49 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
         # 2-hop: anchor -> Question terkait (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM)
         # -> jawaban Question terkait tsb. EXCLUDE eval question sbg Question
         # terkait (leakage prevention #2) DAN exclude jawabannya.
-        result = session.run(
-            """
-            UNWIND $anchor_ids AS anchor_id
-            MATCH (anchor:Question {id: anchor_id})-[r2:IS_RELATED_TO|TAG_COOCCUR|EMBED_SIM]->(q2:Question)
-            WHERE NOT q2.id IN $exclude_q
-            MATCH (q2)-[r3:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
-            WHERE NOT a.id IN $exclude_a
-            WITH q2, a, r2, r3, (r2.weight * r3.weight) AS edge_weight
-            ORDER BY edge_weight DESC, a.id ASC
-            LIMIT 50
-            RETURN q2.id AS via_question_id, q2.title AS via_question_title,
-                   a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
-                   a.isAccepted AS is_accepted, edge_weight, 2 AS hop,
-                   (type(r2) + '->' + type(r3)) AS rel_type
-            """,
-            anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
-        )
-        candidates.extend(dict(record) for record in result)
+        if max_hops >= 2 and relation_types:
+            relation_pattern = "|".join(relation_types)
+            result = session.run(
+                f"""
+                UNWIND $anchor_ids AS anchor_id
+                MATCH (anchor:Question {{id: anchor_id}})-[r2:{relation_pattern}]->(q2:Question)
+                WHERE NOT q2.id IN $exclude_q
+                MATCH (q2)-[r3:{fetch_pattern}]->(a:Answer)
+                WHERE NOT a.id IN $exclude_a
+                WITH q2, a, r2, r3, (r2.weight * r3.weight) AS edge_weight
+                ORDER BY edge_weight DESC, a.id ASC
+                LIMIT 50
+                RETURN q2.id AS via_question_id, q2.title AS via_question_title,
+                       a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
+                       a.isAccepted AS is_accepted, edge_weight, 2 AS hop,
+                       (type(r2) + '->' + type(r3)) AS rel_type
+                """,
+                anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
+            )
+            candidates.extend(dict(record) for record in result)
 
     return candidates
+
+
+def fetch_author_trust(driver, database, answer_ids: list[int]) -> dict[int, float]:
+    """Batched AUTHOR_TRUST edge weight lookup, keyed by answer_id.
+    Answers with no AUTHOR_TRUST edge (deleted/anonymous author, or the
+    edge genuinely absent) are simply missing from the returned dict --
+    callers must default to 0.0 for a missing key (see
+    docs/DECISION_C_SCORING.md's use_author_trust formula), never treat
+    a missing key as an error."""
+    if not answer_ids:
+        return {}
+    with driver.session(database=database) as session:
+        result = session.run(
+            """
+            UNWIND $answer_ids AS aid
+            MATCH (a:Answer {id: aid})-[r:AUTHOR_TRUST]->(:User)
+            RETURN aid AS answer_id, r.weight AS weight
+            """,
+            answer_ids=list(answer_ids),
+        )
+        return {int(record["answer_id"]): float(record["weight"]) for record in result}
 
 
 # ---------------------------------------------------------------------
@@ -465,14 +567,23 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
 
 def semantic_expansion(driver, database, traversal_candidates: list, index, ids_arr: np.ndarray,
                         sbert_model, n_expansion: int, already_seen_qids: set,
-                        exclude_question_ids: set, exclude_answer_ids: set) -> list:
+                        exclude_question_ids: set, exclude_answer_ids: set,
+                        edge_types: tuple | None = None) -> list:
     """Ambil s.d. 3 via_question unik dari hasil traversal sbg query baru
     (F4: "simpul hasil Graph Traversal sebagai anchor pencarian vektor").
     Utk tiap query baru, cari n_expansion Question tetangga (vector search)
     yang BELUM pernah muncul, lalu ambil jawaban 1-hop-nya saja (TIDAK
     traversal lebih jauh lagi -- dibatasi supaya latency tetap terkendali,
-    NF3 <=15 detik)."""
-    if not traversal_candidates:
+    NF3 <=15 detik).
+
+    `edge_types` (C retrieval v3 exploratory switch, Step 4b): filters
+    the 1-hop fetch types the same way traverse_graph() does. Default
+    (every type) reproduces the query exactly as it always ran. If
+    neither HAS_ACCEPTED_ANSWER nor HAS_ANSWER survives the filter,
+    expansion can fetch nothing and returns [] immediately."""
+    edge_types = set(edge_types) if edge_types is not None else set(DEFAULT_EDGE_TYPES)
+    fetch_types = [t for t in ("HAS_ACCEPTED_ANSWER", "HAS_ANSWER") if t in edge_types]
+    if not traversal_candidates or not fetch_types:
         return []
 
     seed_questions = {}
@@ -496,12 +607,13 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
         return []
 
     exclude_a = list(exclude_answer_ids) or [-1]
+    fetch_pattern = "|".join(fetch_types)
     candidates = []
     with driver.session(database=database) as session:
         result = session.run(
-            """
+            f"""
             UNWIND $qids AS qid
-            MATCH (q:Question {id: qid})-[r:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
+            MATCH (q:Question {{id: qid}})-[r:{fetch_pattern}]->(a:Answer)
             WHERE NOT a.id IN $exclude_a
             RETURN qid AS via_question_id, q.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
@@ -520,14 +632,88 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
 # FUSI -- dedup, rerank by combined trust score, chunking, cap top-K
 # ---------------------------------------------------------------------
 
+def _truncate_doc_text(enc, doc_text: str, token_chunk_limit: int) -> str:
+    token_ids = enc.encode(doc_text)
+    if len(token_ids) > token_chunk_limit:
+        return enc.decode(token_ids[:token_chunk_limit])
+    return doc_text
+
+
+def min_max_normalize(values: list[float]) -> list[float]:
+    """Per docs/DECISION_C_SCORING.md's sim_norm definition: min-max over
+    the given pool. If all values are equal (including a single-item
+    pool), every normalized value is 1 -- NOT 0 or NaN, so a uniformly
+    irrelevant-but-tied pool doesn't get final_score=0 by a division
+    artifact."""
+    if not values:
+        return []
+    lo, hi = min(values), max(values)
+    if hi - lo == 0:
+        return [1.0 for _ in values]
+    return [(v - lo) / (hi - lo) for v in values]
+
+
+def compute_candidate_similarities(embed_model, query_emb: np.ndarray, texts: list[str],
+                                    answer_ids: list[int], cache=None) -> list[float]:
+    """Batched cosine similarity of `query_emb` (already L2-normalized,
+    see docs/DECISION_C_SCORING.md's embedding-consistency section)
+    against each of `texts`, encoded with the SAME all-MiniLM-L6-v2
+    instance, explicitly L2-normalized the same way. `cache` (an
+    embedding_cache.EmbeddingCache, optional) is checked per (answer_id,
+    text) before encoding and populated for any miss -- a batched encode
+    covers only the misses, never the whole pool when most of it is
+    already cached (e.g. repeated α-sweep runs over the same dev set)."""
+    query_vec = np.asarray(query_emb, dtype=np.float32).reshape(-1)
+    query_norm = np.linalg.norm(query_vec)
+    if query_norm > 0:
+        query_vec = query_vec / query_norm
+
+    vectors: list[np.ndarray | None] = [None] * len(texts)
+    to_encode_idx = []
+    to_encode_text = []
+    if cache is not None:
+        for i, (aid, text) in enumerate(zip(answer_ids, texts)):
+            cached = cache.get(aid, text)
+            if cached is not None:
+                vectors[i] = cached
+            else:
+                to_encode_idx.append(i)
+                to_encode_text.append(text)
+    else:
+        to_encode_idx = list(range(len(texts)))
+        to_encode_text = texts
+
+    if to_encode_text:
+        encoded = embed_model.encode(to_encode_text, convert_to_numpy=True, device="cpu", batch_size=32)
+        encoded = np.asarray(encoded, dtype=np.float32)
+        norms = np.linalg.norm(encoded, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-9
+        encoded = encoded / norms
+        for j, i in enumerate(to_encode_idx):
+            vectors[i] = encoded[j]
+            if cache is not None:
+                cache.put(answer_ids[i], texts[i], encoded[j])
+
+    return [float(np.dot(query_vec, v)) for v in vectors]
+
+
 def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int,
                    token_chunk_limit: int, fusion_mode: str = "trust_weighted",
                    w_path_trust: float = DEFAULT_FUSION_W_PATH_TRUST,
                    w_intrinsic: float = DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST,
-                   expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP) -> list:
+                   expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP,
+                   c_retrieval_version: str = "v2", alpha: float | None = None,
+                   embed_model=None, query_emb: np.ndarray | None = None,
+                   embedding_cache=None, accepted_only: bool = DEFAULT_ACCEPTED_ONLY,
+                   use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST) -> tuple[list, dict]:
     """Fusi graph_candidates + expansion_candidates -> top-K unified context.
+    Returns (final_context_items, meta) -- `meta` is {} for
+    c_retrieval_version="v2" (nothing new to report); for "v3" it carries
+    {"candidate_pool_size": N} (Step 3.5's required per-question pool
+    size), per docs/DECISION_C_SCORING.md.
 
-    `fusion_mode`:
+    `fusion_mode` (c_retrieval_version="v2" ONLY -- ignored entirely for
+    "v3", where `alpha` supersedes it):
       - "trust_weighted" (default): PERSIS perilaku asli -- combined_score
         dari w_path_trust*edge_weight + w_intrinsic*answer_trust_score
         (proxy expansion_trust_cap utk kandidat expansion-only), dedup by
@@ -541,6 +727,16 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
         skor yang relevan dibandingkan pada mode ini). combined_score tetap
         dihitung & diisi di record (skema JSONL tetap konsisten dgn mode
         trust_weighted) tapi diabaikan untuk urutan/seleksi top-K.
+
+    v3 (c_retrieval_version="v3"): final_score = (1-alpha)*sim_norm +
+    alpha*trust, where trust is the SAME combined_score computed below
+    (optionally author-trust-adjusted, see `use_author_trust`), and
+    sim_norm is min_max_normalize() of each candidate's cosine
+    similarity to `query_emb`, computed on the FINAL, post-truncation
+    chunk_text (the text actually shown to the LLM) -- see
+    docs/DECISION_C_SCORING.md's Definitions section for why. alpha=1 is
+    mathematically identical to v2 trust_weighted's own ranking (same
+    trust, sim term weighted to 0); alpha=0 ranks purely by sim_norm.
     """
     import tiktoken
     enc = tiktoken.get_encoding("cl100k_base")
@@ -565,38 +761,92 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
         c["source_stage"] = "semantic_expansion"
         all_candidates.append(c)
 
-    if fusion_mode == "uniform":
-        # Ablasi: ranking TIDAK memprioritaskan trust. Dedup keep FIRST
-        # occurrence (urutan penemuan asli, bukan skor tertinggi), lalu
-        # potong ke top_k tanpa sort by combined_score.
-        best_by_answer = {}
-        for c in all_candidates:
-            aid = c["answer_id"]
-            if aid not in best_by_answer:
-                best_by_answer[aid] = c
-        top = list(best_by_answer.values())[:top_k]
-    else:
-        # Dedup by answer_id, keep highest combined_score occurrence
-        best_by_answer = {}
-        for c in all_candidates:
-            aid = c["answer_id"]
-            if aid not in best_by_answer or c["combined_score"] > best_by_answer[aid]["combined_score"]:
-                best_by_answer[aid] = c
+    if c_retrieval_version != "v3":
+        if fusion_mode == "uniform":
+            # Ablasi: ranking TIDAK memprioritaskan trust. Dedup keep FIRST
+            # occurrence (urutan penemuan asli, bukan skor tertinggi), lalu
+            # potong ke top_k tanpa sort by combined_score.
+            best_by_answer = {}
+            for c in all_candidates:
+                aid = c["answer_id"]
+                if aid not in best_by_answer:
+                    best_by_answer[aid] = c
+            top = list(best_by_answer.values())[:top_k]
+        else:
+            # Dedup by answer_id, keep highest combined_score occurrence
+            best_by_answer = {}
+            for c in all_candidates:
+                aid = c["answer_id"]
+                if aid not in best_by_answer or c["combined_score"] > best_by_answer[aid]["combined_score"]:
+                    best_by_answer[aid] = c
 
-        # Secondary key answer_id ASC breaks ties deterministically (combined_score
-        # can tie -- e.g. identical edge_weight/trustScore candidates) -- without it,
-        # Python's stable sort falls back to `all_candidates` insertion order, which
-        # itself depends on Neo4j's MATCH return order (not guaranteed stable run to
-        # run without an explicit ORDER BY upstream).
-        ranked = sorted(best_by_answer.values(), key=lambda c: (-c["combined_score"], c["answer_id"]))
-        top = ranked[:top_k]
+            # Secondary key answer_id ASC breaks ties deterministically (combined_score
+            # can tie -- e.g. identical edge_weight/trustScore candidates) -- without it,
+            # Python's stable sort falls back to `all_candidates` insertion order, which
+            # itself depends on Neo4j's MATCH return order (not guaranteed stable run to
+            # run without an explicit ORDER BY upstream).
+            ranked = sorted(best_by_answer.values(), key=lambda c: (-c["combined_score"], c["answer_id"]))
+            top = ranked[:top_k]
+
+        final = []
+        for c in top:
+            doc_text = f"Q: {c['via_question_title']}\nA: {c['answer_body']}"
+            doc_text = _truncate_doc_text(enc, doc_text, token_chunk_limit)
+            final.append({
+                "question_id": int(c["via_question_id"]),
+                "answer_id": int(c["answer_id"]),
+                "chunk_text": doc_text,
+                "trust_weight": round(float(c["edge_weight"] or 0.0), 4),
+                "combined_score": round(float(c["combined_score"]), 4),
+                "hop": c["hop"],
+                "rel_type": c.get("rel_type"),
+                "source_stage": c["source_stage"],
+                "is_accepted": bool(c.get("is_accepted")) if c.get("is_accepted") is not None else None,
+            })
+        return final, {}
+
+    # --- v3 ---
+    if accepted_only:
+        all_candidates = [c for c in all_candidates if c.get("is_accepted")]
+
+    # Dedup by answer_id, keep highest combined_score occurrence (same
+    # policy as v2 trust_weighted's dedup -- the trust term feeding
+    # final_score is this SAME combined_score).
+    best_by_answer = {}
+    for c in all_candidates:
+        aid = c["answer_id"]
+        if aid not in best_by_answer or c["combined_score"] > best_by_answer[aid]["combined_score"]:
+            best_by_answer[aid] = c
+    pool = sorted(best_by_answer.values(), key=lambda c: c["answer_id"])
+    candidate_pool_size = len(pool)
+
+    if not pool:
+        return [], {"candidate_pool_size": 0}
+
+    doc_texts = []
+    for c in pool:
+        doc_text = f"Q: {c['via_question_title']}\nA: {c['answer_body']}"
+        doc_texts.append(_truncate_doc_text(enc, doc_text, token_chunk_limit))
+
+    answer_ids = [int(c["answer_id"]) for c in pool]
+    sims = compute_candidate_similarities(embed_model, query_emb, doc_texts, answer_ids, cache=embedding_cache)
+    sim_norms = min_max_normalize(sims)
+
+    alpha_val = 1.0 if alpha is None else alpha
+    scored = []
+    for c, doc_text, sim, sim_norm in zip(pool, doc_texts, sims, sim_norms):
+        trust = c["combined_score"]
+        if use_author_trust:
+            author_weight = c.get("author_weight") or 0.0
+            trust = (1 - AUTHOR_TRUST_BETA) * trust + AUTHOR_TRUST_BETA * author_weight
+        final_score = (1 - alpha_val) * sim_norm + alpha_val * trust
+        scored.append((c, doc_text, sim, sim_norm, trust, final_score))
+
+    scored.sort(key=lambda t: (-t[5], t[0]["answer_id"]))
+    top = scored[:top_k]
 
     final = []
-    for c in top:
-        doc_text = f"Q: {c['via_question_title']}\nA: {c['answer_body']}"
-        token_ids = enc.encode(doc_text)
-        if len(token_ids) > token_chunk_limit:
-            doc_text = enc.decode(token_ids[:token_chunk_limit])
+    for rank, (c, doc_text, sim, sim_norm, trust, final_score) in enumerate(top, start=1):
         final.append({
             "question_id": int(c["via_question_id"]),
             "answer_id": int(c["answer_id"]),
@@ -607,8 +857,14 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
             "rel_type": c.get("rel_type"),
             "source_stage": c["source_stage"],
             "is_accepted": bool(c.get("is_accepted")) if c.get("is_accepted") is not None else None,
+            "sim": round(float(sim), 4),
+            "sim_norm": round(float(sim_norm), 4),
+            "trust": round(float(trust), 4),
+            "final_score": round(float(final_score), 4),
+            "alpha": alpha_val,
+            "rank": rank,
         })
-    return final
+    return final, {"candidate_pool_size": candidate_pool_size}
 
 
 # ---------------------------------------------------------------------
@@ -651,6 +907,11 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     require_grounding: bool = True, enable_semantic_expansion: bool = True,
                     log_full_candidates: bool = False,
                     config: dict | None = None, config_hash: str | None = None,
+                    c_retrieval_version: str = "v2", alpha: float | None = None,
+                    max_hops: int = DEFAULT_MAX_HOPS, edge_types: tuple | None = None,
+                    use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
+                    accepted_only: bool = DEFAULT_ACCEPTED_ONLY,
+                    embedding_cache=None, retrieval_only: bool = False,
                     ) -> tuple[list[dict], dict]:
     """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
@@ -727,6 +988,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 if anchor_ids:
                     graph_candidates = traverse_graph(
                         driver, database, anchor_ids, exclude_question_ids, exclude_answer_ids,
+                        max_hops=max_hops, edge_types=edge_types,
                     )
 
                 # --- c. Semantic Expansion (ablation: skippable via enable_semantic_expansion) ---
@@ -735,18 +997,54 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     expansion_candidates = semantic_expansion(
                         driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
                         n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
+                        edge_types=edge_types,
                     )
                 else:
                     expansion_candidates = []
 
+                # --- v3 exploratory: author trust (Step 4b) -- batched lookup over
+                # every candidate answer_id found so far, merged in before fuse_and_rank
+                # so it can build trust' = (1-β)*trust + β*author_weight per
+                # docs/DECISION_C_SCORING.md. Skipped entirely (zero extra Neo4j
+                # round-trip) unless the switch is on.
+                if c_retrieval_version == "v3" and use_author_trust:
+                    all_aids = [c["answer_id"] for c in graph_candidates + expansion_candidates]
+                    author_weights = fetch_author_trust(driver, database, all_aids)
+                    for c in graph_candidates + expansion_candidates:
+                        c["author_weight"] = author_weights.get(c["answer_id"], 0.0)
+
                 # --- Fusi + rerank + chunking + cap top-K ---
-                retrieved = fuse_and_rank(graph_candidates, expansion_candidates,
-                                           top_k, token_chunk_limit, fusion_mode=fusion_mode,
-                                           w_path_trust=fusion_w_path_trust, w_intrinsic=fusion_w_intrinsic,
-                                           expansion_trust_cap=semantic_expansion_trust_cap)
+                retrieved, fuse_meta = fuse_and_rank(
+                    graph_candidates, expansion_candidates,
+                    top_k, token_chunk_limit, fusion_mode=fusion_mode,
+                    w_path_trust=fusion_w_path_trust, w_intrinsic=fusion_w_intrinsic,
+                    expansion_trust_cap=semantic_expansion_trust_cap,
+                    c_retrieval_version=c_retrieval_version, alpha=alpha,
+                    embed_model=embed_model, query_emb=query_emb, embedding_cache=embedding_cache,
+                    accepted_only=accepted_only, use_author_trust=use_author_trust,
+                )
+                candidate_pool_size = fuse_meta.get("candidate_pool_size")
                 retrieval_latency = time.time() - t_query_start
                 if not retrieved:
                     n_no_context += 1
+
+                if retrieval_only:
+                    record = {
+                        "question_id": qid, "title": row["Title"], "tags": row["Tags"],
+                        "accepted_answer_id": int(row["AcceptedAnswerId"]),
+                        "retrieved_context": retrieved,
+                        "candidate_pool_size": candidate_pool_size,
+                        "n_anchors": len(anchor_ids), "n_graph_candidates": len(graph_candidates),
+                        "n_expansion_candidates": len(expansion_candidates),
+                        "retrieval_latency_sec": round(retrieval_latency, 3),
+                        "config": config, "config_hash": config_hash,
+                    }
+                    results.append(record)
+                    f_out.write(json.dumps(record, default=str) + "\n")
+                    f_out.flush()
+                    if on_progress:
+                        on_progress({"question_id": qid, "index": i, "total": total, "status": "done"})
+                    continue
 
                 all_candidate_question_ids = None
                 if log_full_candidates:
@@ -809,6 +1107,11 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     # len(retrieved_context), stored explicitly so a pilot
                     # run can be verified without recomputing it.
                     "n_context_items_used": len(retrieved),
+                    # Candidate pool size (post-dedup, pre-top_k) -- only
+                    # populated for c_retrieval_version="v3" (None for v2,
+                    # which never computes a unified scored pool the same
+                    # way); see fuse_and_rank()'s meta return.
+                    "candidate_pool_size": candidate_pool_size,
                     "require_grounding": require_grounding,
                     "enable_semantic_expansion": enable_semantic_expansion,
                     **({"all_candidate_question_ids": all_candidate_question_ids} if log_full_candidates else {}),
@@ -891,24 +1194,54 @@ def _fmt_weight_for_filename(w: float) -> str:
     return f"{w}".replace(".", "-")
 
 
+# Defaults for every v3-only / exploratory parameter -- used BOTH as the
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
                   top_k: int, n_anchor: int, n_semantic_expansion: int, fusion_mode: str,
                   fusion_w_path_trust: float, fusion_w_intrinsic: float,
                   semantic_expansion_trust_cap: float, require_grounding: bool,
-                  enable_semantic_expansion: bool) -> dict:
+                  enable_semantic_expansion: bool, c_retrieval_version: str = "v2",
+                  alpha: float | None = None, sample_split: str = DEFAULT_SAMPLE_SPLIT,
+                  max_hops: int = DEFAULT_MAX_HOPS, edge_types: tuple | None = None,
+                  use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
+                  accepted_only: bool = DEFAULT_ACCEPTED_ONLY) -> dict:
     """The full set of parameters that affect Condition C's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
-    for why this exists. Includes C_RETRIEVAL_VERSION since a retrieval
-    code fix changes answers just as much as a parameter does."""
-    return {
+    for why this exists. Includes c_retrieval_version since a retrieval
+    code fix changes answers just as much as a parameter does.
+
+    BACKWARD COMPATIBILITY (required, see docs/DECISION_C_SCORING.md):
+    `alpha`/`sample_split`/`max_hops`/`edge_types`/`use_author_trust`/
+    `accepted_only` are each included in the returned dict ONLY when they
+    differ from their default (alpha is also included whenever
+    c_retrieval_version == "v3", since alpha is meaningless -- and was
+    never part of any v2 run's hash -- otherwise). A v2 run with no
+    exploratory overrides therefore produces EXACTLY the same dict
+    compute_config_hash() always hashed for it, so config_hash for every
+    existing run is unaffected by this feature existing at all.
+    """
+    edge_types = tuple(edge_types) if edge_types is not None else DEFAULT_EDGE_TYPES
+    config = {
         "condition": "C", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
         "oversample_pool": oversample_pool, "top_k": top_k, "n_anchor": n_anchor,
         "n_semantic_expansion": n_semantic_expansion, "fusion_mode": fusion_mode,
         "fusion_w_path_trust": fusion_w_path_trust, "fusion_w_intrinsic": fusion_w_intrinsic,
         "semantic_expansion_trust_cap": semantic_expansion_trust_cap,
         "require_grounding": require_grounding, "enable_semantic_expansion": enable_semantic_expansion,
-        "c_retrieval_version": C_RETRIEVAL_VERSION,
+        "c_retrieval_version": c_retrieval_version,
     }
+    if c_retrieval_version == "v3" or alpha is not None:
+        config["alpha"] = alpha
+    if sample_split != DEFAULT_SAMPLE_SPLIT:
+        config["sample_split"] = sample_split
+    if max_hops != DEFAULT_MAX_HOPS:
+        config["max_hops"] = max_hops
+    if tuple(edge_types) != DEFAULT_EDGE_TYPES:
+        config["edge_types"] = sorted(edge_types)
+    if use_author_trust != DEFAULT_USE_AUTHOR_TRUST:
+        config["use_author_trust"] = use_author_trust
+    if accepted_only != DEFAULT_ACCEPTED_ONLY:
+        config["accepted_only"] = accepted_only
+    return config
 
 
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
@@ -918,7 +1251,11 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        require_grounding: bool = True, enable_semantic_expansion: bool = True,
                        oversample_pool: int | None = None, top_k: int = 5, n_anchor: int = 3,
                        n_semantic_expansion: int = 3,
-                       semantic_expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP) -> Path:
+                       semantic_expansion_trust_cap: float = DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP,
+                       c_retrieval_version: str = "v2", alpha: float | None = None,
+                       sample_split: str = DEFAULT_SAMPLE_SPLIT, max_hops: int = DEFAULT_MAX_HOPS,
+                       edge_types: tuple | None = None, use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
+                       accepted_only: bool = DEFAULT_ACCEPTED_ONLY) -> Path:
     """Nama file menyertakan fusion mode/bobot supaya run ablasi (mis.
     --fusion-mode uniform vs --fusion-mode trust_weighted dgn bobot
     berbeda) tidak saling menimpa file .jsonl satu sama lain -- pola sama
@@ -943,10 +1280,16 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
         suffix += "_ungrounded"
     if not enable_semantic_expansion:
         suffix += "_noexp"
+    if c_retrieval_version == "v3":
+        suffix += f"_v3-alpha{_fmt_weight_for_filename(alpha if alpha is not None else 1.0)}"
+    if sample_split != DEFAULT_SAMPLE_SPLIT:
+        suffix += f"_{sample_split}"
     config_hash = compute_config_hash(build_config(
         provider, model, n_sample, seed, oversample_pool, top_k, n_anchor, n_semantic_expansion,
         fusion_mode, fusion_w_path_trust, fusion_w_intrinsic, semantic_expansion_trust_cap,
-        require_grounding, enable_semantic_expansion,
+        require_grounding, enable_semantic_expansion, c_retrieval_version=c_retrieval_version,
+        alpha=alpha, sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
+        use_author_trust=use_author_trust, accepted_only=accepted_only,
     ))
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
@@ -1017,6 +1360,42 @@ def main():
                               "yang dipakai prompt. Dipakai supaya run BERIKUTNYA bisa dihitung Recall@k "
                               "sesungguhnya di analyze_retrieval_quality.py (versi saat ini belum "
                               "menghitungnya). Default: nonaktif.")
+    # --- C retrieval v3 (docs/DECISION_C_SCORING.md) -- all default to
+    # v2's exact current behavior; see build_config()'s backward-
+    # compatibility docstring for why defaults never change config_hash.
+    parser.add_argument("--c-retrieval-version", choices=["v2", "v3"], default="v2",
+                         help="'v2' (default): unchanged trust-only ranking. 'v3': adds the "
+                              "(1-alpha)*sim_norm + alpha*trust scoring -- see --alpha.")
+    parser.add_argument("--alpha", type=float, default=None,
+                         help="v3 only: final_score = (1-alpha)*sim_norm + alpha*trust, alpha in [0,1]. "
+                              "alpha=1 matches v2 trust_weighted's own ranking; alpha=0 ranks purely by "
+                              "similarity. Required for --c-retrieval-version v3 (defaults to 1 if omitted).")
+    parser.add_argument("--sample-split", choices=["test", "dev"], default="test",
+                         help="'test' (default): positions 1..n, unchanged. 'dev': positions "
+                              "385..385+n-1 (see --dev-offset) -- a separate, disjoint development "
+                              "set for tuning alpha/judge-v2/prompt wording, never used for official results.")
+    parser.add_argument("--dev-offset", type=int, default=385,
+                         help="1-indexed start position for --sample-split dev (default 385, i.e. "
+                              "positions 385-434 for n=50) -- see docs/DECISION_C_SCORING.md.")
+    parser.add_argument("--max-hops", type=int, choices=[1, 2], default=DEFAULT_MAX_HOPS,
+                         help="v3 exploratory (Step 4b): limit graph traversal depth. Default 2 "
+                              "(unchanged). 1 skips the 2-hop (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM) query.")
+    parser.add_argument("--edge-types", nargs="+", default=None,
+                         help="v3 exploratory: subset of " + ", ".join(DEFAULT_EDGE_TYPES) +
+                              " traversal may follow. Default: all of them (unchanged).")
+    parser.add_argument("--use-author-trust", action="store_true", default=DEFAULT_USE_AUTHOR_TRUST,
+                         help="v3 exploratory: include AUTHOR_TRUST edge weight in the trust term "
+                              "(trust' = 0.7*trust + 0.3*author_weight). Default off (unchanged).")
+    parser.add_argument("--accepted-only", action="store_true", default=DEFAULT_ACCEPTED_ONLY,
+                         help="v3 exploratory: keep only accepted answers in the candidate pool. "
+                              "Default off (unchanged).")
+    parser.add_argument("--retrieval-only", action="store_true", default=False,
+                         help="Run retrieval only (no LLM call) -- writes a contexts-only JSONL + "
+                              "manifest. For the alpha sweep's stage 1 (see docs/"
+                              "agent_prompt_c_retrieval_v3_devset.md Step 4.1).")
+    parser.add_argument("--embedding-cache-path", default=os.getenv(
+        "C_EMBEDDING_CACHE_PATH", str(Path(__file__).resolve().parent / "embedding_cache.sqlite3")),
+        help="v3 only: SQLite cache path for candidate-text embeddings (shared across an alpha sweep).")
     args = parser.parse_args()
 
     global log
@@ -1024,6 +1403,11 @@ def main():
     log = logger.info
     run_started_at = datetime.now(timezone.utc)
     log(f"[logging] Log detail run ini -> {log_path}")
+
+    if args.c_retrieval_version == "v3" and args.alpha is None:
+        args.alpha = 1.0
+        log("[config] --c-retrieval-version v3 without --alpha -- defaulting to alpha=1.0 "
+            "(matches v2 trust_weighted's own ranking).")
 
     # PENTING utk NESTED SAMPLING -- IDENTIK Kondisi A/B, lihat komentar
     # lengkap di a_baseline_replication.py. Pool FIXED thd MAX_PLANNED_N_SAMPLE,
@@ -1046,7 +1430,11 @@ def main():
                                              args.require_grounding, args.enable_semantic_expansion,
                                              oversample_pool=oversample_pool, top_k=args.top_k,
                                              n_anchor=args.n_anchor, n_semantic_expansion=args.n_semantic_expansion,
-                                             semantic_expansion_trust_cap=args.semantic_expansion_trust_cap))
+                                             semantic_expansion_trust_cap=args.semantic_expansion_trust_cap,
+                                             c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
+                                             sample_split=args.sample_split, max_hops=args.max_hops,
+                                             edge_types=args.edge_types, use_author_trust=args.use_author_trust,
+                                             accepted_only=args.accepted_only))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -1073,7 +1461,8 @@ def main():
     candidates = get_candidate_questions(con, args.questions_parquet, args.answers_parquet,
                                           oversample_pool, args.seed)
     candidates = filter_by_token_limit(candidates)
-    sample_df = sample_questions(candidates, args.n_sample, args.seed)
+    sample_df = sample_questions_split(candidates, args.n_sample, args.seed,
+                                        split=args.sample_split, dev_offset=args.dev_offset)
 
     accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
     answers_df = get_accepted_answers(con, args.answers_parquet, accepted_ids)
@@ -1097,13 +1486,21 @@ def main():
     # (embed_query, compute_similarity).
     embed_model = SentenceTransformer(args.embed_model, device="cpu")
 
+    embedding_cache = None
+    if args.c_retrieval_version == "v3":
+        from embedding_cache import EmbeddingCache
+        embedding_cache = EmbeddingCache(args.embedding_cache_path)
+        log(f"[config] v3 embedding cache -> {args.embedding_cache_path}")
+
     # --- Resume support ---
     from llm.manifest import compute_config_hash
     config = build_config(
         args.provider, args.model, args.n_sample, args.seed, oversample_pool, args.top_k,
         args.n_anchor, args.n_semantic_expansion, args.fusion_mode, args.fusion_w_path_trust,
         args.fusion_w_intrinsic, args.semantic_expansion_trust_cap, args.require_grounding,
-        args.enable_semantic_expansion,
+        args.enable_semantic_expansion, c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
+        sample_split=args.sample_split, max_hops=args.max_hops, edge_types=args.edge_types,
+        use_author_trust=args.use_author_trust, accepted_only=args.accepted_only,
     )
     config_hash = compute_config_hash(config)
     output_path = Path(args.output)
@@ -1127,8 +1524,14 @@ def main():
         enable_semantic_expansion=args.enable_semantic_expansion,
         log_full_candidates=args.log_full_candidates,
         config=config, config_hash=config_hash,
+        c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
+        max_hops=args.max_hops, edge_types=args.edge_types,
+        use_author_trust=args.use_author_trust, accepted_only=args.accepted_only,
+        embedding_cache=embedding_cache, retrieval_only=args.retrieval_only,
     )
     interrupted = stats["interrupted"]
+    if embedding_cache is not None:
+        embedding_cache.close()
 
     driver.close()
     if interrupted:
@@ -1143,7 +1546,10 @@ def main():
         log("\n[ERROR] Tidak ada hasil tersimpan sama sekali.")
         history_path = append_run_history({
             "prompt_version": PROMPT_VERSION,
-            "c_retrieval_version": C_RETRIEVAL_VERSION,
+            "c_retrieval_version": args.c_retrieval_version,
+            "alpha": args.alpha, "sample_split": args.sample_split,
+            "max_hops": args.max_hops, "edge_types": list(args.edge_types) if args.edge_types else None,
+            "use_author_trust": args.use_author_trust, "accepted_only": args.accepted_only,
             "run_started_at": run_started_at.isoformat(), "condition": "C", "status": "no_results",
             "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
             "seed": args.seed, "output_path": str(output_path), "log_path": str(log_path),
@@ -1213,7 +1619,10 @@ def main():
 
     history_path = append_run_history({
         "prompt_version": PROMPT_VERSION,
-        "c_retrieval_version": C_RETRIEVAL_VERSION,
+        "c_retrieval_version": args.c_retrieval_version,
+        "alpha": args.alpha, "sample_split": args.sample_split,
+        "max_hops": args.max_hops, "edge_types": list(args.edge_types) if args.edge_types else None,
+        "use_author_trust": args.use_author_trust, "accepted_only": args.accepted_only,
         "run_started_at": run_started_at.isoformat(), "condition": "C",
         "status": "interrupted" if interrupted else "success",
         "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,

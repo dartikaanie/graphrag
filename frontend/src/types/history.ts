@@ -32,6 +32,11 @@ export interface HistoryItem {
   fusion_mode?: string | null
   grounding?: 'on' | 'off' | null
   grounding_inferred?: boolean
+  // True when sample_split === "dev" (docs/DECISION_C_SCORING.md's
+  // development set) -- also baked as a " [dev]" suffix into run_label,
+  // but exposed separately so pages can render a dedicated badge instead
+  // of parsing the label string.
+  is_dev?: boolean
   output_path: string
   duration_sec: number
   source?: string

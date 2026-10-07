@@ -3,6 +3,7 @@ llm_judge_context_relevance.py."""
 
 import json
 
+import _judge_common
 import llm_judge_context_relevance as ctxrel
 
 
@@ -168,6 +169,21 @@ def test_derived_metrics_no_relevant_item():
 # ---------------------------------------------------------------------
 
 def test_resume_and_already_complete(tmp_path, monkeypatch):
+    # Explicit, not just monkeypatch.chdir(tmp_path) + RESULTS_DIR's
+    # cwd-relative default: build_output_path() (in _judge_common.py)
+    # reads _judge_common.RESULTS_DIR directly, and backend/
+    # engine_service.py's _judge_v1_module()/_context_relevance_v1_
+    # module()/_judge_module() all do a RAW (non-monkeypatch) assignment
+    # to that SAME global to point it at the real llm/evaluation/results/
+    # dir -- which never reverts once any earlier test in the same
+    # process has imported engine_service and triggered one of those.
+    # Relying on chdir alone made this test's isolation depend on test
+    # ORDER across the whole suite; pinning RESULTS_DIR here directly
+    # removes that dependency regardless of what ran before it. (This is
+    # also what caused the real leak into llm/evaluation/results/
+    # ctxrel__condition_c_test__openai-gpt-4o-mini_t0-1.jsonl -- see
+    # docs/agent_prompt_judge_results_export.md's follow-up.)
+    monkeypatch.setattr(_judge_common, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.chdir(tmp_path)
     input_path = tmp_path / "condition_c_test.jsonl"
     records = [

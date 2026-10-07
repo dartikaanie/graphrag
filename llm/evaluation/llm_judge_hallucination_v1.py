@@ -69,11 +69,8 @@ import argparse
 import hashlib
 import json
 import os
-import random
 import re
 import sys
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +79,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from _judge_common import append_manifest, html_to_text, load_question_bodies  # noqa: E402
+from _judge_common import append_judge_resolution_record as append_resolution_record  # noqa: E402
+from _judge_common import call_judge_llm_with_retry  # noqa: E402
+from _judge_common import check_served_model_mismatch  # noqa: E402
+from _judge_common import judge_resume_key as _resume_key  # noqa: E402
+from _judge_common import load_judge_already_done as load_already_done  # noqa: E402
+from _judge_common import load_judge_failed_keys as load_failed_keys  # noqa: E402
+from _judge_common import write_judge_record as write_record  # noqa: E402
 from _run_metadata import RunMetadataNotFoundError, resolve_run_metadata  # noqa: E402
 from judge_clients import get_judge_client  # noqa: E402
 from llm.manifest import write_manifest  # noqa: E402
@@ -89,8 +93,7 @@ from judge_prompt_v1 import BLINDING_VERSION, PROMPT_VERSION, build_messages, pa
 
 log = print
 
-RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS = 6
-_WRITE_LOCK = threading.Lock()
+REQUEST_TEMPERATURE = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -156,115 +159,13 @@ def load_items(run_files: list[str], limit: int | None) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Resume
+# Resume + retry -- see _judge_common.py: these are version-independent
+# (shared with llm_judge_hallucination_v2.py), re-exported here under
+# their original names so callers/tests of THIS module are unaffected.
 # ---------------------------------------------------------------------------
-
-def _resume_key(r: dict) -> tuple:
-    """(run_id, config_hash, question_id, judge_id, judge_model,
-    prompt_version, blinding_version) -- ALL seven must match for a
-    record to count as "already done" for a given item. config_hash and
-    judge_model are included (not just run_id/judge_id) so a generation
-    re-run under a NEW config_hash, or a judge model swapped under the
-    same judge_id (e.g. after a role change), is never silently treated
-    as already-judged. blinding_version is included so a future blinding
-    scheme change also forces a re-judge rather than reusing a
-    differently-blinded record's "done" status."""
-    return (
-        r.get("run_id"), r.get("config_hash"), r.get("question_id"), r.get("judge_id"),
-        r.get("judge_model"), r.get("prompt_version"), r.get("blinding_version"),
-    )
-
-
-def load_already_done(output_path: Path) -> set[tuple]:
-    done = set()
-    if not output_path.exists():
-        return done
-    with open(output_path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                done.add(_resume_key(json.loads(line)))
-            except Exception:
-                continue
-    return done
-
-
-# ---------------------------------------------------------------------------
-# One (item, judge) call -- retry with exponential backoff + jitter
-# ---------------------------------------------------------------------------
-
-REQUEST_TEMPERATURE = 0.0
-
 
 def call_judge_with_retry(client, config, messages: list[dict]) -> tuple[dict | None, list[dict]]:
-    """Returns (response_payload, attempts). response_payload is None
-    only if every attempt failed -- caller logs the failure and moves on,
-    it never raises (so one bad item can't crash the batch). `attempts`
-    is a list of {"attempt": int, "error": str|None, "status_code":
-    int|None} for EVERY attempt made (not just the last) -- Step 5 data-
-    retention requirement: nothing about a retried call is dropped, even
-    on eventual success.
-
-    response_payload, when present, carries the FULL raw response
-    metadata (not just the parsed content) per the same requirement:
-    response id/model/created/system_fingerprint/finish_reason/usage,
-    plus the request params actually sent (model, temperature,
-    max_tokens if set) -- enough to audit exactly what was asked for and
-    what came back, not just the judge's parsed label.
-    """
-    import openai
-
-    retryable = (
-        openai.RateLimitError,
-        openai.APITimeoutError,
-        openai.APIConnectionError,
-        openai.InternalServerError,  # covers 5xx
-    )
-
-    attempts: list[dict] = []
-    for attempt in range(1, RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS + 1):
-        try:
-            start = time.monotonic()
-            response = client.chat.completions.create(
-                model=config.model,
-                messages=messages,
-                temperature=REQUEST_TEMPERATURE,
-            )
-            latency_s = time.monotonic() - start
-            attempts.append({"attempt": attempt, "error": None, "status_code": None})
-            usage = response.usage
-            return {
-                "raw": response.choices[0].message.content,
-                "prompt_tokens": getattr(usage, "prompt_tokens", None) if usage else None,
-                "completion_tokens": getattr(usage, "completion_tokens", None) if usage else None,
-                "latency_s": round(latency_s, 3),
-                "response_id": response.id,
-                "response_model": response.model,
-                "response_created": response.created,
-                "system_fingerprint": getattr(response, "system_fingerprint", None),
-                "finish_reason": response.choices[0].finish_reason,
-                "usage_full": usage.model_dump() if usage else None,
-                "request_params": {"model": config.model, "temperature": REQUEST_TEMPERATURE},
-            }, attempts
-        except retryable as e:
-            status_code = getattr(e, "status_code", None)
-            error_text = f"{type(e).__name__}: {e}"
-            attempts.append({"attempt": attempt, "error": error_text, "status_code": status_code})
-            if attempt == RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS:
-                break
-            sleep_s = min(60, (2 ** (attempt - 1))) + random.uniform(0, 1)
-            log(f"      [retry {attempt}/{RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS}] {error_text} -- sleeping {sleep_s:.1f}s")
-            time.sleep(sleep_s)
-        except Exception as e:
-            # Non-retryable (e.g. 400 bad request, auth error) -- fail fast, no point retrying.
-            status_code = getattr(e, "status_code", None)
-            error_text = f"{type(e).__name__}: {e}"
-            attempts.append({"attempt": attempt, "error": error_text, "status_code": status_code})
-            break
-
-    return None, attempts
+    return call_judge_llm_with_retry(client, config, messages, REQUEST_TEMPERATURE, log)
 
 
 # ---------------------------------------------------------------------------
@@ -351,56 +252,8 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str, referen
         "request_params": payload["request_params"],
     })
 
-    expected = getattr(config, "expected_served_model", None)
-    served_model_mismatch = bool(expected) and payload["response_model"] != expected
-    base["served_model_mismatch"] = served_model_mismatch
-    if served_model_mismatch:
-        log(f"      [WARN] judge '{judge_id}': response_model='{payload['response_model']}' "
-            f"differs from registry's expected_served_model='{expected}' -- the provider may have "
-            f"changed which model/variant it actually serves for this judge_id. Investigate before "
-            f"trusting further records from this judge_id.")
+    base["served_model_mismatch"] = check_served_model_mismatch(payload["response_model"], config, judge_id, log)
     return base
-
-
-def write_record(output_path: Path, record: dict) -> None:
-    with _WRITE_LOCK:
-        with open(output_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, default=str) + "\n")
-
-
-def load_failed_keys(failures_path: Path) -> set[tuple]:
-    """Keys of every item EVER recorded in <out>_failures.jsonl (across
-    all past runs) -- used only to detect when a retry succeeds, so that
-    can be logged to a resolution log. The failures file itself is never
-    read for resume/skip purposes (that's output_path's job) and is NEVER
-    deleted or rewritten -- Step 5 data retention: a failure record stays
-    forever, even after a later success."""
-    keys = set()
-    if not failures_path.exists():
-        return keys
-    with open(failures_path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                keys.add(_resume_key(json.loads(line)))
-            except Exception:
-                continue
-    return keys
-
-
-def append_resolution_record(resolved_path: Path, record: dict) -> None:
-    """A previously-failed (run_id, question_id, judge_id, prompt_version)
-    succeeded on this run -- note it here, in a SEPARATE append-only log,
-    rather than touching/deleting the original failure record in
-    <out>_failures.jsonl (which stays as permanent evidence it happened)."""
-    resolution = {
-        "run_id": record["run_id"], "question_id": record["question_id"],
-        "judge_id": record["judge_id"], "prompt_version": record["prompt_version"],
-        "resolved": True, "resolved_at_utc": record["timestamp_utc"],
-    }
-    write_record(resolved_path, resolution)
 
 
 # ---------------------------------------------------------------------------

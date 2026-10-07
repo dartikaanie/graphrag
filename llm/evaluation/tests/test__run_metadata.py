@@ -231,8 +231,8 @@ def test_derive_run_label_legacy_require_grounding_bool_still_works():
     inferred (it's an explicit, unambiguous field, just an older one)."""
     on = derive_run_label("D", {"require_grounding": True})
     off = derive_run_label("D", {"require_grounding": False})
-    assert on == {"run_label": "D-grounded", "fusion_mode": None, "grounding": "on", "grounding_inferred": False}
-    assert off == {"run_label": "D-plain", "fusion_mode": None, "grounding": "off", "grounding_inferred": False}
+    assert on == {"run_label": "D-grounded", "fusion_mode": None, "grounding": "on", "grounding_inferred": False, "is_dev": False}
+    assert off == {"run_label": "D-plain", "fusion_mode": None, "grounding": "off", "grounding_inferred": False, "is_dev": False}
 
 
 def test_derive_run_label_historical_defaults_per_condition_when_everything_missing():

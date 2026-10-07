@@ -263,6 +263,334 @@ export function useJudgeV1Disagreements(
   })
 }
 
+// ---------------------------------------------------------------------
+// Judge-v2 (hallucination, reference-based, fixed prompt -- see docs/
+// JUDGE_V2_CHANGES.md) -- a SEPARATE set of hooks mirroring judge-v1's
+// above, never touching them, so v1's existing UI/behavior is
+// unaffected. Shares the same JudgeV1PlanRow/JudgeV1Job/JudgeV1Agreement/
+// JudgeV1Disagreement response SHAPES (the endpoints return the same
+// JSON shape), just a different API base path + extra v2-only summary
+// fields.
+// ---------------------------------------------------------------------
+
+export interface JudgeV2RunLabelSummary extends JudgeV1RunLabelSummary {
+  completeness_distribution?: Record<string, number>
+  factual_and_complete_rate?: number | null
+  pct_with_reference_conflict?: number | null
+  attempted_claims_conflict_rate?: number | null
+}
+
+export function useJudgeV2Plan() {
+  return useMutation({
+    mutationFn: (body: { run_ids: string[]; judge_ids: string[]; workers: Record<string, number> }) =>
+      apiPost<{ rows: JudgeV1PlanRow[]; totals: JudgeV1PlanTotals }>('/api/judge-v2/plan', body),
+  })
+}
+
+export function useJudgeV2JudgedStatus(runIds: string[], judgeIds: string[]) {
+  return useQuery({
+    queryKey: ['judge-v2-judged-status', runIds, judgeIds],
+    queryFn: () =>
+      apiPost<{ rows: JudgeV1PlanRow[] }>('/api/judge-v2/plan', { run_ids: runIds, judge_ids: judgeIds, workers: {} }),
+    enabled: runIds.length > 0 && judgeIds.length > 0,
+  })
+}
+
+export function useCreateJudgeV2Run() {
+  return useMutation({
+    mutationFn: (body: { run_ids: string[]; judge_ids: string[]; workers: Record<string, number> }) =>
+      apiPost<{ run_id: string }>('/api/judge-v2/launch', body),
+  })
+}
+
+export function useJudgeV2Jobs(showInvalid = false) {
+  return useQuery({
+    queryKey: ['judge-v2-jobs', showInvalid],
+    queryFn: () => apiGet<{ jobs: JudgeV1Job[] }>('/api/judge-v2/jobs', { show_invalid: showInvalid ? 'true' : undefined }),
+  })
+}
+
+export function useJudgeV2Summary(judgeId: string) {
+  return useQuery({
+    queryKey: ['judge-v2-summary', judgeId],
+    queryFn: () => apiGet<{ summary: Record<string, JudgeV2RunLabelSummary>; prompt_version: string }>(
+      '/api/judge-v2/results/summary', { judge_id: judgeId },
+    ),
+  })
+}
+
+export function useJudgeV2Agreement(judgeIdA: string, judgeIdB: string) {
+  return useQuery({
+    queryKey: ['judge-v2-agreement', judgeIdA, judgeIdB],
+    queryFn: () => apiGet<JudgeV1Agreement>('/api/judge-v2/results/agreement', { judge_id_a: judgeIdA, judge_id_b: judgeIdB }),
+  })
+}
+
+export function useJudgeV2Disagreements(
+  judgeIdA: string, judgeIdB: string, runLabel?: string, labelA?: string, labelB?: string,
+) {
+  return useQuery({
+    queryKey: ['judge-v2-disagreements', judgeIdA, judgeIdB, runLabel, labelA, labelB],
+    queryFn: () =>
+      apiGet<{ disagreements: JudgeV1Disagreement[] }>('/api/judge-v2/results/disagreements', {
+        judge_id_a: judgeIdA, judge_id_b: judgeIdB, run_label: runLabel, label_a: labelA, label_b: labelB,
+      }),
+  })
+}
+
+export interface JudgeVersionComparison {
+  judge_id_a: string
+  judge_id_b: string
+  transition_matrix: Record<string, Record<string, Record<string, number>>>
+  kappa_v1: { n_pairs: number; kappas: { weighted: number | null; unweighted: number | null; n_used: number; n_excluded: number } | null; insufficient_data: boolean }
+  kappa_v2: { n_pairs: number; kappas: { weighted: number | null; unweighted: number | null; n_used: number; n_excluded: number } | null; insufficient_data: boolean }
+}
+
+export function useJudgeVersionComparison(runIds: string[], judgeIdA: string, judgeIdB: string) {
+  return useQuery({
+    queryKey: ['judge-version-comparison', runIds, judgeIdA, judgeIdB],
+    queryFn: () =>
+      apiGet<JudgeVersionComparison>('/api/judge-v2/results/version-comparison', {
+        run_ids: runIds.join(','), judge_id_a: judgeIdA, judge_id_b: judgeIdB,
+      }),
+    enabled: runIds.length > 0,
+  })
+}
+
+export interface ReferenceConflict {
+  question_id: number
+  run_label: string | null
+  judge_id: string
+  claim: string
+  evidence: string
+  verdict: string
+}
+
+export function useReferenceConflicts(runIds: string[], judgeIds: string[]) {
+  return useQuery({
+    queryKey: ['reference-conflicts', runIds, judgeIds],
+    queryFn: () =>
+      apiGet<{ conflicts: ReferenceConflict[] }>('/api/judge-v2/results/reference-conflicts', {
+        run_ids: runIds.join(','), judge_ids: judgeIds.join(','),
+      }),
+    enabled: runIds.length > 0,
+  })
+}
+
+// ---------------------------------------------------------------------
+// Context relevance v1 -- Step 3 of docs/agent_prompt_judge_results_
+// export.md. Fully separate launch flow from judge-v1's above (own
+// plan/launch/status/cancel endpoints), reusing the SAME judge registry.
+// ---------------------------------------------------------------------
+
+export interface ContextRelevanceV1PlanRow {
+  run_id: string
+  run_label?: string
+  n_context_items?: number
+  refused_reason?: string
+}
+
+export interface ContextRelevanceV1PlanJudgeTotals {
+  role?: string | null
+  already_judged: number
+  items_to_judge: number
+  est_tokens_in: number | null
+  est_tokens_out: number | null
+  est_cost_usd: number | null
+  cost_unknown: boolean
+  est_time_sec: number
+  token_source: 'from history' | 'default estimate' | null
+}
+
+export interface ContextRelevanceV1PlanTotals {
+  unique_items: number
+  items_to_judge: number
+  est_tokens_in: number | null
+  est_tokens_out: number | null
+  est_cost_usd: number | null
+  cost_unknown_rows: number
+  est_time_sec: number
+  per_judge: Record<string, ContextRelevanceV1PlanJudgeTotals>
+}
+
+export function useContextRelevanceV1Plan() {
+  return useMutation({
+    mutationFn: (body: { run_ids: string[]; judge_ids: string[]; workers: Record<string, number> }) =>
+      apiPost<{ rows: ContextRelevanceV1PlanRow[]; totals: ContextRelevanceV1PlanTotals }>('/api/context-relevance/plan', body),
+  })
+}
+
+export function useCreateContextRelevanceV1Run() {
+  return useMutation({
+    mutationFn: (body: { run_ids: string[]; judge_ids: string[]; workers: Record<string, number>; limit?: number }) =>
+      apiPost<{ run_id: string }>('/api/context-relevance/launch', body),
+  })
+}
+
+export interface ContextRelevanceV1RunMetrics {
+  n_items_total: number
+  n_items_judged: number
+  n_items_unjudged: number
+  pct_relevant: number | null
+  pct_partial: number | null
+  pct_irrelevant: number | null
+  n_questions: number
+  n_questions_with_relevant: number
+  pct_questions_with_relevant: number | null
+  mean_relevance_score: number | null
+  mean_relevance_score_rank1: number | null
+  mean_relevance_score_rank2plus: number | null
+}
+
+export function useContextRelevanceV1Summary(runId: string | undefined, judgeId: string) {
+  return useQuery({
+    queryKey: ['context-relevance-v1-summary', runId, judgeId],
+    queryFn: () =>
+      apiGet<{ run_id: string; run_label: string | null; judge_id: string; metrics: ContextRelevanceV1RunMetrics }>(
+        '/api/context-relevance/results/summary', { run_id: runId, judge_id: judgeId },
+      ),
+    enabled: !!runId,
+  })
+}
+
+/** Same data/cache as useContextRelevanceV1Summary, but for a variable-
+ * length list of run ids -- used by the markdown export, which needs
+ * every batch run's metrics gathered up front rather than one hook call
+ * per table row (see useHistoryDetails for the same useQueries pattern). */
+export function useContextRelevanceV1SummaryMulti(runIds: string[], judgeId: string) {
+  return useQueries({
+    queries: runIds.map((runId) => ({
+      queryKey: ['context-relevance-v1-summary', runId, judgeId],
+      queryFn: () =>
+        apiGet<{ run_id: string; run_label: string | null; judge_id: string; metrics: ContextRelevanceV1RunMetrics }>(
+          '/api/context-relevance/results/summary', { run_id: runId, judge_id: judgeId },
+        ),
+      enabled: !!runId,
+    })),
+  })
+}
+
+export interface ContextRelevanceLinkRow {
+  question_id: number
+  has_relevant_context: boolean
+  hallucination_label: string | null
+}
+
+export interface ContextRelevanceLinkTables {
+  label_x_relevant: Record<string, { has_relevant: number; no_relevant: number }>
+  abstain_x_relevant: { has_relevant: { abstain: number; not_abstain: number }; no_relevant: { abstain: number; not_abstain: number } } | null
+}
+
+export function useContextRelevanceLinkToOutcomes(runId: string | undefined) {
+  return useQuery({
+    queryKey: ['context-relevance-v1-link', runId],
+    queryFn: () =>
+      apiGet<{ run_id: string; run_label: string | null; rows: ContextRelevanceLinkRow[]; tables: ContextRelevanceLinkTables }>(
+        '/api/context-relevance/results/link-to-outcomes', { run_id: runId },
+      ),
+    enabled: !!runId,
+  })
+}
+
+/** Same data/cache as useContextRelevanceLinkToOutcomes, for a variable-
+ * length list of run ids (useQueries pattern, see useHistoryDetails). */
+export function useContextRelevanceLinkToOutcomesMulti(runIds: string[]) {
+  return useQueries({
+    queries: runIds.map((runId) => ({
+      queryKey: ['context-relevance-v1-link', runId],
+      queryFn: () =>
+        apiGet<{ run_id: string; run_label: string | null; rows: ContextRelevanceLinkRow[]; tables: ContextRelevanceLinkTables }>(
+          '/api/context-relevance/results/link-to-outcomes', { run_id: runId },
+        ),
+      enabled: !!runId,
+    })),
+  })
+}
+
+export interface ContextRelevanceBatchSummaryRow {
+  run_label: string
+  run_id: string | null
+  no_context: boolean
+  metrics: ContextRelevanceV1RunMetrics | null
+}
+
+export function useContextRelevanceBatchSummary(batchId: string | undefined, judgeId: string) {
+  return useQuery({
+    queryKey: ['context-relevance-v1-batch-summary', batchId, judgeId],
+    queryFn: () =>
+      apiGet<{ batch_id: string; judge_id: string; rows: ContextRelevanceBatchSummaryRow[]; has_any_results: boolean }>(
+        '/api/context-relevance/results/batch-summary', { batch_id: batchId, judge_id: judgeId },
+      ),
+    enabled: !!batchId,
+  })
+}
+
+export interface ContextRelevanceV1Job {
+  job_id: string
+  run_started_at: string
+  run_files: string[]
+  judge: string
+  out: string
+  output_file_missing: boolean
+  is_other_config: boolean
+  run_labels: (string | null)[]
+  batch_id: string | null
+  judged?: number
+  failed?: number
+  skipped?: number
+}
+
+export function useContextRelevanceV1Jobs(showInvalid = false) {
+  return useQuery({
+    queryKey: ['context-relevance-v1-jobs', showInvalid],
+    queryFn: () => apiGet<{ jobs: ContextRelevanceV1Job[] }>('/api/context-relevance/jobs', { show_invalid: showInvalid ? 'true' : undefined }),
+  })
+}
+
+export interface JudgeV1QuestionDetailContextItem {
+  rank: number
+  so_question_id: number | null
+  answer_id: string | null
+  is_accepted: boolean | null
+  trust_weight: number | null
+  hop: number | string | null
+  source_stage: string | null
+  combined_score: number | null
+  score: number | null
+  chunk_text: string
+  context_relevance: Record<string, { label: string | null; reason: string | null }>
+}
+
+export interface JudgeV1QuestionDetailJudge {
+  label: string | null
+  derived_label: string | null
+  consistent: boolean | null
+  claims: Array<{ claim?: string; verdict?: string; severity?: string; evidence?: string }>
+  reasoning: string | null
+  served_model: string | null
+  parse_error: boolean | null
+}
+
+export interface JudgeV1QuestionDetail {
+  question_id: number
+  error?: string
+  title?: string
+  body?: string
+  tags?: string
+  reference_answer?: string
+  context_items?: JudgeV1QuestionDetailContextItem[]
+  candidate_raw?: string
+  candidate_blinded?: string
+  citation_outcome?: string
+  judges?: Record<string, JudgeV1QuestionDetailJudge>
+}
+
+export function fetchJudgeV1QuestionDetail(runId: string, questionIds: number[]) {
+  return apiGet<{ questions: JudgeV1QuestionDetail[] }>('/api/judge-v1/results/question-detail', {
+    run_id: runId, question_ids: questionIds.join(','),
+  })
+}
+
 export interface CheckCompletedResult {
   config_hash: string
   already_completed: boolean
@@ -422,12 +750,34 @@ export function useSettings() {
   })
 }
 
+export interface OfficialCParams {
+  /** "pending_selection" (the C retrieval v3 decision isn't made yet --
+   * the Official preset refuses to launch ANY run while this holds,
+   * regardless of c_retrieval_version) or "locked" (the Outcome section
+   * of docs/DECISION_C_SCORING.md has been filled in). */
+  status: 'pending_selection' | 'locked'
+  /** null while status is "pending_selection" -- the selection
+   * procedure hasn't run yet, so there is no known winning version. */
+  c_retrieval_version: string | null
+  alpha: number | null
+  sample_split: string
+  max_hops: number
+  edge_types: string[]
+  use_author_trust: boolean
+  accepted_only: boolean
+}
+
 export interface ConfigDefaults {
   default_oversample_pool: number
   max_planned_n_sample: number
   prompt_version: string
   c_retrieval_version: string
   d_retrieval_version: string
+  /** Locked Condition C v3 parameters for the "Official (n=384)" preset,
+   * read from docs/DECISION_C_SCORING.md's machine-readable block (see
+   * backend/app/routers/config.py::_official_c_params()). null if the
+   * file doesn't exist. */
+  official_c_params: OfficialCParams | null
 }
 
 /** Static run defaults (not user-editable, unlike Settings) -- oversample

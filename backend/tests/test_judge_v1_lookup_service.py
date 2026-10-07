@@ -156,3 +156,24 @@ def test_served_model_mismatch_count_zero_when_file_missing(tmp_path, monkeypatc
 
     jobs = svc.load_judge_v1_jobs()
     assert jobs[0]["served_model_mismatch_count"] == 0
+
+
+def test_batch_id_falls_back_to_inferred_when_not_recorded(tmp_path, monkeypatch):
+    """The root cause of the "context relevance table not shown" bug
+    (same fix applies here for judge-v1): a job whose run_files have no
+    RECORDED batch_id must still resolve to the inferred one, not None."""
+    history_path = tmp_path / "judge_v1_run_history.jsonl"
+    out_path = tmp_path / "results" / "out.jsonl"
+    out_path.parent.mkdir(parents=True)
+    out_path.write_text("")
+    _write_job(history_path, out=str(out_path), run_files=["some_run_file.jsonl"])
+    monkeypatch.setattr(svc, "JUDGE_V1_HISTORY_PATH", history_path)
+    monkeypatch.setattr(svc, "JUDGE_EVAL_DIR", tmp_path)
+    monkeypatch.setattr(svc, "_run_labels_for_job", lambda record: ["B-plain"])
+
+    from app.services import batch_grouping_service
+
+    monkeypatch.setattr(batch_grouping_service, "find_batch_id_for_output_paths", lambda paths: "inferred-fallback-batch")
+
+    jobs = svc.load_judge_v1_jobs()
+    assert jobs[0]["batch_id"] == "inferred-fallback-batch"

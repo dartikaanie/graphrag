@@ -364,6 +364,33 @@ def _judge_v1_module():
 
 
 @lru_cache
+def _judge_v2_module():
+    """llm_judge_hallucination_v2.py -- a SEPARATE module from
+    _judge_v1_module() above, never touched/depended on by it (judge-v1
+    stays frozen for reproducibility). Same self-healing sys.path/
+    LOG_DIR/RESULTS_DIR override pattern."""
+    mod = importlib.import_module("llm.evaluation.llm_judge_hallucination_v2")
+    judge_common = importlib.import_module("_judge_common")
+    judge_common.LOG_DIR = REPO_ROOT / "llm" / "evaluation" / "logs"
+    judge_common.RESULTS_DIR = REPO_ROOT / "llm" / "evaluation" / "results"
+    return mod
+
+
+@lru_cache
+def _context_relevance_v1_module():
+    """llm_judge_context_relevance_v1.py -- a SEPARATE module from BOTH
+    the legacy judge AND judge-v1, and from the pre-existing
+    llm_judge_context_relevance.py (no suffix, untouched by this dashboard
+    integration). Same self-healing sys.path / LOG_DIR/RESULTS_DIR
+    override pattern as _judge_v1_module() above."""
+    mod = importlib.import_module("llm.evaluation.llm_judge_context_relevance_v1")
+    judge_common = importlib.import_module("_judge_common")
+    judge_common.LOG_DIR = REPO_ROOT / "llm" / "evaluation" / "logs"
+    judge_common.RESULTS_DIR = REPO_ROOT / "llm" / "evaluation" / "results"
+    return mod
+
+
+@lru_cache
 def _judge_agreement_module():
     return importlib.import_module("llm.evaluation.judge_agreement")
 
@@ -852,6 +879,13 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     enable_semantic_expansion = params.get("enable_semantic_expansion")
     enable_semantic_expansion = True if enable_semantic_expansion is None else bool(enable_semantic_expansion)
     log_full_candidates = bool(params.get("log_full_candidates"))
+    c_retrieval_version = params.get("c_retrieval_version") or "v2"
+    alpha = params.get("alpha")
+    sample_split = params.get("sample_split") or "test"
+    max_hops = int(params.get("max_hops") or 2)
+    edge_types = params.get("edge_types") or None
+    use_author_trust = bool(params.get("use_author_trust"))
+    accepted_only = bool(params.get("accepted_only"))
     token_chunk_limit = 400
     oversample_pool: int | None = None
     n_candidates_after_token_filter: int | None = None
@@ -870,7 +904,10 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             output_path = Path("results") / f"condition_c_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
             config = cond.build_config(provider, model, 1, 42, None, top_k, n_anchor, n_semantic_expansion,
                                         fusion_mode, fusion_w_path_trust, fusion_w_intrinsic,
-                                        semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion)
+                                        semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion,
+                                        c_retrieval_version=c_retrieval_version, alpha=alpha,
+                                        sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
+                                        use_author_trust=use_author_trust, accepted_only=accepted_only)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -880,14 +917,20 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             )
             candidates = cond.filter_by_token_limit(candidates)
             n_candidates_after_token_filter = len(candidates)
-            sample_df = cond.sample_questions(candidates, n_sample, seed)
+            if sample_split == "dev":
+                sample_df = cond.sample_questions_split(candidates, n_sample, seed, split="dev")
+            else:
+                sample_df = cond.sample_questions(candidates, n_sample, seed)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
             config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_anchor,
                                         n_semantic_expansion, fusion_mode, fusion_w_path_trust, fusion_w_intrinsic,
-                                        semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion)
+                                        semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion,
+                                        c_retrieval_version=c_retrieval_version, alpha=alpha,
+                                        sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
+                                        use_author_trust=use_author_trust, accepted_only=accepted_only)
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed,
                 fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
@@ -895,6 +938,9 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
                 oversample_pool=oversample_pool, top_k=top_k, n_anchor=n_anchor,
                 n_semantic_expansion=n_semantic_expansion,
                 semantic_expansion_trust_cap=semantic_expansion_trust_cap,
+                c_retrieval_version=c_retrieval_version, alpha=alpha, sample_split=sample_split,
+                max_hops=max_hops, edge_types=edge_types, use_author_trust=use_author_trust,
+                accepted_only=accepted_only,
             )
 
         config_hash = _compute_config_hash(config)
@@ -922,6 +968,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             log_full_candidates=log_full_candidates,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
             config=config, config_hash=config_hash,
+            c_retrieval_version=c_retrieval_version, alpha=alpha, max_hops=max_hops, edge_types=edge_types,
+            use_author_trust=use_author_trust, accepted_only=accepted_only,
         )
 
         cancelled = run_registry.is_cancelled(run_id) or stats["interrupted"]
@@ -948,7 +996,13 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         cond.append_run_history({
             "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
-            "c_retrieval_version": cond.C_RETRIEVAL_VERSION,
+            "c_retrieval_version": c_retrieval_version,
+            "alpha": alpha,
+            "sample_split": sample_split,
+            "max_hops": max_hops,
+            "edge_types": list(edge_types) if edge_types else None,
+            "use_author_trust": use_author_trust,
+            "accepted_only": accepted_only,
             "run_started_at": run_started_at.isoformat(),
             "condition": "C",
             "status": "cancelled" if cancelled else ("success" if results else "no_results"),
@@ -1308,36 +1362,51 @@ _JUDGE_V1_SEMAPHORE = threading.Semaphore(1)
 _JUDGE_V1_QUEUE_LOCK = threading.Lock()
 _JUDGE_V1_QUEUE: list[str] = []
 
+# Context-relevance-v1 -- its own semaphore/queue, independent of
+# judge-v1's and the legacy judge's, same "only ONE job of this kind at
+# a time" rule as judge-v1.
+_CTXREL_V1_SEMAPHORE = threading.Semaphore(1)
+_CTXREL_V1_QUEUE_LOCK = threading.Lock()
+_CTXREL_V1_QUEUE: list[str] = []
+
 # One canonical output file PER judge_id, shared across every dashboard-
 # launched judge-v1 job regardless of which runs were selected -- makes
 # resume (llm_judge_hallucination_v1.load_already_done) correct no matter
 # how run selections vary between launches, since it's keyed on
 # (run_id, question_id, judge_id, prompt_version), not on "which file".
-def judge_v1_output_paths(judge_id: str) -> tuple[Path, Path, Path]:
-    """The canonical dashboard output file for this judge_id ALSO encodes
-    the judge prompt version (e.g. "judge-v1") in its filename -- a
-    future judge-v2 (a different PROMPT_VERSION in its own module) would
-    therefore compute a DIFFERENT filename automatically and can never
-    silently append into a judge-v1 file. Readers additionally refuse a
-    file containing more than one prompt_version/blinding_version (see
-    judge_agreement.load_judge_records()) as defense in depth for a
-    manually-overridden --out path."""
-    prompt_version = _judge_v1_module().PROMPT_VERSION
-    base = REPO_ROOT / "llm" / "evaluation" / "results" / f"jv1_dashboard_{judge_id}_{prompt_version}.jsonl"
-    failures = base.with_name(f"jv1_dashboard_{judge_id}_{prompt_version}_failures.jsonl")
-    resolved = base.with_name(f"jv1_dashboard_{judge_id}_{prompt_version}_failures_resolved.jsonl")
+def _judge_output_paths_generic(mod, filename_prefix: str, judge_id: str) -> tuple[Path, Path, Path]:
+    """Shared by judge_v1_output_paths()/judge_v2_output_paths() -- the
+    canonical dashboard output file for this judge_id ALSO encodes the
+    judge prompt version (e.g. "judge-v1"/"judge-v2") in its filename,
+    so a run under one version can never silently append into the
+    other's file. Readers additionally refuse a file containing more
+    than one prompt_version/blinding_version (see judge_agreement.
+    load_judge_records()) as defense in depth for a manually-overridden
+    --out path."""
+    prompt_version = mod.PROMPT_VERSION
+    base = REPO_ROOT / "llm" / "evaluation" / "results" / f"{filename_prefix}_{judge_id}_{prompt_version}.jsonl"
+    failures = base.with_name(f"{filename_prefix}_{judge_id}_{prompt_version}_failures.jsonl")
+    resolved = base.with_name(f"{filename_prefix}_{judge_id}_{prompt_version}_failures_resolved.jsonl")
     return base, failures, resolved
+
+
+def judge_v1_output_paths(judge_id: str) -> tuple[Path, Path, Path]:
+    return _judge_output_paths_generic(_judge_v1_module(), "jv1_dashboard", judge_id)
 
 
 def judge_v1_run_log_path(job_run_id: str) -> Path:
     return REPO_ROOT / "llm" / "evaluation" / "logs" / f"dashboard_judge_v1_{job_run_id}.log"
 
 
-def _judge_v1_refuse_reason(run_id: str) -> str | None:
+def _judge_refuse_reason(run_id: str) -> str | None:
     """None if the run is judgeable; otherwise a human-readable reason to
     show in the plan/launch response. Checked BEFORE calling load_items()
     so a mixed-config-hash file produces a clean per-run plan-row error
-    instead of crashing the whole plan/launch call."""
+    instead of crashing the whole plan/launch call. Version-independent
+    -- shared by judge-v1 and judge-v2 (neither the invalid/superseded
+    checks nor the mixed-config-hash guard depend on prompt_version).
+    _judge_v1_refuse_reason is kept as an alias so existing call sites/
+    tests referencing that name are unaffected."""
     from app.services import history_service, invalid_runs_service, superseded_runs_service
     from llm.manifest import MixedConfigHashError, assert_single_config_hash
 
@@ -1371,27 +1440,36 @@ def _judge_v1_refuse_reason(run_id: str) -> str | None:
     return None
 
 
-def _judge_token_latency_stats(judge_model: str) -> tuple[float | None, float | None, float | None, str | None]:
+_judge_v1_refuse_reason = _judge_refuse_reason
+
+
+def _token_latency_stats_from_glob(
+    glob_pattern: str, judge_model: str, exclude_basenames: set[str] | None = None,
+) -> tuple[float | None, float | None, float | None, str | None]:
     """(avg_input_tokens, avg_output_tokens, avg_latency_sec, source) for
-    this judge_model, used by plan_judge_v1() to estimate tokens/cost/time
-    when a run hasn't been judged yet. Fallback chain:
-      1. Real judge-v1 records for this judge_model, from ANY
-         llm/evaluation/results/jv1_*.jsonl file -- this is a BOUNDED,
-         judge-v1-specific directory glob purely for estimation (not an
-         authoritative data read), so it naturally also covers "records
-         for this exact judge_id + prompt_version" as a subset (the
-         current canonical file is itself one of the globbed files) --
-         there's no need for a separate, narrower first pass.
-      2. None (caller falls back to the registry's own
-         default_input_tokens_per_item/default_output_tokens_per_item/
-         default_latency_sec_per_item) -- source is then "default estimate".
+    this judge_model, scanning every llm/evaluation/results/<glob_pattern>
+    file -- a BOUNDED, estimation-only glob (not an authoritative data
+    read), shared by plan_judge_v1()/plan_judge_v2()/
+    plan_context_relevance_v1() (each passes its own pattern, e.g.
+    "jv1_*.jsonl"/"jv2_*.jsonl"/"ctxrel_v1_*.jsonl", so the three never
+    cross-contaminate each other's token estimates). `exclude_basenames`
+    skips files registered as known-bad (e.g. a smoke-test --out path)
+    -- see invalid_context_relevance_outputs_service.py.
+
+    Fallback chain used by every caller: this real-history scan first,
+    then (if it finds nothing) the registry's own default_input_tokens_
+    per_item/default_output_tokens_per_item/default_latency_sec_per_item,
+    with source="default estimate" in that case.
     """
+    exclude_basenames = exclude_basenames or set()
     results_dir = REPO_ROOT / "llm" / "evaluation" / "results"
     input_vals: list[float] = []
     output_vals: list[float] = []
     latency_vals: list[float] = []
     if results_dir.exists():
-        for path in sorted(results_dir.glob("jv1_*.jsonl")):
+        for path in sorted(results_dir.glob(glob_pattern)):
+            if path.name in exclude_basenames:
+                continue
             try:
                 with open(path) as f:
                     for line in f:
@@ -1420,13 +1498,24 @@ def _judge_token_latency_stats(judge_model: str) -> tuple[float | None, float | 
     return None, None, None, None
 
 
-def plan_judge_v1(run_ids: list[str], judge_ids: list[str], workers: dict[str, int]) -> dict[str, Any]:
-    """Dry-run: per (run, judge) -- items to judge (resume-aware), est.
-    tokens/cost/time. Refused runs (invalid/superseded/mixed-hash/missing)
-    get a `refused_reason` and no per-judge rows."""
+def _judge_token_latency_stats(judge_model: str) -> tuple[float | None, float | None, float | None, str | None]:
+    """plan_judge_v1()'s token/cost/time estimate -- see
+    _token_latency_stats_from_glob()'s docstring for the fallback chain."""
+    return _token_latency_stats_from_glob("jv1_*.jsonl", judge_model)
+
+
+def _plan_judge_generic(
+    run_ids: list[str], judge_ids: list[str], workers: dict[str, int], mod, output_paths_fn, token_stats_fn,
+) -> dict[str, Any]:
+    """Shared by plan_judge_v1()/plan_judge_v2() -- dry-run: per (run,
+    judge) -- items to judge (resume-aware), est. tokens/cost/time.
+    Refused runs (invalid/superseded/mixed-hash/missing) get a
+    `refused_reason` and no per-judge rows. `mod` is the judge module
+    (llm_judge_hallucination_v1/v2), `output_paths_fn`/`token_stats_fn`
+    are that version's own output-path/token-stats functions -- the
+    only two things that actually differ between versions."""
     from app.services import history_service
 
-    mod = _judge_v1_module()
     judge_registry = _judge_clients_module().JUDGE_REGISTRY
     rows: list[dict[str, Any]] = []
     # Cache per judge_id -- the fallback scan is the same for every run in
@@ -1434,7 +1523,7 @@ def plan_judge_v1(run_ids: list[str], judge_ids: list[str], workers: dict[str, i
     stats_cache: dict[str, tuple[float | None, float | None, float | None, str | None]] = {}
 
     for run_id in run_ids:
-        reason = _judge_v1_refuse_reason(run_id)
+        reason = _judge_refuse_reason(run_id)
         if reason:
             rows.append({"run_id": run_id, "refused_reason": reason})
             continue
@@ -1446,7 +1535,7 @@ def plan_judge_v1(run_ids: list[str], judge_ids: list[str], workers: dict[str, i
         n_items = len(records)
 
         for judge_id in judge_ids:
-            out_path, _, _ = judge_v1_output_paths(judge_id)
+            out_path, _, _ = output_paths_fn(judge_id)
             done_keys = mod.load_already_done(out_path) if out_path.exists() else set()
             config = judge_registry.get(judge_id)
             judge_model = config.model if config else None
@@ -1457,16 +1546,17 @@ def plan_judge_v1(run_ids: list[str], judge_ids: list[str], workers: dict[str, i
             )
             to_judge = n_items - already_judged
 
-            # Token/latency estimate -- real history (any judge-v1 output
-            # file for this judge_model) first, the registry's own
-            # defaults otherwise. `token_source` is surfaced in the row so
-            # the UI can label which one was used ("from history" /
-            # "default estimate") -- never silently guessed without saying so.
+            # Token/latency estimate -- real history (any output file
+            # for this judge_model, THIS version only) first, the
+            # registry's own defaults otherwise. `token_source` is
+            # surfaced in the row so the UI can label which one was
+            # used ("from history" / "default estimate") -- never
+            # silently guessed without saying so.
             avg_in = avg_out = avg_lat = None
             token_source = None
             if config is not None:
                 if judge_model not in stats_cache:
-                    stats_cache[judge_model] = _judge_token_latency_stats(judge_model)
+                    stats_cache[judge_model] = token_stats_fn(judge_model)
                 avg_in, avg_out, avg_lat, token_source = stats_cache[judge_model]
                 if avg_in is None:
                     avg_in, avg_out = config.default_input_tokens_per_item, config.default_output_tokens_per_item
@@ -1549,19 +1639,25 @@ def plan_judge_v1(run_ids: list[str], judge_ids: list[str], workers: dict[str, i
     return {"rows": rows, "totals": totals}
 
 
-def _build_judge_v1_items(run_ids: list[str], limit: int | None = None) -> list[dict[str, Any]]:
-    """load_items() over each selected run's own output_path -- re-checks
+def plan_judge_v1(run_ids: list[str], judge_ids: list[str], workers: dict[str, int]) -> dict[str, Any]:
+    return _plan_judge_generic(run_ids, judge_ids, workers, _judge_v1_module(), judge_v1_output_paths, _judge_token_latency_stats)
+
+
+def _build_judge_items_generic(run_ids: list[str], mod, output_paths_fn, limit: int | None = None) -> list[dict[str, Any]]:
+    """Shared by _build_judge_v1_items()/_build_judge_v2_items() --
+    load_items() over each selected run's own output_path -- re-checks
     the same refusal conditions (defense in depth: a run could become
     invalid/superseded between plan and launch). `limit`: per-file item
     cap, same meaning as load_items()'s own --limit -- used for a cheap
     smoke-test launch (e.g. 2 items) through this SAME path, not a
-    separate code path."""
+    separate code path. `output_paths_fn` is unused here but accepted
+    for symmetry with the other generics (kept for a future version
+    that might need to inspect existing outputs before loading)."""
     from app.services import history_service
 
-    mod = _judge_v1_module()
     paths = []
     for run_id in run_ids:
-        reason = _judge_v1_refuse_reason(run_id)
+        reason = _judge_refuse_reason(run_id)
         if reason:
             raise ValueError(f"{run_id}: {reason}")
         detail = history_service.get_history_detail(run_id)
@@ -1569,20 +1665,28 @@ def _build_judge_v1_items(run_ids: list[str], limit: int | None = None) -> list[
     return mod.load_items(paths, limit=limit)
 
 
-def run_judge_v1_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> None:
-    """The dashboard's judge-v1 job driver -- mirrors
-    run_judge_batch_dashboard()'s shape (legacy judge) but drives
-    llm_judge_hallucination_v1.run_batch() for POSSIBLY SEVERAL judge_ids
-    at once (one run_batch() call per judge_id, sequential -- run_batch()
-    itself already parallelizes across items via its own `workers`)."""
-    mod = _judge_v1_module()
+def _build_judge_v1_items(run_ids: list[str], limit: int | None = None) -> list[dict[str, Any]]:
+    return _build_judge_items_generic(run_ids, _judge_v1_module(), judge_v1_output_paths, limit=limit)
+
+
+def _run_judge_batch_dashboard_generic(
+    job_run_id: str, params: dict[str, Any], mod, output_paths_fn, log_path_fn, manifest_name: str,
+    build_items_fn,
+) -> None:
+    """Shared by run_judge_v1_batch_dashboard()/run_judge_v2_batch_
+    dashboard() -- one run_batch() call per judge_id, sequential
+    (run_batch() itself already parallelizes across items via its own
+    `workers`). Every version-specific bit is passed in: the judge
+    module, its output-path/log-path functions, its own manifest
+    filename (judge_v1_run_history.jsonl vs judge_v2_run_history.jsonl
+    -- never the same file), and its items-builder."""
     run_started_at = datetime.now(timezone.utc)
     run_registry.update_run(job_run_id, status="running", started_at=run_started_at.isoformat())
 
     run_ids = params["run_ids"]
     judge_ids = params["judge_ids"]
     workers = params.get("workers") or {}
-    log_path = judge_v1_run_log_path(job_run_id)
+    log_path = log_path_fn(job_run_id)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(msg: Any = "") -> None:
@@ -1593,7 +1697,7 @@ def run_judge_v1_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> Non
     try:
         from app.services import history_service
 
-        items = _build_judge_v1_items(run_ids, limit=params.get("limit"))
+        items = build_items_fn(run_ids, limit=params.get("limit"))
         # Actual output FILE PATHS, not run_ids -- judge_v1_lookup_service's
         # run_label/is_other_config resolution reads these via
         # _run_metadata.resolve_run_metadata(), which needs a path matching
@@ -1608,7 +1712,7 @@ def run_judge_v1_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> Non
         for judge_id in judge_ids:
             if run_registry.is_cancelled(job_run_id):
                 break
-            out_path, failures_path, resolved_path = judge_v1_output_paths(judge_id)
+            out_path, failures_path, resolved_path = output_paths_fn(judge_id)
             out_path.parent.mkdir(parents=True, exist_ok=True)
             w = max(1, int(workers.get(judge_id, 4)))
 
@@ -1644,7 +1748,7 @@ def run_judge_v1_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> Non
                 log_path=str(log_path),
             )
 
-            mod.append_manifest("judge_v1_run_history.jsonl", {
+            mod.append_manifest(manifest_name, {
                 "run_started_at": run_started_at.isoformat(),
                 "run_files": run_file_paths, "judge": judge_id, "workers": w,
                 "out": str(out_path), "prompt_version": mod.PROMPT_VERSION, "source": "dashboard",
@@ -1664,29 +1768,561 @@ def run_judge_v1_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> Non
         )
 
 
-def start_judge_v1_run(job_run_id: str, params: dict[str, Any]) -> None:
-    """Entry point routers/judge_v1.py's background thread calls. Only
-    ONE judge-v1 job at a time (Semaphore(1)) -- see module-level note
-    above. Never gates on _HEAVY_RUN_LOCK or the legacy judge's
-    _JUDGE_SEMAPHORE: judge-v1 jobs are API-only and may run alongside
-    either."""
+def run_judge_v1_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> None:
+    _run_judge_batch_dashboard_generic(
+        job_run_id, params, _judge_v1_module(), judge_v1_output_paths, judge_v1_run_log_path,
+        "judge_v1_run_history.jsonl", _build_judge_v1_items,
+    )
+
+
+def _start_judge_run_generic(
+    job_run_id: str, params: dict[str, Any], semaphore: threading.Semaphore,
+    queue_lock: threading.Lock, queue: list[str], dashboard_fn,
+) -> None:
+    """Shared by start_judge_v1_run()/start_judge_v2_run() -- only ONE
+    job of a given version at a time (its own Semaphore(1), never
+    gating on _HEAVY_RUN_LOCK or the legacy judge's _JUDGE_SEMAPHORE:
+    these jobs are API-only and may run alongside either, and v1/v2
+    jobs may run alongside EACH OTHER too since they have separate
+    semaphores)."""
     settings_service.apply_to_environment()
     run_registry.update_run(job_run_id, status="queued")
-    _enter_queue(_JUDGE_V1_QUEUE_LOCK, _JUDGE_V1_QUEUE, job_run_id)
+    _enter_queue(queue_lock, queue, job_run_id)
     try:
-        _JUDGE_V1_SEMAPHORE.acquire()
+        semaphore.acquire()
         try:
-            _leave_queue(_JUDGE_V1_QUEUE_LOCK, _JUDGE_V1_QUEUE, job_run_id)
+            _leave_queue(queue_lock, queue, job_run_id)
             if run_registry.is_cancelled(job_run_id):
                 run_registry.update_run(
                     job_run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat(),
                 )
                 return
-            run_judge_v1_batch_dashboard(job_run_id, params)
+            dashboard_fn(job_run_id, params)
         finally:
-            _JUDGE_V1_SEMAPHORE.release()
+            semaphore.release()
     finally:
-        _leave_queue(_JUDGE_V1_QUEUE_LOCK, _JUDGE_V1_QUEUE, job_run_id)
+        _leave_queue(queue_lock, queue, job_run_id)
+
+
+def start_judge_v1_run(job_run_id: str, params: dict[str, Any]) -> None:
+    _start_judge_run_generic(
+        job_run_id, params, _JUDGE_V1_SEMAPHORE, _JUDGE_V1_QUEUE_LOCK, _JUDGE_V1_QUEUE, run_judge_v1_batch_dashboard,
+    )
+
+
+# ---------------------------------------------------------------------
+# Judge-v2 -- a fix to judge-v1's prompt (see docs/JUDGE_V2_CHANGES.md).
+# judge-v1 is NEVER touched by anything below -- these are v2's OWN
+# output paths/manifest/semaphore, reusing the version-independent
+# generics above (_plan_judge_generic/_build_judge_items_generic/
+# _run_judge_batch_dashboard_generic/_start_judge_run_generic) rather
+# than duplicating them.
+# ---------------------------------------------------------------------
+_JUDGE_V2_SEMAPHORE = threading.Semaphore(1)
+_JUDGE_V2_QUEUE_LOCK = threading.Lock()
+_JUDGE_V2_QUEUE: list[str] = []
+
+
+def judge_v2_output_paths(judge_id: str) -> tuple[Path, Path, Path]:
+    return _judge_output_paths_generic(_judge_v2_module(), "jv2_dashboard", judge_id)
+
+
+def judge_v2_run_log_path(job_run_id: str) -> Path:
+    return REPO_ROOT / "llm" / "evaluation" / "logs" / f"dashboard_judge_v2_{job_run_id}.log"
+
+
+def _judge_v2_token_latency_stats(judge_model: str) -> tuple[float | None, float | None, float | None, str | None]:
+    """plan_judge_v2()'s token/cost/time estimate -- separate glob
+    pattern ("jv2_*.jsonl") from judge-v1's, so the two never cross-
+    contaminate each other's estimates."""
+    return _token_latency_stats_from_glob("jv2_*.jsonl", judge_model)
+
+
+def plan_judge_v2(run_ids: list[str], judge_ids: list[str], workers: dict[str, int]) -> dict[str, Any]:
+    return _plan_judge_generic(run_ids, judge_ids, workers, _judge_v2_module(), judge_v2_output_paths, _judge_v2_token_latency_stats)
+
+
+def _build_judge_v2_items(run_ids: list[str], limit: int | None = None) -> list[dict[str, Any]]:
+    return _build_judge_items_generic(run_ids, _judge_v2_module(), judge_v2_output_paths, limit=limit)
+
+
+def run_judge_v2_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> None:
+    _run_judge_batch_dashboard_generic(
+        job_run_id, params, _judge_v2_module(), judge_v2_output_paths, judge_v2_run_log_path,
+        "judge_v2_run_history.jsonl", _build_judge_v2_items,
+    )
+
+
+def start_judge_v2_run(job_run_id: str, params: dict[str, Any]) -> None:
+    _start_judge_run_generic(
+        job_run_id, params, _JUDGE_V2_SEMAPHORE, _JUDGE_V2_QUEUE_LOCK, _JUDGE_V2_QUEUE, run_judge_v2_batch_dashboard,
+    )
+
+
+def _existing_output_path(output_paths_fn, judge_id: str) -> str | None:
+    out_path, _, _ = output_paths_fn(judge_id)
+    return str(out_path) if out_path.exists() else None
+
+
+def build_version_comparison(run_ids: list[str], judge_id_a: str = "primary", judge_id_b: str = "secondary") -> dict[str, Any]:
+    """Step 5: a label TRANSITION matrix (v1 label -> v2 label, per
+    run_label, for judge_id_a) plus kappa(judge_id_a, judge_id_b) under
+    v1 and under v2, SIDE BY SIDE -- never mixed into one read (each
+    version's records are loaded with a SEPARATE load_judge_records()
+    call, per the mixed-version guard)."""
+    agreement_mod = _judge_agreement_module()
+
+    v1_paths = [p for p in (_existing_output_path(judge_v1_output_paths, judge_id_a),
+                            _existing_output_path(judge_v1_output_paths, judge_id_b)) if p]
+    v2_paths = [p for p in (_existing_output_path(judge_v2_output_paths, judge_id_a),
+                            _existing_output_path(judge_v2_output_paths, judge_id_b)) if p]
+
+    v1_records = agreement_mod.load_judge_records(v1_paths) if v1_paths else []
+    v2_records = agreement_mod.load_judge_records(v2_paths) if v2_paths else []
+
+    run_id_set = set(run_ids)
+    v1_by_key = {(r["run_id"], r["question_id"]): r for r in v1_records
+                 if r.get("judge_id") == judge_id_a and r.get("run_id") in run_id_set}
+    v2_by_key = {(r["run_id"], r["question_id"]): r for r in v2_records
+                 if r.get("judge_id") == judge_id_a and r.get("run_id") in run_id_set}
+
+    transition: dict[str, dict[str, dict[str, int]]] = {}
+    for key in set(v1_by_key) & set(v2_by_key):
+        v1_rec, v2_rec = v1_by_key[key], v2_by_key[key]
+        run_label = v1_rec.get("run_label") or "unknown"
+        v1_label = v1_rec.get("label") or "PARSE_ERROR"
+        v2_label = v2_rec.get("label") or "PARSE_ERROR"
+        transition.setdefault(run_label, {}).setdefault(v1_label, {})
+        transition[run_label][v1_label][v2_label] = transition[run_label][v1_label].get(v2_label, 0) + 1
+
+    def _kappas_for(records: list[dict]) -> dict[str, Any]:
+        pairs = agreement_mod.pair_two_judges(
+            [r for r in records if r.get("run_id") in run_id_set], judge_id_a, judge_id_b,
+        )
+        if not pairs:
+            return {"n_pairs": 0, "kappas": None, "insufficient_data": True}
+        kappas = agreement_mod.compute_kappas(pairs)
+        return {"n_pairs": len(pairs), "kappas": kappas, "insufficient_data": kappas["weighted"] is None}
+
+    return {
+        "judge_id_a": judge_id_a, "judge_id_b": judge_id_b,
+        "transition_matrix": transition,
+        "kappa_v1": _kappas_for(v1_records),
+        "kappa_v2": _kappas_for(v2_records),
+    }
+
+
+def reference_conflicts(run_ids: list[str], judge_ids: list[str]) -> list[dict[str, Any]]:
+    """Step 5: a "Reference conflicts" list (question, run_label, claim,
+    both judges) for human review -- every v2 claim flagged
+    reference_conflict=True (the judge was confident the reference
+    answer is outdated/wrong), across the given judge_ids, restricted
+    to the given run_ids."""
+    run_id_set = set(run_ids)
+    rows: list[dict[str, Any]] = []
+    for judge_id in judge_ids:
+        out_path, _, _ = judge_v2_output_paths(judge_id)
+        if not out_path.exists():
+            continue
+        with open(out_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                record = _json.loads(line)
+                if record.get("run_id") not in run_id_set:
+                    continue
+                for claim in record.get("claims") or []:
+                    if claim.get("reference_conflict"):
+                        rows.append({
+                            "question_id": record.get("question_id"), "run_label": record.get("run_label"),
+                            "judge_id": judge_id, "claim": claim.get("claim"),
+                            "evidence": claim.get("evidence"), "verdict": claim.get("verdict"),
+                        })
+    return rows
+
+
+# ---------------------------------------------------------------------
+# Context relevance v1 -- Step 3 of docs/agent_prompt_judge_results_
+# export.md. Dedup is CROSS-RUN (same (question_id, answer_id,
+# text_hash) across every selected run's retrieved_context), so this
+# produces ONE canonical output file per judge_id, shared across every
+# dashboard launch regardless of which runs were selected -- same
+# reasoning as judge_v1_output_paths() above.
+# ---------------------------------------------------------------------
+
+def ctxrel_v1_output_paths(judge_id: str) -> tuple[Path, Path, Path]:
+    prompt_version = _context_relevance_v1_module().PROMPT_VERSION
+    base = REPO_ROOT / "llm" / "evaluation" / "results" / f"ctxrel_v1_{judge_id}_{prompt_version}.jsonl"
+    failures = base.with_name(f"ctxrel_v1_{judge_id}_{prompt_version}_failures.jsonl")
+    resolved = base.with_name(f"ctxrel_v1_{judge_id}_{prompt_version}_failures_resolved.jsonl")
+    return base, failures, resolved
+
+
+def _ctxrel_v1_refuse_reason(run_id: str) -> str | None:
+    """Same checks as _judge_v1_refuse_reason(), PLUS: condition A has no
+    retrieved_context at all, so it's excluded from context relevance
+    entirely (Step 3.6)."""
+    from app.services import history_service
+
+    reason = _judge_v1_refuse_reason(run_id)
+    if reason:
+        return reason
+    detail = history_service.get_history_detail(run_id)
+    if detail.get("condition") == "A":
+        return "condition A has no retrieved_context -- excluded from context relevance"
+    return None
+
+
+def _ctxrel_token_latency_stats(judge_model: str) -> tuple[float | None, float | None, float | None, str | None]:
+    """plan_context_relevance_v1()'s token/cost/time estimate. Skips any
+    file registered in logs/invalid_context_relevance_outputs.jsonl
+    (e.g. a manual smoke-test --out path) -- dedup/resume/results-
+    summary never glob at all (they only ever read the canonical per-
+    judge_id file), so this is the one place a smoke-test output could
+    otherwise quietly bias a real plan-table estimate."""
+    from app.services import invalid_context_relevance_outputs_service
+
+    invalid_basenames = invalid_context_relevance_outputs_service.load_invalid_output_basenames()
+    return _token_latency_stats_from_glob("ctxrel_v1_*.jsonl", judge_model, exclude_basenames=invalid_basenames)
+
+
+def _build_ctxrel_v1_items(run_ids: list[str], limit: int | None = None) -> list[dict[str, Any]]:
+    """Deduplicated (question, context item) rows across every selected
+    run (via llm_judge_context_relevance_v1.load_items()) -- re-checks
+    refusal conditions, same defense-in-depth reasoning as
+    _build_judge_v1_items()."""
+    from app.services import history_service
+
+    mod = _context_relevance_v1_module()
+    paths = []
+    for run_id in run_ids:
+        reason = _ctxrel_v1_refuse_reason(run_id)
+        if reason:
+            raise ValueError(f"{run_id}: {reason}")
+        detail = history_service.get_history_detail(run_id)
+        paths.append(detail["output_path"])
+    return mod.load_items(paths, limit=limit) if paths else []
+
+
+def plan_context_relevance_v1(run_ids: list[str], judge_ids: list[str], workers: dict[str, int]) -> dict[str, Any]:
+    """Dry-run for context relevance: per-run context-item counts (for
+    visibility), plus the GLOBAL deduplicated item count actually judged
+    (shared across every selected run, incl. plain/grounded pairs of the
+    same retrieval method) -- est. tokens/cost/time are computed on that
+    deduplicated count, not on the sum of each run's own context items."""
+    from app.services import history_service
+
+    mod = _context_relevance_v1_module()
+    judge_registry = _judge_clients_module().JUDGE_REGISTRY
+
+    rows: list[dict[str, Any]] = []
+    valid_run_ids: list[str] = []
+    for run_id in run_ids:
+        reason = _ctxrel_v1_refuse_reason(run_id)
+        if reason:
+            rows.append({"run_id": run_id, "refused_reason": reason})
+            continue
+        detail = history_service.get_history_detail(run_id)
+        output_path = Path(detail["output_path"])
+        with open(output_path) as f:
+            records = [_json.loads(line) for line in f if line.strip()]
+        n_context_items = sum(len(r.get("retrieved_context") or []) for r in records)
+        rows.append({"run_id": run_id, "run_label": detail.get("run_label"), "n_context_items": n_context_items})
+        valid_run_ids.append(run_id)
+
+    paths = [history_service.get_history_detail(rid)["output_path"] for rid in valid_run_ids]
+    items = mod.load_items(paths, limit=None) if paths else []
+    unique_items = len(items)
+
+    stats_cache: dict[str, tuple[float | None, float | None, float | None, str | None]] = {}
+    per_judge: dict[str, dict[str, Any]] = {}
+    for judge_id in judge_ids:
+        out_path, _, _ = ctxrel_v1_output_paths(judge_id)
+        done_keys = mod.load_already_done(out_path) if out_path.exists() else set()
+        config = judge_registry.get(judge_id)
+        judge_model = config.model if config else None
+        already_judged = sum(
+            1 for it in items
+            if (it["question_id"], it["answer_id"], it["text_hash"], judge_id, judge_model, mod.PROMPT_VERSION) in done_keys
+        )
+        to_judge = unique_items - already_judged
+
+        avg_in = avg_out = avg_lat = None
+        token_source = None
+        if config is not None:
+            if judge_model not in stats_cache:
+                stats_cache[judge_model] = _ctxrel_token_latency_stats(judge_model)
+            avg_in, avg_out, avg_lat, token_source = stats_cache[judge_model]
+            if avg_in is None:
+                avg_in, avg_out = config.default_input_tokens_per_item, config.default_output_tokens_per_item
+                token_source = "default estimate"
+            if avg_lat is None:
+                avg_lat = config.default_latency_sec_per_item
+
+        est_tokens_in = round(avg_in * to_judge) if avg_in is not None else None
+        est_tokens_out = round(avg_out * to_judge) if avg_out is not None else None
+        est_cost = None
+        if config is not None and est_tokens_in is not None and est_tokens_out is not None:
+            est_cost = round(
+                est_tokens_in / 1_000_000 * config.price_per_m_input
+                + est_tokens_out / 1_000_000 * config.price_per_m_output, 4,
+            )
+        w = max(1, workers.get(judge_id, 4))
+        est_time_sec = round(to_judge / w * avg_lat) if (to_judge and avg_lat is not None) else 0
+
+        per_judge[judge_id] = {
+            "role": config.role if config else None,
+            "already_judged": already_judged, "items_to_judge": to_judge,
+            "est_tokens_in": est_tokens_in, "est_tokens_out": est_tokens_out,
+            "est_cost_usd": est_cost, "cost_unknown": config is None,
+            "est_time_sec": est_time_sec, "token_source": token_source,
+        }
+
+    totals = {
+        "unique_items": unique_items,
+        "items_to_judge": sum(p["items_to_judge"] for p in per_judge.values()),
+        "est_tokens_in": sum(p["est_tokens_in"] or 0 for p in per_judge.values()) or None,
+        "est_tokens_out": sum(p["est_tokens_out"] or 0 for p in per_judge.values()) or None,
+        "est_cost_usd": round(sum(p["est_cost_usd"] or 0 for p in per_judge.values()), 4)
+        if any(p["est_cost_usd"] is not None for p in per_judge.values()) else None,
+        "cost_unknown_rows": sum(1 for p in per_judge.values() if p["cost_unknown"]),
+        "est_time_sec": max((p["est_time_sec"] for p in per_judge.values()), default=0),
+        "per_judge": per_judge,
+    }
+    return {"rows": rows, "totals": totals}
+
+
+def ctxrel_v1_run_log_path(job_run_id: str) -> Path:
+    return REPO_ROOT / "llm" / "evaluation" / "logs" / f"dashboard_ctxrel_v1_{job_run_id}.log"
+
+
+def run_context_relevance_v1_batch_dashboard(job_run_id: str, params: dict[str, Any]) -> None:
+    """Mirrors run_judge_v1_batch_dashboard()'s shape -- one run_batch()
+    call per judge_id, driven over the GLOBALLY deduplicated item list
+    (not per-run), since a context item shared by several selected runs
+    (e.g. a plain/grounded pair) is judged only once regardless of how
+    many runs reference it."""
+    mod = _context_relevance_v1_module()
+    run_started_at = datetime.now(timezone.utc)
+    run_registry.update_run(job_run_id, status="running", started_at=run_started_at.isoformat())
+
+    run_ids = params["run_ids"]
+    judge_ids = params["judge_ids"]
+    workers = params.get("workers") or {}
+    log_path = ctxrel_v1_run_log_path(job_run_id)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def log(msg: Any = "") -> None:
+        print(msg)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"{msg}\n")
+
+    try:
+        from app.services import history_service
+
+        items = _build_ctxrel_v1_items(run_ids, limit=params.get("limit"))
+        run_file_paths = [history_service.get_history_detail(rid)["output_path"] for rid in run_ids]
+        questions_parquet = str(_questions_parquet())
+        per_judge_summary: dict[str, Any] = {}
+        total_done = 0
+        total_target = len(items) * len(judge_ids)
+        run_registry.update_run(job_run_id, progress={"current": 0, "total": total_target})
+
+        for judge_id in judge_ids:
+            if run_registry.is_cancelled(job_run_id):
+                break
+            out_path, failures_path, resolved_path = ctxrel_v1_output_paths(judge_id)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            w = max(1, int(workers.get(judge_id, 4)))
+
+            def on_progress(event: dict[str, Any]) -> None:
+                nonlocal total_done
+                total_done += 1
+                run_registry.update_run(job_run_id, progress={"current": total_done, "total": total_target})
+                run_registry.append_result(job_run_id, {
+                    "question_id": event.get("question_id"), "judge_id": judge_id,
+                    "status": event.get("status"),
+                })
+
+            summary = mod.run_batch(
+                items, [judge_id], questions_parquet, out_path, failures_path, workers=w,
+                resolved_path=resolved_path, on_progress=on_progress,
+                check_cancel=lambda: run_registry.is_cancelled(job_run_id),
+            )
+            per_judge_summary[judge_id] = summary
+            log(f"[{judge_id}] judged={summary['judged']} skipped={summary['skipped']} failed={summary['failed']}")
+
+            from llm.manifest import sum_usage_tokens, write_manifest
+            finished_at = datetime.now(timezone.utc)
+            with open(out_path) as f:
+                out_records = [_json.loads(line) for line in f if line.strip()]
+            write_manifest(
+                out_path, run_label=None, status="interrupted" if run_registry.is_cancelled(job_run_id) else "completed",
+                config={"run_ids": run_ids, "judge_id": judge_id, "workers": w},
+                started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
+                item_counts={"attempted": len(items), "succeeded": summary["judged"], "failed": summary["failed"]},
+                prompt_version=mod.PROMPT_VERSION,
+                total_tokens=sum_usage_tokens(out_records), extra_output_files=[failures_path],
+                log_path=str(log_path),
+            )
+
+            mod.append_manifest("context_relevance_v1_run_history.jsonl", {
+                "run_started_at": run_started_at.isoformat(),
+                "run_files": run_file_paths, "judge": judge_id, "workers": w,
+                "out": str(out_path), "prompt_version": mod.PROMPT_VERSION, "source": "dashboard",
+                **summary,
+            })
+
+        cancelled = run_registry.is_cancelled(job_run_id)
+        duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
+        run_registry.update_run(
+            job_run_id, status="cancelled" if cancelled else "completed",
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            summary={"per_judge": per_judge_summary, "duration_sec": duration},
+        )
+    except Exception as e:
+        run_registry.update_run(
+            job_run_id, status="failed", finished_at=datetime.now(timezone.utc).isoformat(), error=str(e),
+        )
+
+
+def start_context_relevance_v1_run(job_run_id: str, params: dict[str, Any]) -> None:
+    settings_service.apply_to_environment()
+    run_registry.update_run(job_run_id, status="queued")
+    _enter_queue(_CTXREL_V1_QUEUE_LOCK, _CTXREL_V1_QUEUE, job_run_id)
+    try:
+        _CTXREL_V1_SEMAPHORE.acquire()
+        try:
+            _leave_queue(_CTXREL_V1_QUEUE_LOCK, _CTXREL_V1_QUEUE, job_run_id)
+            if run_registry.is_cancelled(job_run_id):
+                run_registry.update_run(
+                    job_run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                return
+            run_context_relevance_v1_batch_dashboard(job_run_id, params)
+        finally:
+            _CTXREL_V1_SEMAPHORE.release()
+    finally:
+        _leave_queue(_CTXREL_V1_QUEUE_LOCK, _CTXREL_V1_QUEUE, job_run_id)
+
+
+# ---------------------------------------------------------------------
+# Per-question detail export (Step 2.3 of docs/agent_prompt_judge_
+# results_export.md) -- assembles question/body/tags, reference answer,
+# per-context-item relevance label, candidate raw+blinded, citation
+# outcome, and each registered judge's label/claims/reasoning/
+# served_model for one (run_id, question_id) pair. Read-only, reuses
+# existing canonical output files -- never duplicates judging logic.
+# ---------------------------------------------------------------------
+
+_TRUNCATE_NOTE = " … [truncated]"
+
+
+def _truncate(text: str | None, max_chars: int) -> str:
+    text = text or ""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + _TRUNCATE_NOTE
+
+
+def build_question_detail(run_id: str, question_ids: list[int]) -> list[dict[str, Any]]:
+    from app.services import history_service
+
+    detail = history_service.get_history_detail(run_id)
+    if not detail or not detail.get("output_path"):
+        raise ValueError(f"{run_id}: not found or has no output file")
+    output_path = Path(detail["output_path"])
+
+    with open(output_path) as f:
+        records_by_qid = {r["question_id"]: r for r in (_json.loads(line) for line in f if line.strip())}
+
+    ctxrel_mod = _context_relevance_v1_module()  # self-heals sys.path for _judge_common/judge_prompt_v1 below
+    judge_common = importlib.import_module("_judge_common")
+    questions_parquet = str(_questions_parquet())
+    judge_registry = _judge_clients_module().JUDGE_REGISTRY
+    ctxrel_by_judge = {}
+    for judge_id in judge_registry:
+        out_path, _, _ = ctxrel_v1_output_paths(judge_id)
+        if out_path.exists():
+            ctxrel_by_judge[judge_id] = ctxrel_mod.load_ctxrel_records([out_path])
+
+    jv1_mod = _judge_agreement_module()
+    jv1_by_judge: dict[str, dict[int, dict]] = {}
+    for judge_id in judge_registry:
+        out_path, _, _ = judge_v1_output_paths(judge_id)
+        if not out_path.exists():
+            continue
+        records = jv1_mod.load_judge_records([str(out_path)])
+        jv1_by_judge[judge_id] = {r["question_id"]: r for r in records if r.get("run_id") == run_id}
+
+    try:
+        judge_prompt_v1 = importlib.import_module("judge_prompt_v1")
+        blind_candidate = judge_prompt_v1.blind_candidate
+    except Exception:
+        blind_candidate = lambda text: text  # noqa: E731
+
+    bodies_html = judge_common.load_question_bodies(questions_parquet, question_ids)
+
+    out = []
+    for qid in question_ids:
+        record = records_by_qid.get(qid)
+        if record is None:
+            out.append({"question_id": qid, "error": "question_id not found in this run's output file"})
+            continue
+
+        body_html = bodies_html.get(qid)
+        candidate_raw = record.get("llm_answer", "") or ""
+
+        context_items = []
+        for rank, item in enumerate(record.get("retrieved_context") or [], start=1):
+            chunk_text = item.get("chunk_text", "") or ""
+            text_hash = ctxrel_mod._text_hash(chunk_text)
+            ctxrel_entries = {}
+            for judge_id, by_key in ctxrel_by_judge.items():
+                judged = by_key.get((qid, item.get("answer_id"), text_hash))
+                if judged:
+                    ctxrel_entries[judge_id] = {"label": judged.get("label"), "reason": judged.get("reason")}
+            context_items.append({
+                "rank": rank, "so_question_id": item.get("question_id"), "answer_id": item.get("answer_id"),
+                "is_accepted": item.get("is_accepted"), "trust_weight": item.get("trust_weight"),
+                "hop": item.get("hop"), "source_stage": item.get("source_stage"),
+                "combined_score": item.get("combined_score"), "score": item.get("score"),
+                "chunk_text": _truncate(chunk_text, 600),
+                "context_relevance": ctxrel_entries,
+            })
+
+        judges_out = {}
+        for judge_id in judge_registry:
+            r = jv1_by_judge.get(judge_id, {}).get(qid)
+            if r is None:
+                continue
+            judges_out[judge_id] = {
+                "label": r.get("label"), "derived_label": r.get("derived_label"),
+                "consistent": r.get("consistent"), "claims": r.get("claims", []),
+                "reasoning": r.get("reasoning"), "served_model": r.get("response_model"),
+                "parse_error": r.get("parse_error"),
+            }
+
+        out.append({
+            "question_id": qid,
+            "title": record.get("title", ""),
+            "body": _truncate(judge_common.html_to_text(body_html, 100000) if body_html else "", 1500),
+            "tags": record.get("tags", ""),
+            "reference_answer": _truncate(judge_common.html_to_text(record.get("ground_truth_answer", ""), 100000), 1500),
+            "context_items": context_items,
+            "candidate_raw": candidate_raw,
+            "candidate_blinded": blind_candidate(candidate_raw),
+            "citation_outcome": _compute_citation_outcome(record),
+            "judges": judges_out,
+        })
+    return out
+
+
+def _compute_citation_outcome(record: dict[str, Any]) -> str:
+    from llm.citations import classify_citation_outcome
+
+    return classify_citation_outcome(bool(record.get("has_citation")), bool(record.get("has_valid_citation")))
 
 
 RUNNERS: dict[str, Callable[[str, dict[str, Any]], None]] = {

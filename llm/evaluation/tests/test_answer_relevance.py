@@ -2,6 +2,7 @@
 
 import json
 
+import _judge_common
 import llm_judge_answer_relevance as ansrel
 
 
@@ -60,6 +61,13 @@ def test_label_to_score_mapping():
 
 
 def test_resume_and_already_complete(tmp_path, monkeypatch):
+    # See the matching note in test_context_relevance.py::test_resume_
+    # and_already_complete -- _judge_common.RESULTS_DIR is a shared
+    # module global that backend/engine_service.py permanently
+    # overwrites (not via monkeypatch) once imported, so pinning it
+    # here directly makes this test's isolation independent of
+    # whatever ran earlier in the same pytest process.
+    monkeypatch.setattr(_judge_common, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.chdir(tmp_path)
     input_path = tmp_path / "condition_a_test.jsonl"
     records = [

@@ -129,6 +129,9 @@ export function HistoryPage() {
                 </td>
                 <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
                   {item.condition}
+                  {item.is_dev && (
+                    <span className="ml-2 px-1.5 py-0.5 text-xs rounded bg-white border border-warning/40 text-warning">dev</span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
                   {item.n_processed}/{item.n_sample_target}
