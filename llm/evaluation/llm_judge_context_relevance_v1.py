@@ -182,6 +182,23 @@ def build_messages(title: str, body_text: str, tags: str, chunk_text: str) -> li
     ]
 
 
+CTXREL_VERSIONS = ("ctxrel-v1", "ctxrel-v2")
+
+
+def get_prompt_builder(prompt_version: str):
+    """build_messages for a context-relevance prompt version. ctxrel-v1
+    is this module's own build_messages (unchanged); ctxrel-v2 lives in
+    ctxrel_prompt_v2.py (docs/DECISION_C_SCORING.md, Amendment 2). Both
+    share parse_judgment()."""
+    if prompt_version == PROMPT_VERSION:
+        return build_messages
+    if prompt_version == "ctxrel-v2":
+        import ctxrel_prompt_v2
+
+        return ctxrel_prompt_v2.build_messages
+    raise ValueError(f"Unknown ctxrel prompt version '{prompt_version}' -- must be one of {CTXREL_VERSIONS}")
+
+
 def parse_judgment(raw: str) -> dict:
     try:
         data = json.loads(strip_fences(raw))
@@ -298,8 +315,9 @@ def call_judge_with_retry(client, config, messages: list[dict]) -> tuple[dict | 
     return None, attempts
 
 
-def judge_one(item: dict, judge_id: str, client, config, body_text: str) -> dict:
-    messages = build_messages(item["title"], body_text, item["tags"], item["chunk_text"])
+def judge_one(item: dict, judge_id: str, client, config, body_text: str,
+              prompt_version: str = PROMPT_VERSION) -> dict:
+    messages = get_prompt_builder(prompt_version)(item["title"], body_text, item["tags"], item["chunk_text"])
     timestamp = datetime.now(timezone.utc).isoformat()
     payload, attempts = call_judge_with_retry(client, config, messages)
 
@@ -311,7 +329,7 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str) -> dict
         "judge_id": judge_id,
         "judge_model": config.model,
         "judge_base_url": config.base_url,
-        "prompt_version": PROMPT_VERSION,
+        "prompt_version": prompt_version,
         "timestamp_utc": timestamp,
         "attempt_count": len(attempts),
     }
@@ -366,7 +384,8 @@ def append_resolution_record(resolved_path: Path, record: dict) -> None:
 def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
               output_path: Path, failures_path: Path, workers: int,
               resolved_path: Path | None = None, on_progress=None,
-              check_cancel=None) -> dict:
+              check_cancel=None, prompt_version: str = PROMPT_VERSION) -> dict:
+    get_prompt_builder(prompt_version)  # fail fast on an unknown version
     clients = {jid: get_judge_client(jid) for jid in judge_ids}
 
     question_ids = sorted({item["question_id"] for item in items})
@@ -383,7 +402,7 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
         body_text = html_to_text(body_html) if body_html else ""
         for judge_id in judge_ids:
             judge_model = clients[judge_id][1].model
-            key = (item["question_id"], item["answer_id"], item["text_hash"], judge_id, judge_model, PROMPT_VERSION)
+            key = (item["question_id"], item["answer_id"], item["text_hash"], judge_id, judge_model, prompt_version)
             if key in done:
                 skipped += 1
                 continue
@@ -399,7 +418,7 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
     def _run(task):
         item, judge_id, body_text = task
         client, config = clients[judge_id]
-        return judge_one(item, judge_id, client, config, body_text)
+        return judge_one(item, judge_id, client, config, body_text, prompt_version=prompt_version)
 
     total_count = len(tasks)
     done_count = 0
@@ -454,7 +473,7 @@ def run_batch(items: list[dict], judge_ids: list[str], questions_parquet: str,
 # on the (content-deduplicated) judged record itself.
 # ---------------------------------------------------------------------------
 
-def load_ctxrel_records(output_paths: list[Path]) -> dict[tuple, dict]:
+def load_ctxrel_records(output_paths: list[Path], prompt_version: str | None = None) -> dict[tuple, dict]:
     """Keyed by (question_id, answer_id, text_hash) -- last record wins
     on a key collision across files (a later judge run of the SAME
     judge_id/prompt_version re-judging is expected to be a strict
@@ -472,6 +491,8 @@ def load_ctxrel_records(output_paths: list[Path]) -> dict[tuple, dict]:
                 try:
                     r = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if prompt_version is not None and r.get("prompt_version") != prompt_version:
                     continue
                 by_key[(r.get("question_id"), r.get("answer_id"), r.get("text_hash"))] = r
     return by_key

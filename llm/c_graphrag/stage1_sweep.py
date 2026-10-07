@@ -6,10 +6,11 @@ docs/agent_prompt_c_retrieval_v3_devset.md, decision procedure in
 docs/DECISION_C_SCORING.md). For the dev split and α in
 DEFAULT_ALPHA_VALUES:
 
-  (a) runs the ctxrel-v1 positive/negative controls and STOPS if they fail;
+  (a) runs the context-relevance controls (positive, easy negative, hard
+      negative; Amendment 2) with --ctxrel-version and STOPS if they fail;
   (b) runs retrieval-only C v3 for each α (no LLM calls -- free, config-
       hashed + manifested like every other run);
-  (c) runs ctxrel-v1 (primary judge) on every resulting context, deduped
+  (c) runs --ctxrel-version (primary judge) on every resulting context, deduped
       across α (via llm_judge_context_relevance_v1.load_items(), which
       already dedups on (question_id, answer_id, text_hash));
   (d) writes the stage-1 markdown report (per-α relevance metrics, hop/
@@ -18,7 +19,7 @@ DEFAULT_ALPHA_VALUES:
 
 Retrieval (b) has NO API cost, so it runs first to get REAL dedup counts
 -- the plan shown before confirmation is then exact, not an estimate of
-an estimate. The only real-money step is ctxrel-v1 judging (controls +
+an estimate. The only real-money step is context-relevance judging (controls +
 main sweep), which is gated behind an explicit "show plan -> confirm ->
 run" flow, same shape as the dashboard's judge-v1 plan/launch.
 
@@ -26,14 +27,15 @@ CARA PAKAI (run from the repo root; QUESTIONS_PARQUET/ANSWERS_PARQUET can
 come from .env instead of flags, same as c_graphrag.py's own CLI)
 ----------------------------------------------------------------------------
     # (a) controls only -- cheap sanity check before committing to the sweep
-    python3 llm/c_graphrag/stage1_sweep.py --controls-only
+    # (--control-sets hard_negative to judge one set only)
+    python3 llm/c_graphrag/stage1_sweep.py --controls-only --ctxrel-version ctxrel-v2
 
     # (b) the full stage-1 sweep: builds the dev sample, runs retrieval-only
     # for every alpha (free), shows the plan, asks for y/N confirmation,
-    # then (if confirmed) runs the controls and the ctxrel-v1 judging and
+    # then (if confirmed) runs the controls and the context-relevance judging and
     # writes the report. Add --yes to skip the confirmation prompt, or
     # --plan-only to stop right after the plan (no API call at all).
-    python3 llm/c_graphrag/stage1_sweep.py
+    python3 llm/c_graphrag/stage1_sweep.py --ctxrel-version ctxrel-v2
 """
 
 import argparse
@@ -60,7 +62,7 @@ def run_retrieval_only_for_alpha(
     id_to_row, all_answer_ids_map, embed_model, embedding_cache, questions_parquet: str,
     output_dir: str, seed: int, n_sample: int, provider: str = "openai", model: str = "gpt-4o-mini",
     top_k: int = 5, n_anchor: int = 3, n_semantic_expansion: int = 3, token_chunk_limit: int = 400,
-    oversample_pool: int = 1536,
+    oversample_pool: int = 1536, ctxrel_version: str | None = None,
 ) -> dict:
     """Runs C retrieval-only v3 for one alpha on the dev split, writes a
     config-hashed output file + manifest + run_history entry (so
@@ -105,110 +107,337 @@ def run_retrieval_only_for_alpha(
         "n_processed": len(results), "seed": seed, "oversample_pool": oversample_pool,
         "fusion_mode": fusion_mode, "output_path": str(output_path), "config_hash": config_hash,
         "duration_sec": round((finished_at - run_started_at).total_seconds(), 1),
-        "retrieval_only": True,
+        "retrieval_only": True, "ctxrel_version": ctxrel_version,
     })
     write_manifest(
         output_path, run_label=None, status="completed",
         config=config, config_hash=config_hash,
         started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
         item_counts={"attempted": len(sample_df), "succeeded": len(results), "failed": 0},
-        prompt_version="retrieval-only",
+        prompt_version="retrieval-only", judge_version=ctxrel_version,
     )
     return {"output_path": str(output_path), "config_hash": config_hash, "n_questions": len(results),
             "history_path": str(history_path)}
 
 
 # ---------------------------------------------------------------------
-# (a) Controls -- own accepted answer must be RELEVANT, an unrelated
-# item must be IRRELEVANT. Smoke-test data, written to its OWN file,
-# never mixed with real sweep results.
+# (a) Controls -- docs/DECISION_C_SCORING.md Amendments 1 and 2. Control
+# data, written to results/controls/, never mixed with real sweep results.
 # ---------------------------------------------------------------------
 
-def build_control_items(sample_df) -> list[dict]:
-    """Two synthetic (question, context item) pairs built from REAL dev
-    questions already in `sample_df` (needs AcceptedAnswerBody/Title/
-    Tags columns, same as process_sample()'s input):
-      - positive: question A's OWN accepted answer as its context item
-        -> expected RELEVANT.
-      - negative: question A paired with question B's accepted answer,
-        where B shares NO tags with A -> expected IRRELEVANT.
-    Falls back gracefully (fewer controls) if the dev sample is too
-    small/homogeneous to find a true negative -- callers must check
-    len(result) before treating missing controls as a failure.
-    """
+CONTROL_SETS = ("positive", "easy_negative", "hard_negative")
+# (labels that count as a match, minimum match rate) -- Amendment 2.
+CONTROL_THRESHOLDS = {
+    "positive": (("RELEVANT",), 0.90),
+    "easy_negative": (("IRRELEVANT",), 0.90),
+    "hard_negative": (("PARTIAL", "IRRELEVANT"), 0.80),  # NOT RELEVANT
+}
+CONTROL_EXPECTED = {"positive": "RELEVANT", "easy_negative": "IRRELEVANT", "hard_negative": "NOT_RELEVANT"}
+CONTROL_JUDGE_IDS = ("primary", "secondary")  # primary decides; secondary reported for reference
+CONTROLS_DIR = RESULTS_DIR / "controls"
+
+
+def _tagset(raw) -> set:
     import re
 
-    def tagset(raw):
-        return set(re.findall(r"<([^>]+)>", str(raw or "")))
-
-    items = []
-    if len(sample_df) == 0:
-        return items
-
-    row_a = sample_df.iloc[0]
-    tags_a = tagset(row_a["Tags"])
-    items.append({
-        "question_id": int(row_a["Id"]), "answer_id": int(row_a["AcceptedAnswerId"]),
-        "chunk_text": f"Q: {row_a['Title']}\nA: {row_a['AcceptedAnswerBody']}",
-        "title": row_a["Title"], "tags": row_a["Tags"], "expected_label": "RELEVANT",
-        "control_type": "positive",
-    })
-
-    row_b = None
-    for _, candidate in sample_df.iloc[1:].iterrows():
-        if not (tagset(candidate["Tags"]) & tags_a):
-            row_b = candidate
-            break
-    if row_b is not None:
-        items.append({
-            "question_id": int(row_a["Id"]), "answer_id": int(row_b["AcceptedAnswerId"]),
-            "chunk_text": f"Q: {row_b['Title']}\nA: {row_b['AcceptedAnswerBody']}",
-            "title": row_a["Title"], "tags": row_a["Tags"], "expected_label": "IRRELEVANT",
-            "control_type": "negative",
-        })
-    return items
+    return set(re.findall(r"<([^>]+)>", str(raw or "")))
 
 
-def run_controls(sample_df, judge_id: str, questions_parquet: str, workers: int = 2) -> dict:
-    """Runs the controls through the SAME ctxrel-v1 judge machinery
-    (judge_one/run_batch), writing to results/ctxrel_v1_controls_<judge_id>.jsonl
-    -- a clearly-named, separate file, never mixed with real sweep output.
-    Returns {"passed": bool, "results": [{"control_type", "expected",
-    "actual", "match"}, ...]}."""
+def build_control_items(sample_df, token_chunk_limit: int = 400, seed: int = 42,
+                        hard_pool_df=None, related_ids: dict | None = None,
+                        question_vectors: dict | None = None,
+                        control_sets=CONTROL_SETS) -> tuple[list[dict], dict]:
+    """Per dev question in `sample_df` (needs Id/Title/Tags/
+    AcceptedAnswerId/AcceptedAnswerBody):
+      - positive: its OWN accepted answer -> expected RELEVANT.
+      - easy_negative: the accepted answer of a DIFFERENT dev question
+        sharing NO tag with it, drawn with random.Random(seed).
+      - hard_negative (Amendment 3): donors are `hard_pool_df` (the
+        candidate pool MINUS the test sample -- see
+        _build_hard_negative_pool), excluding the dev question itself and
+        its IS_RELATED_TO neighbours (`related_ids`: {question_id:
+        set(neighbor ids)}, either direction). Eligible = shares >= 1
+        tag. Selected = the eligible donor with the HIGHEST cosine
+        similarity between question embeddings (`question_vectors`:
+        {question_id: L2-normalized vector}, the FAISS-cache vectors);
+        ties by question id ascending; no randomness. Eligible donors
+        without a cached vector are skipped (counted in info). Records
+        donor_cosine_sim / n_shared_tags / shared_tags. Expected NOT
+        RELEVANT.
+    Easy-negative donor lists are sorted by Id before drawing. chunk_text
+    is built EXACTLY like a retrieved item in c_graphrag.fuse_and_rank():
+    "Q: <donor title>\nA: <answer body, raw HTML>", truncated to
+    `token_chunk_limit` cl100k_base tokens.
+
+    Returns (items, info): info["no_hard_negative"] / ["no_easy_negative"]
+    list the dev question ids with no eligible donor (excluded from that
+    set's denominator, per Amendments 2/3); info["hard_negative_missing_
+    vector"] lists dev question ids with no cached vector and
+    info["n_eligible_donors_without_vector"] counts skipped donors.
+    """
+    import random
+
+    import tiktoken
+
+    import c_graphrag as cg
+
+    enc = tiktoken.get_encoding("cl100k_base")
+    rows = sample_df.to_dict("records")
+    related_ids = related_ids or {}
+
+    def _item(question_row, source_row, control_type):
+        full = f"Q: {source_row['Title']}\nA: {source_row['AcceptedAnswerBody']}"
+        n_tokens_full = len(enc.encode(full))
+        return {
+            "question_id": int(question_row["Id"]), "answer_id": int(source_row["AcceptedAnswerId"]),
+            "source_question_id": int(source_row["Id"]),
+            "chunk_text": cg._truncate_doc_text(enc, full, token_chunk_limit),
+            "title": question_row["Title"], "tags": question_row["Tags"],
+            "expected_label": CONTROL_EXPECTED[control_type], "control_type": control_type,
+            "n_tokens_full": n_tokens_full, "truncated": n_tokens_full > token_chunk_limit,
+            "donor_cosine_sim": None, "n_shared_tags": None, "shared_tags": None,
+        }
+
+    items: list[dict] = []
+    info = {"no_easy_negative": [], "no_hard_negative": [], "hard_negative_missing_vector": [],
+            "n_eligible_donors_without_vector": 0}
+    if "positive" in control_sets:
+        items += [_item(r, r, "positive") for r in rows]
+
+    if "easy_negative" in control_sets:
+        rng = random.Random(seed)
+        donors_all = sorted(rows, key=lambda d: int(d["Id"]))
+        for r in rows:
+            donors = [d for d in donors_all if d["Id"] != r["Id"] and not (_tagset(d["Tags"]) & _tagset(r["Tags"]))]
+            if donors:
+                items.append(_item(r, rng.choice(donors), "easy_negative"))
+            else:
+                info["no_easy_negative"].append(int(r["Id"]))
+
+    if "hard_negative" in control_sets:
+        import numpy as np
+
+        if hard_pool_df is None or question_vectors is None:
+            raise ValueError("hard_negative controls need hard_pool_df (non-test candidate pool with accepted "
+                             "answers) and question_vectors (FAISS-cache question embeddings)")
+        pool = [d for d in hard_pool_df.to_dict("records") if isinstance(d.get("AcceptedAnswerBody"), str)]
+        for r in rows:
+            qid = int(r["Id"])
+            linked = related_ids.get(qid, set())
+            tags_r = _tagset(r["Tags"])
+            eligible = [d for d in pool
+                        if int(d["Id"]) != qid and int(d["Id"]) not in linked and (_tagset(d["Tags"]) & tags_r)]
+            q_vec = question_vectors.get(qid)
+            if q_vec is None:
+                info["hard_negative_missing_vector"].append(qid)
+                info["no_hard_negative"].append(qid)
+                continue
+            scored = []
+            for d in eligible:
+                d_vec = question_vectors.get(int(d["Id"]))
+                if d_vec is None:
+                    info["n_eligible_donors_without_vector"] += 1
+                    continue
+                scored.append((float(np.dot(np.asarray(q_vec, dtype=np.float64),
+                                            np.asarray(d_vec, dtype=np.float64))), int(d["Id"]), d))
+            if not scored:
+                info["no_hard_negative"].append(qid)
+                continue
+            sim, _, donor = min(scored, key=lambda t: (-t[0], t[1]))
+            shared = sorted(_tagset(donor["Tags"]) & tags_r)
+            item = _item(r, donor, "hard_negative")
+            item.update({"donor_cosine_sim": round(sim, 6), "n_shared_tags": len(shared), "shared_tags": shared,
+                         "n_eligible_donors": len(scored)})
+            items.append(item)
+
+    return items, info
+
+
+def fetch_is_related_to_neighbors(driver, database: str, question_ids: list[int]) -> dict[int, set]:
+    """{question_id: ids of Questions linked by IS_RELATED_TO (Linked/
+    Duplicate), EITHER direction} -- the hard-negative exclusion set."""
+    out = {int(q): set() for q in question_ids}
+    with driver.session(database=database) as session:
+        result = session.run(
+            """
+            UNWIND $ids AS qid
+            MATCH (q:Question {id: qid})-[:IS_RELATED_TO]-(o:Question)
+            RETURN qid, collect(DISTINCT o.id) AS neighbors
+            """,
+            ids=[int(q) for q in question_ids],
+        )
+        for rec in result:
+            out[int(rec["qid"])] = {int(n) for n in rec["neighbors"]}
+    return out
+
+
+CONTROL_OUTPUT_PREFIX = "llm/c_graphrag/results/controls/"
+
+
+def git_state() -> dict:
+    """Commit + working-tree state of the repo, recorded on every control
+    output/manifest. `git_tree_clean` ignores entries under
+    results/controls/ (the control outputs themselves -- an earlier
+    control run's files must not make the next run "dirty"); every
+    porcelain entry, including those, is recorded verbatim."""
+    import subprocess
+
+    repo = Path(__file__).resolve().parents[2]
+
+    def _git(*args):
+        return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True).stdout
+
+    try:
+        commit = _git("rev-parse", "HEAD").strip()
+        porcelain = [l for l in _git("status", "--porcelain", "--untracked-files=all").splitlines() if l.strip()]
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        return {"git_commit": None, "git_tree_clean": False, "git_status_porcelain": [f"<git error: {e}>"]}
+    relevant = [l for l in porcelain if not l[3:].strip('"').startswith(CONTROL_OUTPUT_PREFIX)]
+    return {"git_commit": commit, "git_tree_clean": not relevant, "git_status_porcelain": porcelain}
+
+
+def _load_question_bodies_text(questions_parquet: str, question_ids: list[int]) -> dict[int, str]:
+    """Question body as the judge sees it in the REAL stage-1 judging
+    (llm_judge_context_relevance_v1.run_batch): html_to_text(Body)."""
+    from _judge_common import html_to_text, load_question_bodies
+
+    bodies_html = load_question_bodies(questions_parquet, question_ids)
+    return {qid: html_to_text(html) if html else "" for qid, html in bodies_html.items()}
+
+
+def summarize_controls(results: list[dict], judge_ids, deciding_judge_id: str = "primary") -> dict:
+    """Per judge and control set present in `results`: label % (call
+    failures / parse errors counted in the denominator as non-matching)
+    and pass/fail against CONTROL_THRESHOLDS. A judge's overall `pass` is
+    None unless ALL THREE sets were judged (a partial run, e.g. hard
+    negatives only, cannot pass or fail the judge). `passed` is the
+    deciding judge's overall result."""
+    summary = {}
+    for jid in judge_ids:
+        per_set = {}
+        for cset in CONTROL_SETS:
+            rs = [r for r in results if r["judge_id"] == jid and r["control_type"] == cset]
+            if not rs:
+                continue
+            n = len(rs)
+            counts = {lab: sum(1 for r in rs if r["label"] == lab) for lab in ("RELEVANT", "PARTIAL", "IRRELEVANT")}
+            counts["ERROR"] = n - sum(counts.values())
+            ok_labels, threshold = CONTROL_THRESHOLDS[cset]
+            n_ok = sum(counts[lab] for lab in ok_labels)
+            per_set[cset] = {
+                "n": n, "counts": counts,
+                "pct": {lab: round(100 * c / n, 1) for lab, c in counts.items()},
+                "pct_not_relevant": round(100 * (counts["PARTIAL"] + counts["IRRELEVANT"]) / n, 1),
+                "match_rate": round(n_ok / n, 4), "threshold": threshold, "pass": n_ok / n >= threshold,
+            }
+        complete = all(c in per_set for c in CONTROL_SETS)
+        summary[jid] = {**per_set, "complete": complete,
+                        "pass": all(per_set[c]["pass"] for c in CONTROL_SETS) if complete else None}
+    return {"per_judge": summary, "deciding_judge_id": deciding_judge_id,
+            "passed": summary.get(deciding_judge_id, {}).get("pass")}
+
+
+def run_controls(sample_df, ctxrel_version: str, judge_ids=CONTROL_JUDGE_IDS, questions_parquet: str = "",
+                 workers: int = 4, deciding_judge_id: str = "primary", token_chunk_limit: int = 400,
+                 seed: int = 42, control_sets=CONTROL_SETS, hard_pool_df=None,
+                 related_ids: dict | None = None, question_vectors: dict | None = None,
+                 require_clean_tree: bool = True) -> dict:
+    """Judges every control item in `control_sets` with every judge in
+    `judge_ids`, using context-relevance prompt `ctxrel_version` and the
+    SAME judge input as the real stage-1 judging (title + tags +
+    html_to_text(question body) + one chunk_text). Writes one JSONL line
+    per judgment (label + reason) to results/controls/<version>_controls_
+    <sets>_<UTC timestamp>.jsonl, a summary JSON, and a manifest."""
+    from concurrent.futures import ThreadPoolExecutor
+
     import llm_judge_context_relevance_v1 as ctxrel
     from judge_clients import get_judge_client
+    from llm.manifest import write_manifest
 
-    control_items = build_control_items(sample_df)
-    if len(control_items) < 2:
-        return {"passed": False, "results": [],
-                "error": "could not build both positive and negative control items from this dev sample"}
+    build = ctxrel.get_prompt_builder(ctxrel_version)
+    if isinstance(judge_ids, str):
+        judge_ids = (judge_ids,)
+    if deciding_judge_id not in judge_ids:
+        deciding_judge_id = judge_ids[0]
 
-    client, config = get_judge_client(judge_id)
-    results = []
-    for item in control_items:
-        messages = ctxrel.build_messages(item["title"], "", ctxrel.format_tags(item["tags"]), item["chunk_text"])
+    git = git_state()
+    if require_clean_tree and not git["git_tree_clean"]:
+        return {"passed": False, "results": [], "info": {}, "git": git,
+                "error": "working tree is not clean (outside results/controls/) -- commit the code first; "
+                         f"git status: {git['git_status_porcelain']}"}
+
+    items, info = build_control_items(sample_df, token_chunk_limit=token_chunk_limit, seed=seed,
+                                      hard_pool_df=hard_pool_df, related_ids=related_ids,
+                                      question_vectors=question_vectors, control_sets=control_sets)
+    missing = [c for c in control_sets if not any(i["control_type"] == c for i in items)]
+    if missing:
+        return {"passed": False, "results": [], "info": info,
+                "error": f"could not build any control items for set(s) {missing} from this dev sample"}
+
+    started = datetime.now(timezone.utc)
+    clients = {jid: get_judge_client(jid) for jid in judge_ids}
+    bodies = _load_question_bodies_text(questions_parquet, sorted({i["question_id"] for i in items}))
+
+    def _judge(task):
+        item, jid = task
+        client, config = clients[jid]
+        messages = build(item["title"], bodies.get(item["question_id"], ""),
+                         ctxrel.format_tags(item["tags"]), item["chunk_text"])
         payload, attempts = ctxrel.call_judge_with_retry(client, config, messages)
-        if payload is None:
-            results.append({"control_type": item["control_type"], "expected": item["expected_label"],
-                             "actual": None, "match": False, "error": attempts[-1]["error"] if attempts else None})
-            continue
-        parsed = ctxrel.parse_judgment(payload["raw"])
-        actual = parsed["label"] if not parsed["parse_error"] else None
-        results.append({
-            "control_type": item["control_type"], "expected": item["expected_label"],
-            "actual": actual, "match": actual == item["expected_label"],
-        })
+        parsed = ctxrel.parse_judgment(payload["raw"]) if payload else {"label": None, "reason": None, "parse_error": True}
+        label = parsed["label"] if not parsed["parse_error"] else None
+        ok_labels, _ = CONTROL_THRESHOLDS[item["control_type"]]
+        return {
+            **{k: item.get(k) for k in ("control_type", "question_id", "answer_id", "source_question_id",
+                                         "n_tokens_full", "truncated", "chunk_text", "donor_cosine_sim",
+                                         "n_shared_tags", "shared_tags", "n_eligible_donors")},
+            "expected": item["expected_label"], "judge_id": jid, "judge_model": getattr(config, "model", None),
+            "prompt_version": ctxrel_version, "body_available": item["question_id"] in bodies,
+            "label": label, "reason": parsed.get("reason"), "match": label in ok_labels,
+            "call_failed": payload is None, "raw_response": payload["raw"] if payload else None,
+            "response_model": payload.get("response_model") if payload else None,
+            "prompt_tokens": payload.get("prompt_tokens") if payload else None,
+            "completion_tokens": payload.get("completion_tokens") if payload else None,
+            "error": None if payload else (attempts[-1]["error"] if attempts else None),
+        }
 
-    out_path = RESULTS_DIR / f"ctxrel_v1_controls_{judge_id}.jsonl"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "a") as f:
-        f.write(json.dumps({
-            "timestamp_utc": datetime.now(timezone.utc).isoformat(), "judge_id": judge_id,
-            "results": results,
-        }) + "\n")
+    tasks = [(item, jid) for item in items for jid in judge_ids]
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        results = list(pool.map(_judge, tasks))
+    finished = datetime.now(timezone.utc)
 
-    passed = all(r["match"] for r in results)
-    return {"passed": passed, "results": results, "output_path": str(out_path)}
+    summary = summarize_controls(results, judge_ids, deciding_judge_id)
+    stamp = started.strftime("%Y%m%dT%H%M%SZ")
+    sets_tag = "-".join(c for c in CONTROL_SETS if c in control_sets)
+    CONTROLS_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = CONTROLS_DIR / f"{ctxrel_version.replace('-', '_')}_controls_{sets_tag}_{stamp}.jsonl"
+    with open(out_path, "w") as f:
+        for r in results:
+            f.write(json.dumps({"timestamp_utc": stamp, "git_commit": git["git_commit"],
+                                "git_tree_clean": git["git_tree_clean"], **r}, default=str) + "\n")
+    config = {
+        "ctxrel_version": ctxrel_version, "control_sets": list(control_sets), "judge_ids": list(judge_ids),
+        "deciding_judge_id": deciding_judge_id, "token_chunk_limit": token_chunk_limit, "seed": seed,
+        "thresholds": {k: v[1] for k, v in CONTROL_THRESHOLDS.items()},
+        "dev_question_ids": [int(q) for q in sample_df["Id"]],
+        "hard_negative_definition": "amendment-3" if "hard_negative" in control_sets else None,
+        **git,
+    }
+    summary_path = out_path.with_name(out_path.stem + "_summary.json")
+    summary_path.write_text(json.dumps({
+        "timestamp_utc": stamp, **config, "n_items": len(items),
+        "n_items_per_set": {c: sum(1 for i in items if i["control_type"] == c) for c in control_sets},
+        **info, **summary,
+    }, indent=2))
+    write_manifest(
+        out_path, run_label=None, config=config,
+        started_at_utc=started.isoformat(), finished_at_utc=finished.isoformat(),
+        item_counts={"attempted": len(results), "succeeded": sum(1 for r in results if not r["call_failed"]),
+                     "failed": sum(1 for r in results if r["call_failed"])},
+        prompt_version=ctxrel_version, judge_version=ctxrel_version, extra_output_files=[summary_path],
+    )
+    return {"passed": summary["passed"], "summary": summary, "results": results, "info": info, "git": git,
+            "output_path": str(out_path), "summary_path": str(summary_path)}
 
 
 # ---------------------------------------------------------------------
@@ -399,10 +628,12 @@ def compute_alpha_metrics(retrieval_output_path: str, ctxrel_by_key: dict, selec
     }
 
 
-def build_stage1_markdown(per_alpha_metrics: dict[float, dict], selection: dict) -> str:
+def build_stage1_markdown(per_alpha_metrics: dict[float, dict], selection: dict,
+                          ctxrel_version: str | None = None) -> str:
     lines = [
         "# Stage 1 Report -- C retrieval v3 alpha sweep", "",
         f"Generated: {datetime.now(timezone.utc).isoformat()}", "",
+        f"Context-relevance judge version: {ctxrel_version}", "",
         "| alpha | % q w/ >=1 RELEVANT | % RELEVANT | % PARTIAL | % IRRELEVANT | mean score | mean sim (sel) | mean trust (sel) | % accepted (sel) | Jaccard vs a=0 | Jaccard vs a=1 |",
         "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
@@ -474,7 +705,85 @@ def _build_dev_sample(questions_parquet: str, answers_parquet: str, n_dev: int, 
 
     eval_question_ids = sample_df["Id"].astype(int).tolist()
     all_answer_ids_map = cg.get_all_answer_ids_for_questions(con, answers_parquet, eval_question_ids)
-    return sample_df, all_answer_ids_map, oversample_pool
+    con.close()
+    return sample_df, all_answer_ids_map, oversample_pool, candidates
+
+
+TEST_SAMPLE_N = 384  # docs/DECISION_C_SCORING.md: test sample = 0-based positions 0-383
+
+
+def exclude_test_sample(candidates, seed: int = 42):
+    """The candidate pool without the test sample (0-based positions
+    0..TEST_SAMPLE_N-1 of the seed's permutation)."""
+    import c_graphrag as cg
+
+    test_ids = set(cg.sample_questions_split(candidates, TEST_SAMPLE_N, seed, split="test")["Id"].astype(int))
+    return candidates[~candidates["Id"].astype(int).isin(test_ids)]
+
+
+def _build_hard_negative_pool(answers_parquet: str, candidates, seed: int = 42):
+    """Amendment 3 donor pool: the candidate pool (same pool/filter as the
+    test and dev samples) MINUS the test sample (0-based positions 0-383 of
+    the same permutation, via sample_questions_split(split="test")), joined
+    with each question's accepted answer body."""
+    import duckdb
+
+    import c_graphrag as cg
+
+    candidates = exclude_test_sample(candidates, seed)
+    con = duckdb.connect()
+    con.execute("SET memory_limit='2GB'")
+    con.execute("SET threads=2")
+    con.execute("SET preserve_insertion_order=false")
+    pool = candidates[["Id", "Title", "Tags", "AcceptedAnswerId"]].dropna(subset=["AcceptedAnswerId"])
+    answers_df = cg.get_accepted_answers(con, answers_parquet, pool["AcceptedAnswerId"].unique().tolist())
+    con.close()
+    return pool.merge(answers_df, on="AcceptedAnswerId", how="inner").reset_index(drop=True)
+
+
+def load_question_vectors(kg_workspace_dir: str, question_ids) -> dict:
+    """{question_id: vector} from the FAISS-cache embeddings
+    (question_embeddings.f32 memmap + question_embeddings_ivf_ids.npy,
+    written L2-normalized by 11_densify_embedding_similarity.py) -- the
+    SAME vectors C's anchoring uses. Reads only the requested rows; the
+    FAISS index itself is not loaded. Ids absent from the cache are
+    simply missing from the result."""
+    import numpy as np
+
+    import c_graphrag as cg
+
+    ws = Path(kg_workspace_dir)
+    n_total = json.loads((ws / "embed_checkpoint.json").read_text())["next_row"]
+    ids_arr = np.load(ws / "question_embeddings_ivf_ids.npy")
+    embeddings = np.memmap(ws / "question_embeddings.f32", dtype="float32", mode="r", shape=(n_total, cg.EMBED_DIM))
+    wanted = {int(q) for q in question_ids}
+    out = {}
+    for row, qid in enumerate(ids_arr):
+        qid = int(qid)
+        if qid in wanted:
+            out[qid] = np.array(embeddings[row], dtype=np.float32)
+    return out
+
+
+def _prepare_control_inputs(answers_parquet: str, candidates, sample_df, control_sets,
+                            kg_workspace_dir: str | None = None, seed: int = 42):
+    """(hard_pool_df, related_ids, question_vectors) -- all None unless
+    hard negatives are requested."""
+    if "hard_negative" not in control_sets:
+        return None, None, None
+    import c_graphrag as cg
+
+    hard_pool_df = _build_hard_negative_pool(answers_parquet, candidates, seed)
+    driver, database = cg.connect_neo4j(print)
+    try:
+        related_ids = fetch_is_related_to_neighbors(driver, database, sample_df["Id"].astype(int).tolist())
+    finally:
+        driver.close()
+    question_vectors = load_question_vectors(
+        kg_workspace_dir, set(hard_pool_df["Id"].astype(int)) | set(sample_df["Id"].astype(int)))
+    print(f"      hard-negative pool (non-test): {len(hard_pool_df)} questions; dev questions with IS_RELATED_TO "
+          f"neighbors: {sum(1 for v in related_ids.values() if v)}; cached vectors found: {len(question_vectors)}")
+    return hard_pool_df, related_ids, question_vectors
 
 
 def _build_selected_answer_ids_by_alpha(retrieval_output_paths: dict[float, str]) -> dict[float, dict[int, set]]:
@@ -496,7 +805,8 @@ def _build_selected_answer_ids_by_alpha(retrieval_output_paths: dict[float, str]
 def run_stage1_sweep(
     questions_parquet: str, answers_parquet: str, kg_workspace_dir: str, embed_model_name: str,
     embedding_cache_path: str, n_dev: int, dev_offset: int, seed: int, judge_id: str, workers: int,
-    plan_only: bool, yes: bool, controls_only: bool,
+    plan_only: bool, yes: bool, controls_only: bool, ctxrel_version: str,
+    control_sets=CONTROL_SETS, control_judge_ids=CONTROL_JUDGE_IDS, allow_dirty: bool = False,
 ) -> int:
     """Returns a process exit code (0 success, 1 controls failed/aborted)."""
     import c_graphrag as cg
@@ -505,15 +815,22 @@ def run_stage1_sweep(
 
     from ctxrel_sweep import build_stage1_report, select_stage1_candidates
 
-    print(f"[1/6] Building the dev sample (n={n_dev}, dev_offset={dev_offset}, seed={seed})...")
-    sample_df, all_answer_ids_map, oversample_pool = _build_dev_sample(
+    print(f"[1/6] Building the dev sample (n={n_dev}, dev_offset={dev_offset} [1-based] -> "
+          f"0-based iloc[{dev_offset - 1}:{dev_offset - 1 + n_dev}], seed={seed})...")
+    sample_df, all_answer_ids_map, oversample_pool, candidates = _build_dev_sample(
         questions_parquet, answers_parquet, n_dev, seed, dev_offset,
     )
-    print(f"      {len(sample_df)} dev questions ready.")
+    print(f"      {len(sample_df)} dev questions ready. ctxrel_version={ctxrel_version}")
 
     if controls_only:
-        print("[controls-only] Running ctxrel-v1 positive/negative controls on the dev split...")
-        controls = run_controls(sample_df, judge_id, questions_parquet, workers=min(workers, 2))
+        print(f"[controls-only] Running {ctxrel_version} controls {list(control_sets)} with judges "
+              f"{list(control_judge_ids)} on the dev split...")
+        hard_pool_df, related_ids, question_vectors = _prepare_control_inputs(
+            answers_parquet, candidates, sample_df, control_sets, kg_workspace_dir, seed)
+        controls = run_controls(sample_df, ctxrel_version, control_judge_ids, questions_parquet, workers=workers,
+                                deciding_judge_id=judge_id, control_sets=control_sets,
+                                hard_pool_df=hard_pool_df, related_ids=related_ids,
+                                question_vectors=question_vectors, require_clean_tree=not allow_dirty)
         _print_controls_result(controls)
         return 0 if controls["passed"] else 1
 
@@ -533,15 +850,20 @@ def run_stage1_sweep(
                 sample_df, alpha, driver, database, faiss_index, faiss_ids, faiss_embeddings,
                 id_to_row, all_answer_ids_map, embed_model, embedding_cache, questions_parquet,
                 output_dir=str(RESULTS_DIR), seed=seed, n_sample=n_dev, oversample_pool=oversample_pool,
+                ctxrel_version=ctxrel_version,
             )
             retrieval_output_paths[alpha] = info["output_path"]
             print(f"      alpha={alpha} -> {info['output_path']} ({info['n_questions']} questions)")
     finally:
         embedding_cache.close()
 
-    control_items = build_control_items(sample_df)
+    hard_pool_df, related_ids, question_vectors = _prepare_control_inputs(
+        answers_parquet, candidates, sample_df, CONTROL_SETS, kg_workspace_dir, seed)
+    control_items, _ = build_control_items(sample_df, hard_pool_df=hard_pool_df, related_ids=related_ids,
+                                           question_vectors=question_vectors)
     dedup_items = load_items(list(retrieval_output_paths.values()), limit=None)
-    plan = build_plan(len(dedup_items), len(control_items), judge_id, workers)
+    plan = build_plan(len(dedup_items), len(control_items) * len(control_judge_ids), judge_id, workers)
+    plan["ctxrel_version"] = ctxrel_version
     print()
     print(format_plan(plan))
     print()
@@ -551,28 +873,47 @@ def run_stage1_sweep(
         return 0
 
     if not yes:
-        answer = input("Proceed with the controls + ctxrel-v1 judging above? [y/N] ").strip().lower()
+        answer = input(f"Proceed with the controls + {ctxrel_version} judging above? [y/N] ").strip().lower()
         if answer != "y":
             print("Aborted -- no API calls made.")
             return 1
 
-    print("[4/6] Running ctxrel-v1 positive/negative controls...")
-    controls = run_controls(sample_df, judge_id, questions_parquet, workers=min(workers, 2))
+    print(f"[4/6] Running {ctxrel_version} controls (all three sets)...")
+    controls = run_controls(sample_df, ctxrel_version, control_judge_ids, questions_parquet, workers=workers,
+                            deciding_judge_id=judge_id, control_sets=CONTROL_SETS,
+                            hard_pool_df=hard_pool_df, related_ids=related_ids,
+                            question_vectors=question_vectors, require_clean_tree=not allow_dirty)
     _print_controls_result(controls)
     if not controls["passed"]:
-        print("[STOP] Controls failed -- fix ctxrel-v1 before running the main sweep judging. "
+        print(f"[STOP] Controls failed -- {ctxrel_version} cannot be used for the main sweep judging. "
               "Retrieval-only outputs above are still valid and will be reused on the next attempt.")
         return 1
 
-    print(f"[5/6] Judging {len(dedup_items)} deduplicated context items with judge_id={judge_id}...")
-    ctxrel_output_path = RESULTS_DIR / f"ctxrel_v1_stage1_sweep_{judge_id}.jsonl"
-    failures_path = RESULTS_DIR / f"ctxrel_v1_stage1_sweep_{judge_id}_failures.jsonl"
-    batch_result = run_batch(dedup_items, [judge_id], questions_parquet, ctxrel_output_path, failures_path, workers)
+    print(f"[5/6] Judging {len(dedup_items)} deduplicated context items with judge_id={judge_id}, "
+          f"{ctxrel_version}...")
+    vtag = ctxrel_version.replace("-", "_")
+    ctxrel_output_path = RESULTS_DIR / f"{vtag}_stage1_sweep_{judge_id}.jsonl"
+    failures_path = RESULTS_DIR / f"{vtag}_stage1_sweep_{judge_id}_failures.jsonl"
+    judging_started = datetime.now(timezone.utc)
+    batch_result = run_batch(dedup_items, [judge_id], questions_parquet, ctxrel_output_path, failures_path, workers,
+                             prompt_version=ctxrel_version)
+    from llm.manifest import write_manifest
+    write_manifest(
+        ctxrel_output_path, run_label=None,
+        config={"ctxrel_version": ctxrel_version, "judge_id": judge_id, "n_dev": n_dev, "dev_offset": dev_offset,
+                "seed": seed, "retrieval_output_paths": {str(a): p for a, p in retrieval_output_paths.items()},
+                "controls_output_path": controls.get("output_path")},
+        started_at_utc=judging_started.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
+        item_counts={"attempted": batch_result["judged"] + batch_result["failed"],
+                     "succeeded": batch_result["judged"], "failed": batch_result["failed"]},
+        prompt_version=ctxrel_version, judge_version=ctxrel_version,
+        total_tokens=batch_result["total_tokens_per_judge"], extra_output_files=[failures_path],
+    )
     print(f"      judged={batch_result['judged']} skipped={batch_result['skipped']} "
           f"failed={batch_result['failed']} label_distribution={batch_result['label_distribution']}")
 
     print("[6/6] Building the stage-1 report...")
-    ctxrel_by_key = load_ctxrel_records([ctxrel_output_path])
+    ctxrel_by_key = load_ctxrel_records([ctxrel_output_path], prompt_version=ctxrel_version)
     selected_by_alpha = _build_selected_answer_ids_by_alpha(retrieval_output_paths)
     per_alpha_metrics = {
         alpha: compute_alpha_metrics(path, ctxrel_by_key, selected_by_alpha, alpha)
@@ -584,8 +925,8 @@ def run_stage1_sweep(
     })
     selection = select_stage1_candidates(stage1_report)
 
-    report_path = RESULTS_DIR / f"stage1_report_{judge_id}_n{n_dev}_seed{seed}.md"
-    report_path.write_text(build_stage1_markdown(per_alpha_metrics, selection))
+    report_path = RESULTS_DIR / f"stage1_report_{vtag}_{judge_id}_n{n_dev}_seed{seed}.md"
+    report_path.write_text(build_stage1_markdown(per_alpha_metrics, selection, ctxrel_version=ctxrel_version))
     print(f"      report written -> {report_path}")
     print()
     print(f"keep_current: {selection['keep_current']}")
@@ -599,10 +940,26 @@ def _print_controls_result(controls: dict) -> None:
     if controls.get("error"):
         print(f"      [ERROR] {controls['error']}")
         return
-    for r in controls["results"]:
-        status = "OK" if r["match"] else "MISMATCH"
-        print(f"      [{status}] {r['control_type']}: expected={r['expected']} actual={r['actual']}")
-    print(f"      controls passed: {controls['passed']} (output: {controls.get('output_path')})")
+    info = controls.get("info", {})
+    if info.get("no_hard_negative"):
+        print(f"      dev questions with NO eligible hard negative (excluded): {info['no_hard_negative']}")
+    if info.get("hard_negative_missing_vector") or info.get("n_eligible_donors_without_vector"):
+        print(f"      hard negatives: dev questions without a cached vector {info.get('hard_negative_missing_vector')}; "
+              f"eligible donors skipped for missing vector: {info.get('n_eligible_donors_without_vector')}")
+    if info.get("no_easy_negative"):
+        print(f"      dev questions with NO eligible easy negative (excluded): {info['no_easy_negative']}")
+    for jid, j in controls["summary"]["per_judge"].items():
+        for cset in CONTROL_SETS:
+            if cset not in j:
+                continue
+            t = j[cset]
+            print(f"      {jid:9s} {cset:13s}: n={t['n']} %R/%P/%I/%err = {t['pct']['RELEVANT']}/{t['pct']['PARTIAL']}/"
+                  f"{t['pct']['IRRELEVANT']}/{t['pct']['ERROR']}  match={t['match_rate']:.0%} "
+                  f"(>= {t['threshold']:.0%}) pass={t['pass']}")
+    git = controls.get("git", {})
+    print(f"      git_commit={git.get('git_commit')} git_tree_clean={git.get('git_tree_clean')}")
+    print(f"      controls passed (decided by {controls['summary']['deciding_judge_id']}; None = not all three "
+          f"sets judged): {controls['passed']} (output: {controls.get('output_path')})")
 
 
 if __name__ == "__main__":
@@ -617,12 +974,23 @@ if __name__ == "__main__":
     parser.add_argument("--n-dev", type=int, default=50)
     parser.add_argument("--dev-offset", type=int, default=385)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--judge-id", default="primary")
+    parser.add_argument("--judge-id", default="primary",
+                         help="Deciding judge for controls, and the judge used for the main sweep.")
+    parser.add_argument("--ctxrel-version", required=True, choices=("ctxrel-v1", "ctxrel-v2"),
+                         help="Context-relevance prompt version (REQUIRED, no default -- see "
+                              "docs/DECISION_C_SCORING.md Amendments 1/2). Recorded in every output and manifest.")
+    parser.add_argument("--control-sets", default=",".join(CONTROL_SETS),
+                         help="--controls-only: comma-separated subset of " + ",".join(CONTROL_SETS) + ".")
+    parser.add_argument("--control-judges", default=",".join(CONTROL_JUDGE_IDS),
+                         help="Comma-separated judge ids for the controls (deciding judge = --judge-id).")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--plan-only", action="store_true",
                          help="Build the dev sample and run retrieval-only (free), show the plan, then stop -- "
                               "no API call is made.")
     parser.add_argument("--yes", action="store_true", help="Skip the interactive y/N confirmation.")
+    parser.add_argument("--allow-dirty", action="store_true",
+                         help="Run the controls even if the working tree has uncommitted changes outside "
+                              "results/controls/ (recorded as git_tree_clean=false). Off by default.")
     parser.add_argument("--controls-only", action="store_true",
                          help="Run ONLY the ctxrel-v1 positive/negative controls on the dev split and exit -- "
                               "does not touch retrieval or run the main sweep judging.")
@@ -632,9 +1000,22 @@ if __name__ == "__main__":
         print("[ERROR] --questions-parquet/--answers-parquet (or QUESTIONS_PARQUET/ANSWERS_PARQUET in .env) required.")
         sys.exit(1)
 
+    control_sets = tuple(c.strip() for c in args.control_sets.split(",") if c.strip())
+    unknown = [c for c in control_sets if c not in CONTROL_SETS]
+    if unknown or not control_sets:
+        print(f"[ERROR] unknown --control-sets {unknown} (choose from {CONTROL_SETS})")
+        sys.exit(1)
+    if not args.controls_only and control_sets != CONTROL_SETS:
+        print("[ERROR] --control-sets subsets are only allowed with --controls-only "
+              "(the full sweep always runs all three sets).")
+        sys.exit(1)
+
     exit_code = run_stage1_sweep(
         args.questions_parquet, args.answers_parquet, args.kg_workspace_dir, args.embed_model,
         args.embedding_cache_path, args.n_dev, args.dev_offset, args.seed, args.judge_id, args.workers,
-        args.plan_only, args.yes, args.controls_only,
+        args.plan_only, args.yes, args.controls_only, args.ctxrel_version,
+        control_sets=control_sets,
+        control_judge_ids=tuple(j.strip() for j in args.control_judges.split(",") if j.strip()),
+        allow_dirty=args.allow_dirty,
     )
     sys.exit(exit_code)
