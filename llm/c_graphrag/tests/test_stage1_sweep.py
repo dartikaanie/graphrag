@@ -690,3 +690,160 @@ def test_run_history_written_where_run_metadata_reads_regardless_of_cwd(tmp_path
     monkeypatch.chdir(tmp_path)          # e.g. stage1_sweep.py launched from the repo root
     assert cg.LOG_DIR.is_absolute()
     assert cg.LOG_DIR / "run_history.jsonl" == _run_metadata.HISTORY_PATHS["C"]
+
+
+# ---------------------------------------------------------------------
+# --controls-summary gate (validated, never re-run as a gate)
+# ---------------------------------------------------------------------
+
+GATE_SUMMARY = (Path(__file__).resolve().parents[1] / "results" / "controls"
+                / "ctxrel_v2_controls_positive-easy_negative-hard_negative_20261007T165007Z_summary.json")
+
+
+def _gate_dev_ids():
+    return json.loads(GATE_SUMMARY.read_text())["dev_question_ids"]
+
+
+def test_real_ctxrel_v2_summary_is_accepted_as_gate():
+    from stage1_sweep import load_controls_summary
+
+    ref = load_controls_summary(GATE_SUMMARY, "ctxrel-v2", "primary", _gate_dev_ids())
+    assert ref["path"] == ("llm/c_graphrag/results/controls/"
+                           "ctxrel_v2_controls_positive-easy_negative-hard_negative_20261007T165007Z_summary.json")
+    assert ref["git_commit"] == "1138eb8096f11ca88db2ca8e6bde13badfe386e3"
+    assert ref["passed"] is True and len(ref["sha256"]) == 64
+    assert set(ref["per_set"]) == {"positive", "easy_negative", "hard_negative"}
+
+
+@pytest.mark.parametrize("mutate, expected", [
+    (lambda s: s.update(ctxrel_version="ctxrel-v1"), "ctxrel_version"),
+    (lambda s: s.update(control_sets=["hard_negative"]), "control_sets"),
+    (lambda s: s["per_judge"]["primary"].pop("hard_negative"), "no results for ['hard_negative']"),
+    (lambda s: s.update(passed=False), "not passed"),
+    (lambda s: s["per_judge"]["primary"].update({"pass": None}), "not passed"),
+    (lambda s: s.update(git_tree_clean=False), "clean working tree"),
+    (lambda s: s.update(git_commit="abc"), "no full git_commit"),
+    (lambda s: s.update(git_commit="f" * 40), "not an ancestor of HEAD"),
+    (lambda s: s.update(thresholds={"positive": 0.8, "easy_negative": 0.9, "hard_negative": 0.8}), "thresholds"),
+    (lambda s: s.update(hard_negative_definition="amendment-2"), "hard_negative_definition"),
+    (lambda s: s.update(deciding_judge_id="secondary"), "deciding_judge_id"),
+    (lambda s: s["dev_question_ids"].pop(), "dev_question_ids"),
+])
+def test_controls_summary_rejected_with_reason(tmp_path, mutate, expected):
+    from stage1_sweep import ControlsSummaryError, load_controls_summary
+
+    s = json.loads(GATE_SUMMARY.read_text())
+    dev_ids = list(s["dev_question_ids"])
+    mutate(s)
+    p = tmp_path / "summary.json"
+    p.write_text(json.dumps(s))
+    with pytest.raises(ControlsSummaryError, match=expected.replace("[", r"\[").replace("]", r"\]")):
+        load_controls_summary(p, "ctxrel-v2", "primary", dev_ids)
+
+
+def test_controls_summary_missing_file_rejected(tmp_path):
+    from stage1_sweep import ControlsSummaryError, load_controls_summary
+
+    with pytest.raises(ControlsSummaryError):
+        load_controls_summary(tmp_path / "nope.json", "ctxrel-v2", "primary", [1])
+
+
+def _tiny_dev_env(monkeypatch, dev_ids):
+    import pandas as pd
+
+    import stage1_sweep
+
+    df = pd.DataFrame({"Id": dev_ids})
+    monkeypatch.setattr(stage1_sweep, "_build_dev_sample", lambda *a, **k: (df, {}, 1536, df))
+    import c_graphrag as cg
+
+    def must_not_be_called(*a, **k):
+        raise AssertionError("refused run must not touch Neo4j/FAISS")
+
+    monkeypatch.setattr(cg, "connect_neo4j", must_not_be_called)
+
+
+def _sweep(**kw):
+    from stage1_sweep import run_stage1_sweep
+
+    return run_stage1_sweep("q", "a", "kg", "m", "cache", 50, 385, 42, "primary", 4,
+                            kw.pop("plan_only", True), True, False, "ctxrel-v2", **kw)
+
+
+def test_sweep_refuses_without_controls_summary(monkeypatch, capsys):
+    _tiny_dev_env(monkeypatch, _gate_dev_ids())
+    assert _sweep() == 1
+    assert "--controls-summary is required" in capsys.readouterr().out
+
+
+def test_sweep_refuses_invalid_controls_summary_before_any_work(monkeypatch, tmp_path, capsys):
+    s = json.loads(GATE_SUMMARY.read_text())
+    s["passed"] = False
+    p = tmp_path / "bad_summary.json"
+    p.write_text(json.dumps(s))
+    _tiny_dev_env(monkeypatch, _gate_dev_ids())
+    assert _sweep(controls_summary_path=str(p), plan_only=False) == 1
+    assert "rejected" in capsys.readouterr().out
+
+
+def test_controls_test_retest_agreement(tmp_path):
+    from stage1_sweep import controls_test_retest
+
+    orig = tmp_path / "orig.jsonl"
+    orig.write_text("\n".join(json.dumps(r) for r in [
+        {"judge_id": "primary", "control_type": "positive", "question_id": 1, "answer_id": 11, "label": "RELEVANT"},
+        {"judge_id": "primary", "control_type": "hard_negative", "question_id": 1, "answer_id": 33, "label": "PARTIAL"},
+        {"judge_id": "secondary", "control_type": "positive", "question_id": 1, "answer_id": 11, "label": "PARTIAL"},
+    ]))
+    retest = [
+        {"judge_id": "primary", "control_type": "positive", "question_id": 1, "answer_id": 11, "label": "RELEVANT"},
+        {"judge_id": "primary", "control_type": "hard_negative", "question_id": 1, "answer_id": 33, "label": "IRRELEVANT"},
+        {"judge_id": "secondary", "control_type": "positive", "question_id": 1, "answer_id": 11, "label": "PARTIAL"},
+        {"judge_id": "secondary", "control_type": "positive", "question_id": 9, "answer_id": 99, "label": "PARTIAL"},
+    ]
+    out = controls_test_retest(orig, retest)
+    assert out["primary"] == {"n_matched": 2, "n_same_label": 1, "agreement": 0.5}
+    assert out["secondary"]["n_matched"] == 1 and out["secondary"]["agreement"] == 1.0
+
+
+def test_plan_uses_measured_control_tokens_and_manifest_latency(tmp_path, monkeypatch):
+    import stage1_sweep
+    from judge_clients import JUDGE_REGISTRY
+
+    model = JUDGE_REGISTRY["primary"].model
+    ctrl = tmp_path / "controls"
+    ctrl.mkdir()
+    f = ctrl / "ctxrel_v2_controls_x_20260101T000000Z.jsonl"
+    f.write_text("\n".join(json.dumps({"judge_model": model, "prompt_version": "ctxrel-v2",
+                                       "prompt_tokens": 1000, "completion_tokens": 50}) for _ in range(4))
+                 + "\n" + json.dumps({"judge_model": model, "prompt_version": "ctxrel-v1",
+                                      "prompt_tokens": 9999, "completion_tokens": 999}))
+    Path(str(f) + ".manifest.json").write_text(json.dumps({
+        "started_at_utc": "2026-01-01T00:00:00+00:00", "finished_at_utc": "2026-01-01T00:01:00+00:00",
+        "item_counts": {"attempted": 80}}))
+    monkeypatch.setattr(stage1_sweep, "RESULTS_DIR", tmp_path)
+    plan = stage1_sweep.build_plan(400, 0, "primary", workers=4, prompt_version="ctxrel-v2")
+    assert plan["est_tokens_in"] == 400 * 1000 and plan["est_tokens_out"] == 400 * 50   # v1 record ignored
+    assert plan["avg_latency_s"] == 3.0                                                 # 60 s x 4 workers / 80
+    assert plan["est_time_sec"] == 300 and plan["workers"] == 4
+    text = stage1_sweep.format_plan(plan)
+    assert "gate = referenced --controls-summary" in text and "4 workers" in text
+
+
+def test_report_records_controls_gate_and_retest():
+    from stage1_sweep import load_controls_summary
+
+    ref = load_controls_summary(GATE_SUMMARY, "ctxrel-v2", "primary", _gate_dev_ids())
+    metrics = {"pct_questions_with_relevant": 1, "pct_relevant": 1, "pct_partial": 1, "pct_irrelevant": 1,
+               "mean_relevance_score": 1, "mean_sim_selected": 1, "mean_trust_selected": 1,
+               "pct_accepted_selected": 1, "jaccard_vs_alpha0": 1, "jaccard_vs_alpha1": 1,
+               "by_hop": {}, "by_edge_type": {}}
+    retest = {"output_path": "llm/c_graphrag/results/controls/ctxrel_v2_controls_retest_x.jsonl", "git_commit": "c0ffee",
+              "summary": {"per_judge": {"primary": {"positive": {"n": 50, "match_rate": 0.92, "threshold": 0.9,
+                                                                 "pass": True}}}},
+              "agreement": {"primary": {"agreement": 0.96}}}
+    md = build_stage1_markdown({0.5: metrics}, {"keep_current": True, "reasoning": "r"}, ctxrel_version="ctxrel-v2",
+                               controls_summary=ref, retest=retest, git_commit="abc")
+    assert ref["path"] in md and "1138eb8096f11ca88db2ca8e6bde13badfe386e3" in md and "(not re-run)" in md
+    assert "Controls test-retest (non-gating, descriptive)" in md and "| primary | positive | 50 | 92% |" in md
+    assert "0.96" in md and "Code commit (run start, clean tree): abc" in md
