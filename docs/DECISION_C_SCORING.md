@@ -226,6 +226,20 @@ Pilot diagnostics (test positions 1-10, 9 runs, n = 90 items per judge; used for
 ### Freeze
 After acceptance: freeze the judge version, model, temperature, and max_tokens; "judge-v2" in the Freeze section above means this frozen version. Then run stage 2. No judge changes after the confirmation set is annotated.
 
+### Addendum (2026-10-09, before any calibration generation or annotation)
+- Judging standard (judge and human annotators): when the reference addresses a claim,
+  the reference decides. A claim the reference does not address is UNVERIFIABLE, unless
+  it is clearly fabricated or contradicts well-established fact. `reference_conflict`
+  remains available for an outdated reference. Human annotators may consult official
+  documentation only to check whether a named API, function, or option exists.
+- Severity handling in v2.1: severity on SUPPORTED/UNVERIFIABLE claims is set to null and
+  counted as a normalization; an error claim without severity keeps its record, counts
+  for the binary label, and is reported as "severity unspecified" (not imputed).
+- The annotation key is kept outside the repository until adjudication is complete; its
+  SHA-256 hash is committed when the annotation files are created.
+- Reported alongside the acceptance κ: binary κ (hallucinated vs not) on items that both
+  the human reference and the judge label as non-ABSTAIN, with n.
+
 ### Record (fill in)
 - Judge version frozen: [ ]  commit: [ ]
 - κ human-human (30 items, pre-adjudication): [ ]
