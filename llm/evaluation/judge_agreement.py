@@ -649,6 +649,69 @@ def cmd_summary(args):
 
 
 # ---------------------------------------------------------------------------
+# Binary primary metric (docs/DECISION_C_SCORING.md, Amendment 4) --
+# judge-v2 / judge-v2.1 records only. Additive: nothing above changes.
+# ---------------------------------------------------------------------------
+
+def compute_binary_summary(records: list[dict], judge_id: str) -> dict[str, dict]:
+    """Per run_label: binary hallucination rate (ABSTAIN excluded, and
+    ABSTAIN counted as non-factual), severity distribution, ABSTAIN rate,
+    unverifiable rate -- see judge_binary.binary_summary(). `hallucinated`
+    is read from the record (v2.1) or derived from its claims (v2)."""
+    from judge_binary import binary_summary
+
+    by_run_label: dict[str, list[dict]] = defaultdict(list)
+    for r in records:
+        if r["judge_id"] == judge_id:
+            by_run_label[r["run_label"]].append(r)
+    return {run_label: binary_summary(recs) for run_label, recs in by_run_label.items()}
+
+
+def compute_binary_agreement(records: list[dict], judge_id_a: str = "primary", judge_id_b: str = "secondary") -> dict:
+    """Judge-vs-judge agreement on the 3-category label (ABSTAIN / not
+    hallucinated / hallucinated) and on the binary label among items both
+    judges label non-ABSTAIN. Pairs where either judge has no usable
+    judgment (failed call / parse error) are excluded and counted."""
+    from judge_binary import agreement_report, category_of
+
+    pairs = pair_two_judges(records, judge_id_a, judge_id_b)
+    cats = [(category_of(a), category_of(b)) for a, b in pairs]
+    usable = [(a, b) for a, b in cats if a is not None and b is not None]
+    report = agreement_report([a for a, _ in usable], [b for _, b in usable]) if usable else {"n": 0}
+    report.update({"judge_id_a": judge_id_a, "judge_id_b": judge_id_b, "n_pairs": len(pairs),
+                   "n_pairs_excluded_unusable": len(pairs) - len(usable)})
+    return report
+
+
+def cmd_binary_summary(args):
+    records = load_judge_records(args.judge_output)
+    summary = compute_binary_summary(records, args.judge_id)
+    if not summary:
+        log(f"[ERROR] no records found for judge_id='{args.judge_id}' in the given files")
+        sys.exit(1)
+    versions = sorted({str(r.get("prompt_version")) for r in records})
+    log(f"\nBinary hallucination summary (judge_id={args.judge_id}, judge version {versions}):")
+    for run_label in sorted(summary):
+        s = summary[run_label]
+        log(f"\n  {run_label} (n={s['n']}, unusable/parse-error excluded: {s['n_unusable']}):")
+        log(f"    Hallucination rate, ABSTAIN excluded : {s['hallucination_rate_excl_abstain']} "
+            f"({s['n_hallucinated']}/{s['n'] - s['n_abstain']})")
+        log(f"    Hallucination rate, ABSTAIN counted  : {s['hallucination_rate_abstain_counted']} "
+            f"({s['n_hallucinated'] + s['n_abstain']}/{s['n']})")
+        log(f"    ABSTAIN rate                         : {s['abstain_rate']} ({s['n_abstain']}/{s['n']})")
+        log(f"    Severity (hallucinated answers)      : {s['severity_distribution']}")
+        log(f"    Unverifiable rate (claims)           : {s['unverifiable_rate']} "
+            f"({s['n_unverifiable_claims']}/{s['n_claims']})")
+    if args.json_out:
+        Path(args.json_out).write_text(json.dumps(summary, indent=2))
+
+
+def cmd_binary_agreement(args):
+    report = compute_binary_agreement(load_judge_records(args.judge_output))
+    log(json.dumps(report, indent=2))
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -686,6 +749,16 @@ def main():
     p_summary.add_argument("--judge-output", nargs="+", required=True)
     p_summary.add_argument("--judge-id", choices=["primary", "secondary"], default="primary")
     p_summary.set_defaults(func=cmd_summary)
+
+    p_bin = sub.add_parser("binary-summary", help="Amendment 4 primary metric (judge-v2 / v2.1 outputs)")
+    p_bin.add_argument("--judge-output", nargs="+", required=True)
+    p_bin.add_argument("--judge-id", choices=["primary", "secondary"], default="primary")
+    p_bin.add_argument("--json-out", default=None)
+    p_bin.set_defaults(func=cmd_binary_summary)
+
+    p_binagree = sub.add_parser("binary-agreement", help="primary vs secondary: 3-category and binary kappa")
+    p_binagree.add_argument("--judge-output", nargs="+", required=True)
+    p_binagree.set_defaults(func=cmd_binary_agreement)
 
     args = parser.parse_args()
     args.func(args)

@@ -354,6 +354,32 @@ def chunk_corpus(df: pd.DataFrame, token_limit: int) -> pd.DataFrame:
     return chunk_df
 
 
+class IndexLeakageError(RuntimeError):
+    """The retrieval index contains an evaluation question's own thread."""
+
+
+def assert_index_has_no_eval_leakage(meta_df: pd.DataFrame, eval_question_ids, accepted_answer_ids) -> None:
+    """The index cache key (build_or_load_faiss_index) does NOT include the
+    exclusion set, so a cached index built for a DIFFERENT evaluation
+    sample (e.g. the test sample) is silently reused for this one (e.g.
+    the dev split). Leakage exclusion is therefore re-checked on whatever
+    index is actually loaded: it must contain no answer belonging to an
+    evaluation question and no evaluation question's accepted answer.
+    Raises IndexLeakageError otherwise (fix: --rebuild-index)."""
+    eval_q = {int(q) for q in eval_question_ids}
+    eval_a = {int(a) for a in accepted_answer_ids}
+    leaked_q = sorted(eval_q & {int(q) for q in meta_df["question_id"]})
+    leaked_a = sorted(eval_a & {int(a) for a in meta_df["answer_id"]})
+    if leaked_q or leaked_a:
+        raise IndexLeakageError(
+            f"retrieval index contains {len(leaked_q)} evaluation question thread(s) {leaked_q[:5]} and "
+            f"{len(leaked_a)} accepted answer(s) {leaked_a[:5]} -- the cached index was built for a different "
+            f"evaluation sample. Re-run with --rebuild-index."
+        )
+    log(f"      [leakage check] index bersih: 0 dari {len(eval_q)} pertanyaan evaluasi / "
+        f"{len(eval_a)} accepted answer ada di index.")
+
+
 # ---------------------------------------------------------------------
 # 6. Build/Load FAISS index (IndexFlatIP atas embedding ternormalisasi
 #    = cosine similarity) -- di-cache ke disk supaya tidak rebuild tiap run
@@ -609,21 +635,24 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 # ---------------------------------------------------------------------
 
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
-                  top_k: int, require_citation: bool, require_grounding: bool) -> dict:
+                  top_k: int, require_citation: bool, require_grounding: bool,
+                  sample_split: str = "test") -> dict:
     """The full set of parameters that affect Condition B's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists (stored in every record/manifest AND hashed into
     the output filename)."""
-    return {
+    from llm.sample_split import add_split_to_config
+    return add_split_to_config({
         "condition": "B", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
         "oversample_pool": oversample_pool, "top_k": top_k,
         "require_citation": require_citation, "require_grounding": require_grounding,
-    }
+    }, sample_split)  # sample_split only present when not "test" -- existing hashes unchanged
 
 
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
                        require_citation: bool = False, require_grounding: bool = False,
-                       oversample_pool: int | None = None, top_k: int = 5) -> Path:
+                       oversample_pool: int | None = None, top_k: int = 5,
+                       sample_split: str = "test") -> Path:
     """Nama file JSONL otomatis dari provider+model+n_sample+seed -- identik
     pola Kondisi A, format:
     condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl.
@@ -650,9 +679,11 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     base = f"condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}"
     suffix = ("_grounded" if require_grounding else "_plain") if require_citation else ""
     config_hash = compute_config_hash(
-        build_config(provider, model, n_sample, seed, oversample_pool, top_k, require_citation, require_grounding)
+        build_config(provider, model, n_sample, seed, oversample_pool, top_k, require_citation, require_grounding,
+                     sample_split)
     )
-    return Path(output_dir) / f"{base}{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
+    from llm.sample_split import split_filename_tag
+    return Path(output_dir) / f"{base}{suffix}{split_filename_tag(sample_split)}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
 
 def main():
@@ -717,7 +748,10 @@ def main():
                               "mempengaruhi retrieved_context yang dipakai prompt. Dipakai supaya run "
                               "BERIKUTNYA bisa dihitung Recall@k sesungguhnya di analyze_retrieval_quality.py "
                               "(versi saat ini belum menghitungnya). Default: nonaktif.")
+    from llm.sample_split import add_split_arguments
+    add_split_arguments(parser)
     args = parser.parse_args()
+    dev_tag = "" if args.sample_split == "test" else f" [{args.sample_split}]"
 
     global log
     logger, log_path = setup_logging(args.provider, args.model)
@@ -746,7 +780,8 @@ def main():
                                              args.n_sample, args.seed,
                                              require_citation=args.require_citation,
                                              require_grounding=args.require_grounding,
-                                             oversample_pool=oversample_pool, top_k=args.top_k))
+                                             oversample_pool=oversample_pool, top_k=args.top_k,
+                                             sample_split=args.sample_split))
         log(f"[config] output auto-generated dari provider='{args.provider}' "
               f"model='{args.model}' -> '{args.output}'")
 
@@ -776,7 +811,13 @@ def main():
     candidates = get_candidate_questions(con, args.questions_parquet, args.answers_parquet,
                                           oversample_pool, args.seed)
     candidates = filter_by_token_limit(candidates)
-    sample_df = sample_questions(candidates, args.n_sample, args.seed)
+    if args.sample_split == "test":
+        sample_df = sample_questions(candidates, args.n_sample, args.seed)
+    else:
+        from llm.sample_split import sample_questions_split
+        sample_df = sample_questions_split(candidates, args.n_sample, args.seed, args.sample_split, args.dev_offset)
+        log(f"[3/8] sample_split='{args.sample_split}': {len(sample_df)} pertanyaan dari posisi "
+            f"{args.dev_offset}..{args.dev_offset + args.n_sample - 1} (1-based) permutasi tetap seed={args.seed}")
 
     accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
     answers_df = get_accepted_answers(con, args.answers_parquet, accepted_ids)
@@ -805,11 +846,12 @@ def main():
         chunk_df, embed_model, Path(args.index_cache_dir),
         args.index_pool, args.token_chunk_limit, args.embed_model, args.rebuild_index,
     )
+    assert_index_has_no_eval_leakage(meta_df, eval_question_ids, accepted_ids)
 
     # --- Resume support: baca Id yang sudah pernah diproses ---
     from llm.manifest import compute_config_hash
     config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool,
-                           args.top_k, args.require_citation, args.require_grounding)
+                           args.top_k, args.require_citation, args.require_grounding, args.sample_split)
     config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -845,6 +887,7 @@ def main():
             "model": args.model,
             "n_sample_target": args.n_sample,
             "seed": args.seed,
+            "sample_split": args.sample_split,
             "oversample_pool": oversample_pool,
             "log_full_candidates": args.log_full_candidates,
             "index_pool": args.index_pool,
@@ -855,7 +898,7 @@ def main():
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
-        run_label = ("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B"
+        run_label = (("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B") + dev_tag
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
             output_path, run_label=run_label, status="failed",
@@ -879,6 +922,7 @@ def main():
             "model": args.model,
             "n_sample_target": args.n_sample,
             "seed": args.seed,
+            "sample_split": args.sample_split,
             "oversample_pool": oversample_pool,
             "log_full_candidates": args.log_full_candidates,
             "index_pool": args.index_pool,
@@ -889,7 +933,7 @@ def main():
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
-        run_label = ("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B"
+        run_label = (("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B") + dev_tag
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
             output_path, run_label=run_label, status="failed",
@@ -955,6 +999,7 @@ def main():
         "n_sample_target": args.n_sample,
         "n_processed": len(results_df),
         "seed": args.seed,
+            "sample_split": args.sample_split,
         "oversample_pool": oversample_pool,
         "n_candidates_after_token_filter": len(candidates),
         "log_full_candidates": args.log_full_candidates,
@@ -988,6 +1033,7 @@ def main():
         run_label = "B-grounded" if args.require_grounding else "B-plain"
     else:
         run_label = "B"
+    run_label += dev_tag
     manifest_path = write_manifest(
         output_path,
         run_label=run_label,
