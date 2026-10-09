@@ -413,20 +413,22 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 # Main
 # ---------------------------------------------------------------------
 
-def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None) -> dict:
+def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
+                  sample_split: str = "test") -> dict:
     """The full set of parameters that affect Condition A's answers --
     stored in every record/manifest AND hashed (see
     llm.manifest.compute_config_hash) into the output filename. A never
     has a retrieval/grounding axis, so this is deliberately smaller than
     B/C/D's config() -- see each module's own build_config()."""
-    return {
+    from llm.sample_split import add_split_to_config
+    return add_split_to_config({
         "condition": "A", "provider": provider, "model": model,
         "n_sample": n_sample, "seed": seed, "oversample_pool": oversample_pool,
-    }
+    }, sample_split)  # sample_split only present when not "test" -- existing hashes unchanged
 
 
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
-                       oversample_pool: int | None = None) -> Path:
+                       oversample_pool: int | None = None, sample_split: str = "test") -> Path:
     """Nama file JSONL otomatis dari provider+model+n_sample+seed+
     prompt_version+config_hash -- format:
     condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}_{prompt_version}_{hash}.jsonl.
@@ -448,9 +450,11 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     pilot 2026-10-05, lihat llm.manifest.read_already_done)."""
     from llm.manifest import compute_config_hash
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
-    config_hash = compute_config_hash(build_config(provider, model, n_sample, seed, oversample_pool))
+    from llm.sample_split import split_filename_tag
+    config_hash = compute_config_hash(build_config(provider, model, n_sample, seed, oversample_pool, sample_split))
     return Path(output_dir) / (
-        f"condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}_{PROMPT_VERSION}_{config_hash}.jsonl"
+        f"condition_a_{provider}_{safe_model}_n{n_sample}_seed{seed}{split_filename_tag(sample_split)}"
+        f"_{PROMPT_VERSION}_{config_hash}.jsonl"
     )
 
 
@@ -482,7 +486,10 @@ def main():
     parser.add_argument("--oversample-pool", type=int, default=int(os.getenv("OVERSAMPLE_POOL", 0)),
                          help="Ukuran pool acak awal sebelum filter token (default: "
                               "otomatis 3x n_sample kalau tidak diset)")
+    from llm.sample_split import add_split_arguments, sample_questions_split
+    add_split_arguments(parser)
     args = parser.parse_args()
+    run_label = "A" if args.sample_split == "test" else f"A [{args.sample_split}]"
 
     global log
     logger, log_path = setup_logging(args.provider, args.model)
@@ -513,7 +520,8 @@ def main():
         log(f"[config] --output diisi manual -- auto-naming provider/model diabaikan.")
     else:
         args.output = str(build_output_path(args.output_dir, args.provider, args.model,
-                                             args.n_sample, args.seed, oversample_pool=oversample_pool))
+                                             args.n_sample, args.seed, oversample_pool=oversample_pool,
+                                             sample_split=args.sample_split))
         log(f"[config] output auto-generated dari provider='{args.provider}' "
               f"model='{args.model}' -> '{args.output}'")
 
@@ -535,7 +543,12 @@ def main():
     candidates = get_candidate_questions(con, args.questions_parquet, args.answers_parquet,
                                           oversample_pool, args.seed)
     candidates = filter_by_token_limit(candidates)
-    sample_df = sample_questions(candidates, args.n_sample, args.seed)
+    if args.sample_split == "test":
+        sample_df = sample_questions(candidates, args.n_sample, args.seed)
+    else:
+        sample_df = sample_questions_split(candidates, args.n_sample, args.seed, args.sample_split, args.dev_offset)
+        log(f"[3/6] sample_split='{args.sample_split}': {len(sample_df)} pertanyaan dari posisi "
+            f"{args.dev_offset}..{args.dev_offset + args.n_sample - 1} (1-based) permutasi tetap seed={args.seed}")
 
     accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
     answers_df = get_accepted_answers(con, args.answers_parquet, accepted_ids)
@@ -555,7 +568,8 @@ def main():
 
     # --- Resume support: baca Id yang sudah pernah diproses ---
     from llm.manifest import compute_config_hash
-    config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool)
+    config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool,
+                          args.sample_split)
     config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -586,6 +600,7 @@ def main():
             "model": args.model,
             "n_sample_target": args.n_sample,
             "seed": args.seed,
+            "sample_split": args.sample_split,
             "oversample_pool": oversample_pool,
             "config_hash": config_hash,
             "output_path": str(output_path),
@@ -596,7 +611,7 @@ def main():
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
             output_path,
-            run_label="A",
+            run_label=run_label,
             status="failed",
             config=config,
             config_hash=config_hash,
@@ -620,6 +635,7 @@ def main():
             "model": args.model,
             "n_sample_target": args.n_sample,
             "seed": args.seed,
+            "sample_split": args.sample_split,
             "oversample_pool": oversample_pool,
             "config_hash": config_hash,
             "output_path": str(output_path),
@@ -630,7 +646,7 @@ def main():
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
             output_path,
-            run_label="A",
+            run_label=run_label,
             status="failed",
             config=config,
             config_hash=config_hash,
@@ -661,6 +677,7 @@ def main():
         "n_sample_target": args.n_sample,
         "n_processed": len(results_df),
         "seed": args.seed,
+            "sample_split": args.sample_split,
         "oversample_pool": oversample_pool,
         "n_candidates_after_token_filter": len(candidates),
         "config_hash": config_hash,
@@ -676,7 +693,7 @@ def main():
     finished_at = datetime.now(timezone.utc)
     manifest_path = write_manifest(
         output_path,
-        run_label="A",
+        run_label=run_label,
         config=config,
         config_hash=config_hash,
         log_path=str(log_path),

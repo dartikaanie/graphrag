@@ -431,3 +431,76 @@ def check_served_model_mismatch(response_model: str | None, config, judge_id: st
             f"changed which model/variant it actually serves for this judge_id. Investigate before "
             f"trusting further records from this judge_id.")
     return mismatch
+
+
+# ---------------------------------------------------------------------
+# Calibration guard (docs/DECISION_C_SCORING.md, Amendment 4): the
+# calibration runs must be annotated by humans BEFORE any judge-v2.x
+# sees them. calibration_generate.py registers those runs; every
+# judge-v2.x load_items() calls assert_calibration_judging_allowed().
+# ---------------------------------------------------------------------
+
+_EVAL_DIR = Path(__file__).resolve().parent
+CALIBRATION_REGISTRY_PATH = _EVAL_DIR / "calibration" / "calibration_runs.json"
+CALIBRATION_REFERENCE_PATH = _EVAL_DIR / "annotation" / "calibration" / "reference_adjudicated.json"
+
+
+class CalibrationGuardError(RuntimeError):
+    """A judge was asked to run on calibration runs before the adjudicated
+    human reference exists."""
+
+
+def load_calibration_registry(registry_path=None) -> dict:
+    path = Path(registry_path) if registry_path else CALIBRATION_REGISTRY_PATH
+    if not path.exists():
+        return {"runs": []}
+    return json.loads(path.read_text())
+
+
+def calibration_reference_status(reference_path=None, expected_items: int | None = None) -> tuple[bool, str]:
+    """(ok, reason). ok only for a reference file written by
+    annotation_tool.py's `finalize-reference`: status == "adjudicated"
+    and (if known) the expected number of labelled items."""
+    path = Path(reference_path) if reference_path else CALIBRATION_REFERENCE_PATH
+    if not path.exists():
+        return False, f"adjudicated reference not found at {path}"
+    try:
+        ref = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        return False, f"adjudicated reference unreadable: {e}"
+    if ref.get("status") != "adjudicated":
+        return False, f"reference status is {ref.get('status')!r}, not 'adjudicated'"
+    n = len(ref.get("items") or [])
+    if expected_items is not None and n != expected_items:
+        return False, f"reference has {n} items, expected {expected_items}"
+    return True, f"adjudicated reference with {n} items"
+
+
+def assert_calibration_judging_allowed(run_files, allow_override: bool = False, log=print,
+                                       registry_path=None, reference_path=None) -> dict:
+    """Refuses (CalibrationGuardError) if any of `run_files` is a
+    registered calibration run and no valid adjudicated reference exists
+    -- unless `allow_override`, which is logged loudly and returned so the
+    caller records it in its run history/manifest. Returns
+    {"calibration_run_files", "reference_ok", "reference_status",
+    "override_used"}; a no-op result when no file is a calibration run."""
+    registry = load_calibration_registry(registry_path)
+    registered = {str((_EVAL_DIR.parents[1] / r["output_path"]).resolve()): r for r in registry.get("runs", [])}
+    hits = [str(f) for f in run_files if str(Path(f).resolve()) in registered]
+    info = {"calibration_run_files": hits, "reference_ok": None, "reference_status": None, "override_used": False}
+    if not hits:
+        return info
+    ok, reason = calibration_reference_status(reference_path, registry.get("n_annotation_items"))
+    info.update({"reference_ok": ok, "reference_status": reason})
+    if ok:
+        return info
+    if allow_override:
+        info["override_used"] = True
+        log(f"[WARN] CALIBRATION GUARD OVERRIDDEN (--allow-unannotated-calibration): judging {len(hits)} "
+            f"calibration run file(s) although {reason}. This is recorded in the run history and manifest.")
+        return info
+    raise CalibrationGuardError(
+        f"{len(hits)} of the given run files are calibration runs ({[Path(h).name for h in hits]}) and {reason}. "
+        f"Amendment 4: human annotation must be completed and adjudicated before any judge-v2.x run on the "
+        f"calibration set. Override (logged): --allow-unannotated-calibration."
+    )

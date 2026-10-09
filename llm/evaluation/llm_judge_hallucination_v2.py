@@ -68,6 +68,7 @@ REQUEST_TEMPERATURE = 0.0
 # both the actual API call and the resume-key pre-check below must stay
 # in sync with whatever this is set to.
 REQUEST_MAX_TOKENS = None
+LAST_CALIBRATION_GUARD: dict = {}  # result of the most recent load_items() guard check (for run history/manifest)
 
 
 # ---------------------------------------------------------------------------
@@ -80,8 +81,15 @@ def format_tags(raw_tags: str | None) -> str:
     return ", ".join(re.findall(r"<([^>]+)>", raw_tags)) or raw_tags
 
 
-def load_items(run_files: list[str], limit: int | None) -> list[dict]:
+def load_items(run_files: list[str], limit: int | None,
+               allow_unannotated_calibration: bool = False) -> list[dict]:
     from llm.manifest import assert_single_config_hash
+    from _judge_common import assert_calibration_judging_allowed
+
+    # Amendment 4 guard: calibration runs may not be judged before the
+    # adjudicated human reference exists (CLI override is logged).
+    global LAST_CALIBRATION_GUARD
+    LAST_CALIBRATION_GUARD = assert_calibration_judging_allowed(run_files, allow_unannotated_calibration, log)
 
     items = []
     for path in run_files:
@@ -338,6 +346,9 @@ def main():
                          help="Build and print messages for the first item, no API call")
     parser.add_argument("--questions-parquet", default=os.getenv("QUESTIONS_PARQUET"),
                          help="Default from QUESTIONS_PARQUET in .env")
+    parser.add_argument("--allow-unannotated-calibration", action="store_true",
+                         help="Override the Amendment 4 guard that refuses calibration runs before the "
+                              "adjudicated human reference exists. Logged in the run history and manifest.")
     args = parser.parse_args()
 
     for path in args.run_files:
@@ -348,7 +359,7 @@ def main():
     judge_ids = ["primary", "secondary"] if args.judge == "both" else [args.judge]
 
     try:
-        items = load_items(args.run_files, args.limit)
+        items = load_items(args.run_files, args.limit, args.allow_unannotated_calibration)
     except RunMetadataNotFoundError as e:
         log(f"[ERROR] {e}")
         sys.exit(1)
@@ -404,6 +415,7 @@ def main():
         "workers": args.workers,
         "out": str(output_path),
         "prompt_version": PROMPT_VERSION,
+        "calibration_guard": LAST_CALIBRATION_GUARD,
         **summary,
     })
 
@@ -413,6 +425,7 @@ def main():
         config={
             "run_files": args.run_files, "judge": args.judge, "limit": args.limit,
             "workers": args.workers, "questions_parquet": args.questions_parquet,
+            "calibration_guard": LAST_CALIBRATION_GUARD,
         },
         started_at_utc=started_at,
         finished_at_utc=finished_at,

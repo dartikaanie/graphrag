@@ -97,7 +97,9 @@ def derive_run_label(condition: str, record: dict) -> dict:
     A never has a grounding axis (`grounding` is None, label is just "A").
     """
     if condition == "A":
-        return {"run_label": "A", "fusion_mode": None, "grounding": None, "grounding_inferred": False, "is_dev": False}
+        is_dev = record.get("sample_split") == "dev"
+        return {"run_label": "A [dev]" if is_dev else "A", "fusion_mode": None, "grounding": None,
+                "grounding_inferred": False, "is_dev": is_dev}
 
     fusion_mode = record.get("fusion_mode")
     grounding_inferred = False
