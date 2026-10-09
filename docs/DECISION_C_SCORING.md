@@ -178,6 +178,64 @@ All code used for the control runs (runner, judge module with ctxrel-v2, hard-ne
 
 ---
 
+## Amendment 4 (2026-10-09): judge-v2 revision, binary primary metric, human calibration
+
+Written after the pilot judge diagnostics (`docs/JUDGE_V2_LENIENCY_REVIEW.md`, `docs/JUDGE_V2_DIAGNOSIS.md`) and BEFORE any dev-set generation for judge calibration, any judge-v2.x run on dev data, and any stage-2 run. Stage 1 (ctxrel-v2) is not affected.
+
+### Why
+Pilot diagnostics (test positions 1-10, 9 runs, n = 90 items per judge; used for diagnosis only, not for tuning):
+- judge-v2 never produced HALUSINASI_SEBAGIAN (0/90 for both judges). `derive_label_v2` matches the documented rule; the judges almost never output CONTRADICTED/FABRICATED + MINOR (primary 1 claim, secondary 0). judge-v1 produced SEBAGIAN on the same generation outputs.
+- Primary-secondary agreement after the parser fix (`parse_version = pv1`): κ = 0.243 (judge-v1: weighted 0.327, unweighted 0.246).
+- Judge errors in both directions: qualifiers dropped during claim extraction (e.g. "in UWP"), meta-statements ("the sources do not cover X") extracted as claims (one producing a false HALUSINASI_PENUH), severity assigned to SUPPORTED claims (33, primary), code-validity claims marked SUPPORTED, and a wrong version number marked SUPPORTED by almost every judge/version combination.
+
+### Primary hallucination metric (replaces the 3-class primary metric)
+- **Primary:** binary hallucination rate = share of answers with ≥1 claim judged CONTRADICTED or FABRICATED (CORE or MINOR). Reported with ABSTAIN excluded and with ABSTAIN counted, as before.
+- **Secondary (descriptive):** severity distribution (HALUSINASI_PENUH / HALUSINASI_SEBAGIAN), ABSTAIN rate, and unverifiable rate (share of claims judged UNVERIFIABLE).
+- The stage-2 secondary criterion in "Selection procedure" uses the binary rate.
+
+### judge-v2.1 prompt changes (judge-v2 stays available for reproducibility)
+1. Extracted claims keep the qualifiers that make them checkable (platform, version, library, environment, conditions stated in the question or answer).
+2. Statements about the sources/context themselves ("the sources do not cover X") are not claims and are not extracted.
+3. Severity is assigned only to CONTRADICTED or FABRICATED claims; SUPPORTED and UNVERIFIABLE claims have no severity.
+4. CORE vs MINOR with criteria and examples: CORE = the error affects the main solution or the direct answer to the question; MINOR = an error in a secondary detail (e.g. a wrong version number, a side remark) that does not change the solution.
+5. Claims that code is valid, compiles, or works are UNVERIFIABLE unless the reference contains the same code or states it explicitly.
+6. UNVERIFIABLE claims do not make an answer hallucinated; they are reported via the unverifiable rate.
+7. `max_tokens` and `temperature` are set explicitly and recorded on every record.
+
+### Calibration set (independent of α)
+- Questions: dev set (positions 385-434, n = 50).
+- Conditions: A, B-plain, B-grounded (none depend on C's α); same generation model (`gpt-4o-mini`) and generation prompt as the pilot. 150 answers.
+- Annotation sample: 60 items, stratified 20 per condition, drawn with seed 42. Annotator 1 (Dartika Anie Marian) labels all 60; annotator 2 labels a fixed 30-item subset (10 per condition, seed 42).
+
+### Confirmation set (not used for tuning)
+- 30 items drawn with seed 42 from the stage-2 outputs (C runs), stratified across the stage-2 runs. Annotated by annotator 1 after judge-v2.x is frozen and BEFORE judge labels for these items are viewed. The judge-vs-human κ on this set is the reported out-of-sample estimate.
+
+### Annotation protocol
+- A written annotation guideline (`docs/ANNOTATION_GUIDELINE.md`), using the same definitions as the judge-v2.1 prompt, is committed before annotation starts.
+- Blind: items shuffled; condition, run label, and judge output hidden. Annotators see the question, the accepted answer (reference), and the candidate answer only.
+- Labels per item: ABSTAIN yes/no; if not ABSTAIN, hallucinated yes/no; if hallucinated, severity (PENUH / SEBAGIAN).
+- Calibration annotation is completed before any judge-v2.x run on the calibration set.
+- Annotator disagreements on the 30 overlapping items are resolved by discussion; the adjudicated label is the reference. Human-human κ is reported before adjudication.
+
+### Acceptance and iteration
+- Agreement measured on 3 categories (ABSTAIN / not hallucinated / hallucinated), unweighted Cohen's κ, primary judge vs human reference on the 60 calibration items.
+- Target: κ ≥ 0.6. At most 3 prompt versions (v2.1, v2.2, v2.3); each version is committed before it is run.
+- If no version reaches 0.6: freeze the version with the highest κ, and report κ and the limitation in Bab V.
+- Secondary-judge κ and human-human κ are reported alongside and do not decide.
+
+### Freeze
+After acceptance: freeze the judge version, model, temperature, and max_tokens; "judge-v2" in the Freeze section above means this frozen version. Then run stage 2. No judge changes after the confirmation set is annotated.
+
+### Record (fill in)
+- Judge version frozen: [ ]  commit: [ ]
+- κ human-human (30 items, pre-adjudication): [ ]
+- κ primary judge vs human, calibration (60), per version: [ ]
+- κ secondary judge vs human, calibration (60): [ ]
+- κ primary judge vs human, confirmation (30): [ ]
+- Date frozen: [YYYY-MM-DD]
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 
