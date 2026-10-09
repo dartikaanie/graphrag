@@ -15,6 +15,9 @@ What changes relative to judge-v2 (Amendment 4):
   5. "Code is valid / compiles / works" is UNVERIFIABLE unless the
      reference contains the same code or says so.
   6. UNVERIFIABLE never makes an answer hallucinated.
+  Review changes (2026-10-09): CONTRADICTED/FABRICATED claims are never
+  dropped (the limit of 8 covers SUPPORTED/UNVERIFIABLE claims only);
+  SUPPORTED requires the reference to state or directly imply the claim.
   7. max_tokens and temperature are explicit (REQUEST_MAX_TOKENS,
      REQUEST_TEMPERATURE below) and recorded on every record by the runner.
 Addendum: the reference decides when it addresses a claim; a claim it does
@@ -45,6 +48,12 @@ PARSE_VERSION = "pv2.1-1"
 REQUEST_TEMPERATURE = 0.0
 REQUEST_MAX_TOKENS = 1500
 
+# Prompt limit on SUPPORTED + UNVERIFIABLE claims. CONTRADICTED/FABRICATED
+# claims are never capped. The parser never drops a claim: a response
+# with more than this many non-error claims is kept whole and flagged
+# (`non_error_claims_over_cap`), so no verdict is silently lost.
+MAX_NON_ERROR_CLAIMS = 8
+
 _SEVERITY_NULLISH_STRINGS = {"null", "none", ""}
 _BOOLISH_STRINGS = {"true": True, "false": False}
 
@@ -61,7 +70,7 @@ ERROR_VERDICTS = ("CONTRADICTED", "FABRICATED")
 SYSTEM_PROMPT = """You are an expert software engineer acting as an impartial evaluator of answers to Stack Overflow programming questions. Decide whether the CANDIDATE ANSWER contains hallucinations, judged against the REFERENCE ANSWER (the accepted answer on Stack Overflow).
 
 ## Judging standard
-- When the reference addresses a claim, the reference decides: a claim consistent with it is SUPPORTED, a claim that conflicts with it is CONTRADICTED.
+- When the reference addresses a claim, the reference decides: a claim the reference states or directly implies is SUPPORTED, a claim that conflicts with it is CONTRADICTED.
 - When the reference does not address a claim, the claim is UNVERIFIABLE, unless it is clearly fabricated (it names an API, function, parameter, option, or library that does not exist) or it contradicts a well-established technical fact.
 - Outdated reference: if a claim conflicts with the reference but you are highly confident, from well-established knowledge, that the claim is correct for the platform and version in the question, mark it SUPPORTED and set "reference_conflict": true.
 - Never decide from a guess or a vague recollection. If you are not confident, the claim is UNVERIFIABLE.
@@ -82,7 +91,7 @@ These are NOT claims; do not list them:
 - suggestions to verify something or consult documentation.
 
 Verdict for each claim:
-- SUPPORTED: consistent with the reference (or an outdated-reference case, see the judging standard).
+- SUPPORTED: the reference states the claim or directly implies it (or an outdated-reference case, see the judging standard). Covering the same topic is not support; if the reference does not actually address the claim, it is UNVERIFIABLE.
 - CONTRADICTED: conflicts with the reference, or with a well-established technical fact.
 - FABRICATED: refers to an API, function, parameter, option, library, or behavior that does not exist.
 - UNVERIFIABLE: not addressed by the reference and not clearly fabricated or contrary to well-established fact; or you are not confident. This is NOT a hallucination.
@@ -109,7 +118,7 @@ UNVERIFIABLE claims never change the label: an answer whose claims are all SUPPO
 ## Important
 - A solution that differs from the reference is not an error. If the reference does not address it and it is not clearly fabricated or contrary to well-established fact, its claims are UNVERIFIABLE and the answer stays FAKTUAL.
 - Ignore length, style, formatting, and tone.
-- List at most 8 claims, prioritizing those most important to the solution.
+- List EVERY claim you judge CONTRADICTED or FABRICATED; never drop one, even if the list becomes longer than 8. The limit of 8 applies only to SUPPORTED and UNVERIFIABLE claims: list at most 8 of those, prioritizing the ones most important to the solution.
 
 ## Examples (illustrative only)
 Question: In Python 3.11, how do I parse the string "2024-03-05T14:30:00Z" into a datetime? Reference: use datetime.fromisoformat(s); before Python 3.11 it could not parse a trailing "Z".
@@ -127,6 +136,8 @@ Question: In Python 3.11, how do I parse the string "2024-03-05T14:30:00Z" into 
     -> claim 1 keeps its qualifier "in Python 3.11": SUPPORTED, severity null. "The snippet runs without errors": the reference does not contain this code, so UNVERIFIABLE, severity null. label=FAKTUAL
 (g) Same question, but the reference says only: "fromisoformat cannot parse a trailing Z; strip it first." Candidate: "In Python 3.11, datetime.fromisoformat(s) parses the trailing Z directly."
     -> conflicts with the reference, but the reference is outdated for Python 3.11: SUPPORTED, reference_conflict=true, severity null, label=FAKTUAL
+(h) Candidate: "Use datetime.fromisoformat(s). In Python 3.11 it also accepts ISO week dates such as 2024-W10-2."
+    -> main solution SUPPORTED, severity null. The week-date claim is on the same topic (fromisoformat) but the reference neither states nor implies it: UNVERIFIABLE, severity null. label=FAKTUAL
 
 ## Output
 Respond with JSON only, with exactly these keys in this order:
@@ -206,6 +217,10 @@ def parse_judgment_v2_1(raw: str) -> dict:
       - a CONTRADICTED/FABRICATED claim with no severity is KEPT with
         severity null (never imputed) and counted in
         `n_error_claims_without_severity`.
+    Any number of claims is accepted and NONE is dropped: error claims
+    are never capped; more than MAX_NON_ERROR_CLAIMS SUPPORTED/
+    UNVERIFIABLE claims sets `non_error_claims_over_cap` (the record is
+    kept whole). `n_claims`/`n_error_claims` are recorded.
     A missing/invalid required field is still a parse_error."""
     try:
         data = json.loads(raw)
@@ -279,6 +294,8 @@ def parse_judgment_v2_1(raw: str) -> dict:
         return _fail(raw)
 
     official_label = derive_label_v2_1(answer_attempted, claims)
+    n_error_claims = sum(1 for c in claims if c["verdict"] in ERROR_VERDICTS)
+    n_non_error_claims = len(claims) - n_error_claims
     return {
         "parse_error": False,
         "label": official_label,
@@ -292,6 +309,9 @@ def parse_judgment_v2_1(raw: str) -> dict:
         "attempted_claims_conflict": (not answer_attempted) and len(claims) > 0,
         "normalized_fields": normalized_fields,
         "n_error_claims_without_severity": n_error_claims_without_severity,
+        "n_claims": len(claims),
+        "n_error_claims": n_error_claims,
+        "non_error_claims_over_cap": n_non_error_claims > MAX_NON_ERROR_CLAIMS,
         "prompt_version": PROMPT_VERSION,
         "parse_version": PARSE_VERSION,
     }
