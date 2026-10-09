@@ -36,6 +36,10 @@ def test_prompt_states_amendment_4_rules_and_addendum():
     assert "compiles, runs, or works is UNVERIFIABLE unless the reference contains the same code" in p  # rule 5
     assert "UNVERIFIABLE claims never change the label" in p                       # rule 6
     assert "When the reference addresses a claim, the reference decides" in p      # addendum
+    assert "the reference states the claim or directly implies it" in p            # review change 2
+    assert "Covering the same topic is not support" in p
+    assert "never drop one, even if the list becomes longer than 8" in p           # review change 1
+    assert "applies only to SUPPORTED and UNVERIFIABLE claims" in p
     assert '"reference_conflict": true' in p
 
 
@@ -90,3 +94,17 @@ def test_invalid_output_is_a_parse_error_with_parse_version():
 def test_abstain_with_claims_is_flagged():
     out = v21.parse_judgment_v2_1(_raw([_claim("SUPPORTED")], attempted=False, label="ABSTAIN", completeness="NONE"))
     assert out["label"] == "ABSTAIN" and out["attempted_claims_conflict"] is True
+
+
+def test_more_than_8_claims_are_all_kept_and_error_claims_never_dropped():
+    claims = [_claim("SUPPORTED")] * 5 + [_claim("UNVERIFIABLE")] * 3 + [_claim("FABRICATED", "CORE")] * 4
+    out = v21.parse_judgment_v2_1(_raw(claims, label="HALUSINASI_PENUH"))
+    assert out["parse_error"] is False and len(out["claims"]) == 12
+    assert out["n_claims"] == 12 and out["n_error_claims"] == 4
+    assert out["non_error_claims_over_cap"] is False          # 8 non-error claims: at the limit
+    assert out["label"] == "HALUSINASI_PENUH"
+
+    over = [_claim("SUPPORTED")] * 9 + [_claim("CONTRADICTED", "MINOR")]
+    out = v21.parse_judgment_v2_1(_raw(over, label="HALUSINASI_SEBAGIAN"))
+    assert out["parse_error"] is False and len(out["claims"]) == 10   # nothing dropped
+    assert out["non_error_claims_over_cap"] is True and out["label"] == "HALUSINASI_SEBAGIAN"
