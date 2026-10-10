@@ -250,6 +250,37 @@ After acceptance: freeze the judge version, model, temperature, and max_tokens; 
 
 ---
 
+## Amendment 5 (2026-10-10): contributor reputation in trustScore
+
+Written after the exploratory reputation check and BEFORE any judging of reputation-fixed contexts, any stage-2 run, and any change to the graph.
+
+### Finding
+- `7_build_knowledge_graph.py` defines `trustScore_A = 0.5*norm(score) + 0.3*accepted + 0.2*norm(reputation)`, but the KG build (log `20260829T075916Z`) did not find `FilteredUsers.csv`, so reputation was empty for every answer. `minmax_normalize` of an all-zero series returns 0.5, so the reputation term is the constant 0.1 for every answer (log: `trustScore Answer -- min=0.100`). `9_load_author_trust.py` later wrote 293,078 `User` nodes and 715,604 `AUTHOR_TRUST` edges but did not recompute `trustScore`. Reputation has therefore never affected ranking, including in stage 1 (run at `43b3b3b`).
+- Exploratory check (`reputation_ablation_check.py`, dev set n = 50, no API calls, not used for selection): with the fix below, the top-5 set changes for 0 / 4 / 6 / 10 / 40% of questions at α = 0 / 0.25 / 0.5 / 0.75 / 1. AUTHOR_TRUST covers 99.2% of candidates.
+
+### Fix under evaluation (`repfix`)
+`trust_A' = trust_A − 0.2 × 0.5 + 0.2 × author_weight`, where `author_weight` is the `AUTHOR_TRUST` edge weight (`log1p(rep) / log1p(rep_P99)`, clipped to [0, 1]; 0 when the answer has no `AUTHOR_TRUST` edge). Log-scaled weights are used instead of min-max on raw reputation because a few users with very high reputation would compress almost everyone else to ≈ 0. Everything else in C retrieval v3 is unchanged.
+
+### Procedure (`llm/c_graphrag/reputation_stage1_recheck.py`)
+1. Same dev set, retrieval, and `fuse_and_rank` v3 as stage 1. The `base` top-5 must reproduce the committed stage-1 retrieval files exactly, and the recomputed `base` metrics must equal the stage-1 report; otherwise the procedure stops.
+2. Context items of `repfix` that stage 1 did not judge are judged with ctxrel-v2, primary judge, same judge input. Items already judged reuse their stage-1 labels.
+3. Stage-1 metrics and the selection helper are computed for `repfix` with the same code.
+
+### Decision rule (fixed before judging)
+Tie margins as in stage 1: ≤ 2 percentage points (1 question) on the primary criterion, ≤ 0.02 on the mean relevance score.
+- **R1.** At α = 0.25 and α = 0.5 (the current stage-2 candidates), `repfix` is not worse than `base` beyond the tie margin on the primary criterion AND on the mean relevance score.
+- If R1 holds: **include reputation.** `trustScore` of Answer nodes is updated in Neo4j with the formula above (and `authorReputation` filled) in a separate, logged step; the `repfix` stage-1 result becomes the stage-1 result of record, and its `top_two` are the stage-2 candidates.
+- If R1 fails: **do not include reputation.** Stage 1 as run at `43b3b3b` stands; reputation is reported as an exploratory finding, and Bab I–III describe trust as upvote score plus accepted status.
+
+### Record (fill in)
+- Commit of the recheck run: [ ]
+- New judged items: [ ]
+- R1 per α: [ ]
+- Decision: [ ]
+- Stage-2 candidates of record: [ ]
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 
