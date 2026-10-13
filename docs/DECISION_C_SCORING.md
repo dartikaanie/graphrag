@@ -272,12 +272,31 @@ Tie margins as in stage 1: ≤ 2 percentage points (1 question) on the primary c
 - If R1 holds: **include reputation.** `trustScore` of Answer nodes is updated in Neo4j with the formula above (and `authorReputation` filled) in a separate, logged step; the `repfix` stage-1 result becomes the stage-1 result of record, and its `top_two` are the stage-2 candidates.
 - If R1 fails: **do not include reputation.** Stage 1 as run at `43b3b3b` stands; reputation is reported as an exploratory finding, and Bab I–III describe trust as upvote score plus accepted status.
 
-### Record (fill in)
-- Commit of the recheck run: [ ]
-- New judged items: [ ]
-- R1 per α: [ ]
-- Decision: [ ]
-- Stage-2 candidates of record: [ ]
+### Record
+- Recheck run: 2026-10-10T02:26:34Z at commit `6b0b40c7da280be362c7193e8be3daf9aebdc4a0`. `base` reproduced the stage-1 retrieval files exactly (50 questions × 5 α), and the recomputed `base` metrics equalled the stage-1 report.
+- New judged items: 18 (ctxrel-v2, primary); all other items reused stage-1 labels.
+
+| α | % q ≥1 RELEVANT (base → repfix) | mean score (base → repfix) | % accepted (base → repfix) |
+|---|---|---|---|
+| 0.0 | 48.0 → 48.0 | 0.3263 → 0.3263 | 37.29 → 37.29 |
+| 0.25 | 48.0 → 48.0 | 0.3284 → 0.3242 | 41.95 → 41.95 |
+| 0.5 | 48.0 → 48.0 | 0.3114 → 0.3178 | 52.54 → 52.12 |
+| 0.75 | 46.0 → 46.0 | 0.2860 → 0.2860 | 68.22 → 67.80 |
+| 1.0 | 34.0 → 36.0 | 0.2288 → 0.2225 | 74.58 → 74.58 |
+
+- R1: α = 0.25: Δ% q = 0.0, Δ score = −0.0042 (pass); α = 0.5: Δ% q = 0.0, Δ score = +0.0064 (pass).
+- **Decision: include reputation.** The `repfix` stage-1 result is the stage-1 result of record.
+- Selection helper (`repfix`): top_two = [0.5, 0.25], keep_current = False, identical to the original stage 1. **Stage-2 candidates of record: α = 0.5 and α = 0.25.**
+- Interpretation: on the dev set, reputation is neutral for context relevance at the stage-2 candidate α values; it is included so that the trust score uses all three community signals stated in the design (G2), not because it improves relevance.
+
+### Applying the decision
+1. `01_data_cleaning/13_apply_reputation_trust.py --apply` updates `trustScore` and `authorReputation` of every Answer node with the formula above (backup of the old values written first, verified after writing, every node tagged `trustScoreVersion = "v2-reputation"`). `tests/test_apply_reputation_trust.py` pins the update formula to the evaluated `repfix` formula.
+2. `reputation_stage1_recheck.py --verify-applied` must then confirm that retrieval from the updated graph reproduces the `repfix` top-5 exactly (50 × 5).
+3. `7_build_knowledge_graph.py` now computes the reputation term from the AUTHOR_TRUST weight, so a rebuild uses the same definition.
+4. The graph state is not part of `config_hash`; runs are attributed to the updated graph by date and by the `trustScoreVersion` tag. Every stage-2 and official run happens after step 2.
+
+- DB update applied: [date, log file]
+- Verify-applied: [result]
 
 ---
 

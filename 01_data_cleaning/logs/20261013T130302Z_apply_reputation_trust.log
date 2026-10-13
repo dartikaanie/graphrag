@@ -1,0 +1,8 @@
+20:03:02 | Mode: dry-run | log: logs/20261013T130302Z_apply_reputation_trust.log
+20:03:02 | Terhubung ke Neo4j: bolt://localhost:7687 | database: graphrag
+20:03:36 | Answer dibaca: 725,795 | punya AUTHOR_TRUST: 715,604 | sudah v2-reputation: 0
+20:03:36 | Cek asumsi: authorReputation != 0 = 0; trustScore min = 0.1001 -> OK
+20:03:37 | trustScore lama : min 0.1001 max 0.8916 mean 0.2144
+20:03:37 | trustScore baru : min 0.0017 max 0.9840 mean 0.2611
+20:03:37 | Perubahan       : min -0.1000 max +0.1000 mean +0.0466; tanpa AUTHOR_TRUST (w=0, turun 0.1): 10,191
+20:03:37 | Dry-run: tidak ada yang ditulis. Jalankan dengan --apply untuk menerapkan.
