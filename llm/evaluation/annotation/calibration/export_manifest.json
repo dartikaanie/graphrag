@@ -1,0 +1,33 @@
+{
+  "purpose": "calibration",
+  "seed": 42,
+  "created_at_utc": "2026-10-13T13:56:15.280653+00:00",
+  "git_commit": "8e6f06ee0cb8e4857191a6aa4df96579f9a31a76",
+  "n_items": 60,
+  "n_items_annotator2": 30,
+  "columns": [
+    "item_id",
+    "question",
+    "accepted_answer",
+    "candidate_answer",
+    "abstain",
+    "hallucinated",
+    "severity",
+    "notes"
+  ],
+  "key_file_name": "calibration_key_seed42.json",
+  "key_sha256": "802e59c941a3ab1e33a5a541cfdb48d72f3808981de86b46464193dfc8eaed09",
+  "key_location_note": "kept OUTSIDE the repository until adjudication is complete (Amendment 4 Addendum)",
+  "blinding": {
+    "hidden": [
+      "condition",
+      "run_label",
+      "run_id",
+      "judge output"
+    ],
+    "citation_markers_stripped": true,
+    "n_citation_markers_stripped": 47,
+    "citation_stripping": "judge_prompt_v1.blind_candidate (same as the judge input); text otherwise unchanged",
+    "text_conversion": "html_to_text for question body and accepted answer; cut at 6000 chars, as the judge input"
+  }
+}
