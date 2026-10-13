@@ -52,6 +52,8 @@ CARA PAKAI (dari root repo)
 ------------------------------------------------------------
     python3 llm/c_graphrag/reputation_stage1_recheck.py           (rencana saja, gratis)
     python3 llm/c_graphrag/reputation_stage1_recheck.py --judge   (nilai item baru + laporan)
+    python3 llm/c_graphrag/reputation_stage1_recheck.py --verify-applied
+        (setelah 13_apply_reputation_trust.py --apply; gratis)
 """
 
 import argparse
@@ -168,6 +170,44 @@ def _load_judged(paths) -> dict:
     return {k: v for k, v in recs.items() if v.get("judge_id") == JUDGE_ID}
 
 
+def verify_applied(args, sample_df, all_answer_ids_map, driver, database) -> int:
+    """Graf sudah diperbarui: trustScore tersimpan = repfix. Maka peringkat
+    `base` dari graf harus sama persis dengan file stage1_repfix_alpha*.jsonl."""
+    from embedding_cache import EmbeddingCache
+    with driver.session(database=database) as s:
+        rec = s.run("MATCH (a:Answer) RETURN count(a) AS n, "
+                    "sum(CASE WHEN a.trustScoreVersion = 'v2-reputation' THEN 1 ELSE 0 END) AS n_v2").single()
+    print(f"      Answer: {rec['n']:,}; bertanda v2-reputation: {rec['n_v2']:,}")
+    if rec["n"] != rec["n_v2"]:
+        print("[STOP] Belum semua Answer diperbarui. Jalankan 13_apply_reputation_trust.py --apply.")
+        driver.close()
+        return 1
+    expected = {a: selected_ids(OUT_DIR / f"stage1_repfix_alpha{str(a).replace('.', '-')}.jsonl") for a in ALPHAS}
+    faiss_index, faiss_ids, faiss_emb, id_to_row = cg.load_faiss_cache(Path(args.kg_workspace_dir), print)
+    from sentence_transformers import SentenceTransformer
+    embed_model = SentenceTransformer(args.embed_model, device="cpu")
+    cache = EmbeddingCache(args.embedding_cache_path)
+    mismatches = []
+    try:
+        for _, row in sample_df.iterrows():
+            qid = int(row["Id"])
+            q_emb, graph_c, exp_c = rac.retrieve_candidates(
+                row, faiss_index, faiss_ids, faiss_emb, id_to_row, all_answer_ids_map,
+                driver, database, embed_model, 3, 3)
+            for a in ALPHAS:
+                base = rac.rank_variant("base", a, graph_c, exp_c, {}, embed_model, q_emb, cache)
+                if [int(c["answer_id"]) for c in base] != expected[a].get(qid):
+                    mismatches.append((qid, a))
+    finally:
+        cache.close()
+        driver.close()
+    if mismatches:
+        print(f"[GAGAL] {len(mismatches)} (qid, alpha) berbeda dari repfix, contoh {mismatches[:5]}.")
+        return 1
+    print("[OK] Graf yang diperbarui mereproduksi stage 1 repfix: identik untuk 50 pertanyaan x 5 alpha.")
+    return 0
+
+
 # ---------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------
@@ -187,6 +227,9 @@ def main() -> int:
     p.add_argument("--embedding-cache-path", default=str(default_cache_path()))
     p.add_argument("--judge", action="store_true", help="Nilai item baru dengan ctxrel-v2 primary (berbayar).")
     p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--verify-applied", action="store_true",
+                   help="Setelah 13_apply_reputation_trust.py --apply: top-5 dari graf yang sudah diperbaiki "
+                        "harus identik dengan stage1_repfix_alpha*.jsonl (tanpa panggilan API).")
     args = p.parse_args()
     if not args.questions_parquet or not args.answers_parquet:
         print("[ERROR] QUESTIONS_PARQUET/ANSWERS_PARQUET wajib (flag atau .env).")
@@ -203,6 +246,8 @@ def main() -> int:
 
     print("[2/6] Neo4j (read-only) + asumsi graf + FAISS + model embedding...")
     driver, database = cg.connect_neo4j(print)
+    if args.verify_applied:
+        return verify_applied(args, sample_df, all_answer_ids_map, driver, database)
     graph_info = rac.check_graph_assumption(driver, database)
     if not graph_info["ok"]:
         print(f"[STOP] Asumsi graf tidak terpenuhi: {graph_info}")

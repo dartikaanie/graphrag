@@ -422,14 +422,17 @@ def compute_trust_scores(questions: pd.DataFrame, answers: pd.DataFrame, logger)
 
     a = answers.copy()
     a["norm_score"] = minmax_normalize(a["Score"].fillna(0))
-    reputation_map = a.get("reputation", pd.Series(dtype=float))
-    a["norm_reputation"] = (
-        minmax_normalize(a["reputation"].fillna(0)) if "reputation" in a.columns else 0.0
-    )
+    # Suku reputasi = bobot AUTHOR_TRUST (log1p(rep)/log1p(rep_P99), dipotong
+    # [0,1]); 0 bila penulis tidak diketahui. Docs/DECISION_C_SCORING.md
+    # Amendment 5: versi lama memakai minmax_normalize(reputation), yang
+    # menjadi konstanta 0.5 ketika data reputasi kosong saat build -- sehingga
+    # reputasi tidak pernah memengaruhi ranking. KG yang sudah ada diperbaiki
+    # oleh 13_apply_reputation_trust.py dengan rumus yang sama.
+    author_weight = a["author_weight"].fillna(0.0) if "author_weight" in a.columns else 0.0
     a["trustScore"] = (
         0.5 * a["norm_score"]
         + 0.3 * a["is_accepted"].astype(float)
-        + 0.2 * a["norm_reputation"]
+        + 0.2 * author_weight
     )
 
     logger.info(
@@ -666,6 +669,11 @@ def main():
     users = compute_author_trust_weight(users, logger)
     reputation_map = users.set_index("user_id")["reputation"].to_dict()
     answers["reputation"] = answers["OwnerUserId"].map(reputation_map)
+    if not users.empty:
+        answers["author_weight"] = answers["OwnerUserId"].map(users.set_index("user_id")["weight"].to_dict())
+    else:
+        logger.info("[PERINGATAN] Data reputasi kosong -- suku reputasi trustScore = 0 untuk semua jawaban. "
+                    "Jalankan 9_load_author_trust.py lalu 13_apply_reputation_trust.py setelah build.")
 
     step(logger, 4, "Hitung trustScore node (Question & Answer) -- Tabel II.2")
     questions, answers = compute_trust_scores(questions, answers, logger)
