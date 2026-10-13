@@ -505,6 +505,11 @@ export function FactorialBatchPage() {
                   />
                   <span className="text-text-secondary">on</span>
                 </label>
+                {useAuthorTrust && (
+                  <p className="mt-1 text-xs text-warning">
+                    trustScore already includes reputation since Amendment 5; this switch adds it a second time.
+                  </p>
+                )}
               </Field>
               <Field label="accepted_only">
                 <label className="flex items-center gap-2 text-sm">
