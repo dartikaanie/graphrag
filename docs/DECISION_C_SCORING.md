@@ -56,6 +56,8 @@ Any change to this rule must be added to this document, with its date, BEFORE th
 ### `use_author_trust` formula (2026-10-06)
 When `use_author_trust = true`: `trust' = (1 − β) × trust + β × author_weight`, with **β = 0.3** (fixed) and `author_weight = 0` when the answer's author has no `AUTHOR_TRUST` edge (e.g. deleted/anonymous user). `author_weight` is the `AUTHOR_TRUST` edge's `weight` property, already in `[0, 1]` (`normalize(log1p(reputation))`, clipped at P99; see `01_data_cleaning/9_load_author_trust.py`). Since both terms are in `[0, 1]` and this is a convex combination, `trust'` stays in `[0, 1]`. Verified against the real Neo4j graph: 715,604 `AUTHOR_TRUST` edges and 293,078 `User` nodes exist. Exploratory only, default `false`, never affects the selection outcome.
 
+**Note (2026-10-13, Amendment 5):** since the graph update, every Answer's `trustScore` already contains reputation (`0.2 × author_weight`). Turning `use_author_trust` on therefore adds reputation a second time. The switch stays exploratory and off by default; official and stage-2 runs never use it.
+
 ## Freeze
 After selection: freeze α, the generation prompt, judge-v2, the context-relevance judge version, and all other parameters (including the switch defaults above). Run the official test sample (n = 384) once.
 
