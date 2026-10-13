@@ -431,3 +431,19 @@ def test_calibration_registry_records_changed_paths_per_run(tmp_path):
     data = json.loads(reg.read_text())
     assert data["runs"][1]["changed_paths_at_run_start"] == ["?? llm/a_pure_llm/results/a.jsonl"]
     assert data["runs"][1]["changed_paths_not_own_output"] == []
+
+
+def test_calibration_registry_records_data_fingerprint(tmp_path):
+    import calibration_generate as cg
+
+    assert cg._sha256_ids([3, 1, 2]) != cg._sha256_ids([1, 2, 3])          # order matters
+    assert cg._sha256_ids([1, 2, 3]) == cg._sha256_ids(["1", 2.0, 3])
+    data = {"questions_parquet": {"path": "/q.parquet", "size_bytes": 1, "mtime_utc": "t"},
+            "n_pool_after_token_filter": 1471, "pool_question_ids_sha256": "p", "dev_question_ids_sha256": "d",
+            "dev_question_ids": [1, 2]}
+    reg = tmp_path / "calibration_runs.json"
+    cg.write_registry(cg.calibration_runs(), {"git_commit": "abc", "git_tree_clean": True}, reg, "t", data)
+    assert json.loads(reg.read_text())["data"] == data
+    out = tmp_path / "o.jsonl"
+    out.write_text('{"question_id": 2}\n{"question_id": 1}\n')
+    assert cg.output_question_ids(out) == [2, 1] and cg.output_question_ids(tmp_path / "none") == []

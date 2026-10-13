@@ -84,6 +84,51 @@ def calibration_runs() -> list[dict]:
     return runs
 
 
+def _sha256_ids(ids) -> str:
+    import hashlib
+
+    return hashlib.sha256(",".join(str(int(i)) for i in ids).encode("utf-8")).hexdigest()
+
+
+def data_fingerprint() -> dict:
+    """What data this batch was generated from, recorded in the registry so
+    a later run can be compared against it (the stage-1 manifests did not
+    record this): the parquet paths with size and mtime, a SHA-256 of the
+    filtered candidate pool's question IDs in pool order (the order the
+    fixed permutation consumes), and a SHA-256 of the 50 dev question IDs
+    in order. Built with condition A's own loader; condition B's loader is
+    checked to give the identical pool and dev IDs."""
+    import os
+
+    import duckdb
+    from dotenv import load_dotenv
+
+    from llm.a_pure_llm import a_baseline_replication as a
+    from llm.b_rag import b_condition_b_rag as b
+    from llm.sample_split import sample_questions_split
+
+    load_dotenv(REPO_ROOT / ".env")
+    qp, ap = os.environ["QUESTIONS_PARQUET"], os.environ["ANSWERS_PARQUET"]
+    files = {}
+    for name, path in (("questions_parquet", qp), ("answers_parquet", ap)):
+        st = os.stat(path)
+        files[name] = {"path": path, "size_bytes": st.st_size,
+                       "mtime_utc": datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat(timespec="seconds")}
+    con = duckdb.connect()
+    pools = {}
+    for name, mod in (("A", a), ("B", b)):
+        pools[name] = mod.filter_by_token_limit(mod.get_candidate_questions(con, qp, ap, OVERSAMPLE_POOL, SEED))
+    con.close()
+    pool_ids = pools["A"]["Id"].astype(int).tolist()
+    dev_ids = sample_questions_split(pools["A"], N_DEV, SEED, "dev", DEV_OFFSET)["Id"].astype(int).tolist()
+    b_dev = sample_questions_split(pools["B"], N_DEV, SEED, "dev", DEV_OFFSET)["Id"].astype(int).tolist()
+    if pools["B"]["Id"].astype(int).tolist() != pool_ids or b_dev != dev_ids:
+        raise RuntimeError("conditions A and B do not produce the same candidate pool / dev questions")
+    return {**files, "n_pool_after_token_filter": len(pool_ids), "pool_question_ids_sha256": _sha256_ids(pool_ids),
+            "pool_question_ids_order": "candidate pool order after the token filter (input of the fixed permutation)",
+            "n_dev": len(dev_ids), "dev_question_ids_sha256": _sha256_ids(dev_ids), "dev_question_ids": dev_ids}
+
+
 def pilot_stats(run: dict) -> dict:
     """Mean tokens per answer and seconds per answer from the matching
     pilot run (same condition/grounding, n=10) -- the basis of the dry-run
@@ -150,7 +195,8 @@ def format_plan(plan: dict, git: dict) -> str:
     return "\n".join(lines)
 
 
-def write_registry(runs: list[dict], git: dict, registry_path: Path, started_at: str) -> None:
+def write_registry(runs: list[dict], git: dict, registry_path: Path, started_at: str,
+                   data: dict | None = None) -> None:
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text(json.dumps({
         "purpose": "judge calibration set (docs/DECISION_C_SCORING.md, Amendment 4)",
@@ -158,9 +204,11 @@ def write_registry(runs: list[dict], git: dict, registry_path: Path, started_at:
         "git_tree_clean_at_start": git["git_tree_clean"],
         "sample_split": "dev", "n_dev": N_DEV, "dev_offset": DEV_OFFSET, "seed": SEED,
         "n_annotation_items": N_ANNOTATION_ITEMS,
+        "data": data,
         "runs": [{"run_label": r["run_label"], "condition": r["condition"],
                   "output_path": repo_relative(r["output_path"]), "config_hash": r["config_hash"],
                   "n_records": r.get("n_records"),
+                  "question_ids_match_dev_ids_in_order": r.get("question_ids_match_dev_ids_in_order"),
                   # tree state just before this run started: any changed path must be one of this
                   # batch's own outputs (`changed_paths_not_own_output` must stay empty)
                   "changed_paths_at_run_start": r.get("changed_paths_at_run_start"),
@@ -176,6 +224,10 @@ def own_output_paths(runs: list[dict], registry_path: Path) -> list[Path]:
     for r in runs:
         paths += [r["output_path"], r["cwd"] / "logs" / "run_history.jsonl"]
     return paths
+
+
+def output_question_ids(path: Path) -> list[int]:
+    return [json.loads(line)["question_id"] for line in open(path) if line.strip()] if path.exists() else []
 
 
 def count_records(path: Path, config_hash: str) -> int:
@@ -213,7 +265,11 @@ def main(argv=None) -> int:
 
     started_at = datetime.now(timezone.utc).isoformat()
     registry_path = Path(args.registry)
-    write_registry(runs, git, registry_path, started_at)  # BEFORE any output exists -> guard is active from now
+    print("[data] fingerprinting the parquet files, candidate pool and dev question IDs...", flush=True)
+    data = data_fingerprint()
+    print(f"[data] pool {data['n_pool_after_token_filter']} questions (sha256 {data['pool_question_ids_sha256'][:16]}...), "
+          f"dev {data['n_dev']} questions (sha256 {data['dev_question_ids_sha256'][:16]}...)")
+    write_registry(runs, git, registry_path, started_at, data)  # BEFORE any output exists -> guard is active from now
     print(f"[registry] calibration runs registered -> {registry_path} (judge-v2.x is now refused on them)")
 
     for r in runs:
@@ -222,16 +278,18 @@ def main(argv=None) -> int:
         r["changed_paths_at_run_start"] = before["git_status"]
         r["changed_paths_not_own_output"] = [e for e in before["git_status"] if e[3:] not in before["git_exempted"]]
         if not before["git_tree_clean"]:
-            write_registry(runs, git, registry_path, started_at)
+            write_registry(runs, git, registry_path, started_at, data)
             print(f"[STOP] before {r['run_label']}: changes outside this batch's own outputs: "
                   f"{r['changed_paths_not_own_output']}")
             return 1
         print(f"\n=== {r['run_label']} -> {repo_relative(r['output_path'])} ===", flush=True)
         proc = subprocess.run([sys.executable, r["script"], *r["args"]], cwd=r["cwd"])
         r["n_records"] = count_records(r["output_path"], r["config_hash"])
-        write_registry(runs, git, registry_path, started_at)
-        if proc.returncode != 0 or r["n_records"] != N_DEV:
-            print(f"[STOP] {r['run_label']}: exit code {proc.returncode}, {r['n_records']}/{N_DEV} answers. "
+        r["question_ids_match_dev_ids_in_order"] = output_question_ids(r["output_path"]) == data["dev_question_ids"]
+        write_registry(runs, git, registry_path, started_at, data)
+        if proc.returncode != 0 or r["n_records"] != N_DEV or not r["question_ids_match_dev_ids_in_order"]:
+            print(f"[STOP] {r['run_label']}: exit code {proc.returncode}, {r['n_records']}/{N_DEV} answers, "
+                  f"question ids match the dev ids in order: {r['question_ids_match_dev_ids_in_order']}. "
                   f"Fix and re-run this command (completed answers are resumed).")
             return 1
         print(f"[ok] {r['run_label']}: {r['n_records']}/{N_DEV} answers")
