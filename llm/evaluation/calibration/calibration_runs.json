@@ -1,0 +1,145 @@
+{
+  "purpose": "judge calibration set (docs/DECISION_C_SCORING.md, Amendment 4)",
+  "created_at_utc": "2026-10-13T13:24:44.152882+00:00",
+  "git_commit": "33eeb1692c44d0cd8af8f902372851186fcd49db",
+  "git_tree_clean_at_start": true,
+  "sample_split": "dev",
+  "n_dev": 50,
+  "dev_offset": 385,
+  "seed": 42,
+  "n_annotation_items": 60,
+  "data": {
+    "questions_parquet": {
+      "path": "/Volumes/T7 Shield/S2/THESIS GRAPHRAG/project/graphrag_old/00_datasource/merged/questions_raw_union.parquet",
+      "size_bytes": 3325033412,
+      "mtime_utc": "2026-08-29T07:58:59+00:00"
+    },
+    "answers_parquet": {
+      "path": "/Volumes/T7 Shield/S2/THESIS GRAPHRAG/project/graphrag_old/00_datasource/merged/answers_raw_union.parquet",
+      "size_bytes": 2724216851,
+      "mtime_utc": "2026-08-10T06:56:01+00:00"
+    },
+    "n_pool_after_token_filter": 1471,
+    "pool_question_ids_sha256": "3a354690ed34a138303e2e9b2b654858bc07a1b22d14fdef15668f2b9f4c20fd",
+    "pool_question_ids_order": "candidate pool order after the token filter (input of the fixed permutation)",
+    "n_dev": 50,
+    "dev_question_ids_sha256": "eb0b211e5d601eb1dc2f41cfb06c01f880e1224bb503595596baaf8f7df96ec5",
+    "dev_question_ids": [
+      20952138,
+      55753657,
+      60887798,
+      47712318,
+      125143,
+      65032123,
+      71829283,
+      19951718,
+      20372892,
+      73145269,
+      30940698,
+      45387122,
+      72944746,
+      65748781,
+      74605353,
+      55892278,
+      44558343,
+      22157590,
+      42102028,
+      71408390,
+      49376836,
+      52310342,
+      44172515,
+      16524192,
+      14610888,
+      24615005,
+      62574045,
+      14019246,
+      57331553,
+      50061146,
+      40506059,
+      69868179,
+      2157289,
+      56467081,
+      60436134,
+      67427589,
+      66767217,
+      26179020,
+      12278877,
+      25665494,
+      33405250,
+      27612931,
+      61453942,
+      77482226,
+      69993521,
+      4316334,
+      53432433,
+      50814048,
+      12722405,
+      76615231
+    ]
+  },
+  "runs": [
+    {
+      "run_label": "A [dev]",
+      "condition": "A",
+      "output_path": "llm/a_pure_llm/results/condition_a_openai_gpt-4o-mini_n50_seed42_dev_v3_bbef0a3acc.jsonl",
+      "config_hash": "bbef0a3acc",
+      "n_records": 50,
+      "question_ids_match_dev_ids_in_order": true,
+      "changed_paths_at_run_start": [
+        "?? llm/evaluation/calibration/calibration_runs.json"
+      ],
+      "changed_paths_not_own_output": []
+    },
+    {
+      "run_label": "B-plain [dev]",
+      "condition": "B",
+      "output_path": "llm/b_rag/results/condition_b_openai_gpt-4o-mini_n50_seed42_plain_dev_v3_c59d3845bb.jsonl",
+      "config_hash": "c59d3845bb",
+      "n_records": 50,
+      "question_ids_match_dev_ids_in_order": true,
+      "changed_paths_at_run_start": [
+        "?? llm/a_pure_llm/results/condition_a_openai_gpt-4o-mini_n50_seed42_dev_v3_bbef0a3acc.jsonl",
+        "?? llm/evaluation/calibration/calibration_runs.json"
+      ],
+      "changed_paths_not_own_output": []
+    },
+    {
+      "run_label": "B-grounded [dev]",
+      "condition": "B",
+      "output_path": "llm/b_rag/results/condition_b_openai_gpt-4o-mini_n50_seed42_grounded_dev_v3_95e6c68b4d.jsonl",
+      "config_hash": "95e6c68b4d",
+      "n_records": 50,
+      "question_ids_match_dev_ids_in_order": true,
+      "changed_paths_at_run_start": [
+        "?? llm/a_pure_llm/results/condition_a_openai_gpt-4o-mini_n50_seed42_dev_v3_bbef0a3acc.jsonl",
+        "?? llm/b_rag/results/condition_b_openai_gpt-4o-mini_n50_seed42_plain_dev_v3_c59d3845bb.jsonl",
+        "?? llm/evaluation/calibration/calibration_runs.json"
+      ],
+      "changed_paths_not_own_output": []
+    }
+  ],
+  "notes": [
+    {
+      "date": "2026-10-13",
+      "topic": "commit recorded in the run manifests differs from the registry's git_commit",
+      "note": "The batch started from a clean tree at 33eeb1692c44d0cd8af8f902372851186fcd49db (this registry's git_commit). Commit b763bd4 ('Stage-2 report tooling + use_author_trust double-count note') landed at 2026-10-13T13:28:40Z, during run A (13:25:26Z-13:32:33Z); the three run manifests, written at the end of each run, therefore record b763bd4. That commit changed only the files listed in `files_changed_by_b763bd4`. The generation code is identical between the two commits: `git diff 33eeb16 b763bd4` is empty for every path in `paths_compared_identical`.",
+      "files_changed_by_b763bd4": [
+        "docs/DECISION_C_SCORING.md",
+        "frontend/src/pages/FactorialBatchPage.tsx",
+        "llm/c_graphrag/stage2_report.py",
+        "llm/c_graphrag/tests/test_stage2_report.py"
+      ],
+      "paths_compared_identical": [
+        "llm/a_pure_llm",
+        "llm/b_rag",
+        "llm/prompts.py",
+        "llm/client_factory.py",
+        "llm/manifest.py",
+        "llm/sample_split.py",
+        "llm/citations.py",
+        "llm/repo_state.py",
+        "llm/evaluation"
+      ]
+    }
+  ]
+}
