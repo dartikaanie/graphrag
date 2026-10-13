@@ -198,7 +198,14 @@ def format_plan(plan: dict, git: dict) -> str:
 def write_registry(runs: list[dict], git: dict, registry_path: Path, started_at: str,
                    data: dict | None = None) -> None:
     registry_path.parent.mkdir(parents=True, exist_ok=True)
+    notes = []
+    if registry_path.exists():  # keep hand-recorded notes across rewrites
+        try:
+            notes = json.loads(registry_path.read_text()).get("notes", [])
+        except (OSError, json.JSONDecodeError):
+            notes = []
     registry_path.write_text(json.dumps({
+        "notes": notes,
         "purpose": "judge calibration set (docs/DECISION_C_SCORING.md, Amendment 4)",
         "created_at_utc": started_at, "git_commit": git["git_commit"],
         "git_tree_clean_at_start": git["git_tree_clean"],
@@ -216,11 +223,34 @@ def write_registry(runs: list[dict], git: dict, registry_path: Path, started_at:
     }, indent=2) + "\n")
 
 
+def write_calibration_run_history(runs: list[dict], history_path: Path | None = None) -> Path:
+    """Copies each calibration run's LATEST successful run_history entry,
+    verbatim, from the condition's own (git-ignored) logs/run_history.jsonl
+    into calibration/calibration_run_history.jsonl, which IS committed and
+    is read by _run_metadata.resolve_run_metadata(). Verbatim, so the
+    run_id (a hash of run_started_at + output_path) is unchanged."""
+    from _run_metadata import CALIBRATION_HISTORY_PATH
+
+    history_path = history_path or CALIBRATION_HISTORY_PATH
+    lines = []
+    for r in runs:
+        source = r["cwd"] / "logs" / "run_history.jsonl"
+        matching = [line.strip() for line in open(source) if line.strip()
+                    and Path(str(json.loads(line).get("output_path", ""))).name == r["output_path"].name
+                    and json.loads(line).get("status") == "success"]
+        if not matching:
+            raise RuntimeError(f"no successful run_history entry for {r['output_path'].name} in {source}")
+        lines.append(max(matching, key=lambda line: json.loads(line).get("run_started_at") or ""))
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    history_path.write_text("\n".join(lines) + "\n")
+    return history_path
+
+
 def own_output_paths(runs: list[dict], registry_path: Path) -> list[Path]:
     """Every file this batch itself writes that git can see: the three
     outputs, each condition's run_history.jsonl, and the registry.
     (Manifests, per-run logs and resume sidecars are git-ignored.)"""
-    paths = [registry_path]
+    paths = [registry_path, registry_path.with_name("calibration_run_history.jsonl")]
     for r in runs:
         paths += [r["output_path"], r["cwd"] / "logs" / "run_history.jsonl"]
     return paths
@@ -294,6 +324,7 @@ def main(argv=None) -> int:
             return 1
         print(f"[ok] {r['run_label']}: {r['n_records']}/{N_DEV} answers")
 
+    print(f"[history] calibration run history entries copied -> {write_calibration_run_history(runs)}")
     print(f"\nAll {N_DEV * len(runs)} calibration answers generated at commit {git['git_commit']}. No judge was run.")
     return 0
 

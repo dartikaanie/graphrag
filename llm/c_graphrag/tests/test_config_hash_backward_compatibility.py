@@ -33,7 +33,10 @@ def _pilot_v3_records(path: Path) -> list[dict]:
             r = json.loads(line)
             # Pilot generation runs only -- stage-1 retrieval-only dev runs
             # (whose filenames also contain "v3_") are a different record kind.
-            if r.get("config_hash") and "v3_" in str(r.get("output_path", "")) and not r.get("retrieval_only"):
+            # ... and dev-split runs (calibration / stage 2) carry sample_split in their config; the
+            # 9 pilot runs are test-split runs.
+            if (r.get("config_hash") and "v3_" in str(r.get("output_path", "")) and not r.get("retrieval_only")
+                    and r.get("sample_split", "test") == "test"):
                 records.append(r)
     return records
 
