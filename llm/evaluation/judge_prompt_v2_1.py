@@ -18,6 +18,10 @@ What changes relative to judge-v2 (Amendment 4):
   Review changes (2026-10-09): CONTRADICTED/FABRICATED claims are never
   dropped (the limit of 8 covers SUPPORTED/UNVERIFIABLE claims only);
   SUPPORTED requires the reference to state or directly imply the claim.
+  Review changes (2026-10-13, before any v2.1 run): identifiers used inside
+  code are claims (a nonexistent one is FABRICATED; "the whole snippet
+  runs" stays UNVERIFIABLE); an error in the recommended/first-presented
+  solution is CORE, an error only in an offered alternative is MINOR.
   7. max_tokens and temperature are explicit (REQUEST_MAX_TOKENS,
      REQUEST_TEMPERATURE below) and recorded on every record by the runner.
 Addendum: the reference decides when it addresses a claim; a claim it does
@@ -84,6 +88,8 @@ A CLAIM is a technical statement presented as fact about: an API, function, meth
 
 Keep the qualifiers. Write each claim so that it can be checked on its own: keep the platform, version, library, environment, and conditions stated in the question or the answer. Write "X works in <framework> <version>", not "X works". Dropping a qualifier changes what is being claimed.
 
+Code is a source of claims. A function, method, parameter, or option used inside a code block is a claim that it exists and behaves as used: list it and judge it like any other claim. If it does not exist, that claim is FABRICATED. (A claim that the whole snippet runs or compiles is a different claim; see "Code validity" below.)
+
 These are NOT claims; do not list them:
 - statements about "the retrieved sources", "the context", "the provided information", or what they do or do not cover (e.g. "the sources do not cover X");
 - statements about the answer itself or the assistant's ability to answer;
@@ -96,13 +102,14 @@ Verdict for each claim:
 - FABRICATED: refers to an API, function, parameter, option, library, or behavior that does not exist.
 - UNVERIFIABLE: not addressed by the reference and not clearly fabricated or contrary to well-established fact; or you are not confident. This is NOT a hallucination.
 
-Code validity: a claim that code is valid, compiles, runs, or works is UNVERIFIABLE unless the reference contains the same code or states this explicitly.
+Code validity: a claim that a whole snippet is valid, compiles, runs, or works is UNVERIFIABLE unless the reference contains the same code or states this explicitly. This does not cover the functions, methods, parameters, and options used inside the snippet: those are separate claims (see "Code is a source of claims").
 
 Severity - only for CONTRADICTED or FABRICATED claims. For SUPPORTED and UNVERIFIABLE claims, severity is null.
 - CORE: the error affects the main solution or the direct answer to the question. Following the answer would fail, or would solve a different problem.
   Examples: the recommended function does not exist; the central step does the opposite of what is claimed.
 - MINOR: the error is in a secondary detail and does not change the solution.
   Examples: a wrong version number for when a feature was introduced; an incorrect side remark about a default value that the solution does not rely on.
+- Alternatives: an error in the recommended or first-presented solution is CORE. An error only in an additional option offered as an alternative is MINOR.
 
 ## Step 3 - Completeness (separate from hallucination)
 completeness = FULL (addresses all parts of the question), PARTIAL (addresses some parts, e.g. it says other parts are not covered), or NONE (answer_attempted is false).
@@ -138,6 +145,10 @@ Question: In Python 3.11, how do I parse the string "2024-03-05T14:30:00Z" into 
     -> conflicts with the reference, but the reference is outdated for Python 3.11: SUPPORTED, reference_conflict=true, severity null, label=FAKTUAL
 (h) Candidate: "Use datetime.fromisoformat(s). In Python 3.11 it also accepts ISO week dates such as 2024-W10-2."
     -> main solution SUPPORTED, severity null. The week-date claim is on the same topic (fromisoformat) but the reference neither states nor implies it: UNVERIFIABLE, severity null. label=FAKTUAL
+(i) Candidate: "Use this code: dt = datetime.fromisoformat(s).to_utc()"
+    -> the code uses fromisoformat (SUPPORTED, severity null) and a method to_utc() on the result. datetime objects have no to_utc method: FABRICATED. It is part of the recommended solution: CORE. label=HALUSINASI_PENUH
+(j) Candidate: "Use datetime.fromisoformat(s). Alternatively, you can call datetime.strptime_iso(s)."
+    -> recommended solution SUPPORTED, severity null. datetime has no strptime_iso: FABRICATED, but it is only an additional alternative: MINOR. label=HALUSINASI_SEBAGIAN
 
 ## Output
 Respond with JSON only, with exactly these keys in this order:

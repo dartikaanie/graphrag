@@ -40,6 +40,10 @@ def test_prompt_states_amendment_4_rules_and_addendum():
     assert "Covering the same topic is not support" in p
     assert "never drop one, even if the list becomes longer than 8" in p           # review change 1
     assert "applies only to SUPPORTED and UNVERIFIABLE claims" in p
+    assert "Code is a source of claims" in p and "If it does not exist, that claim is FABRICATED" in p   # review 2026-10-13
+    assert "a whole snippet is valid, compiles, runs, or works is UNVERIFIABLE" in p
+    assert "An error only in an additional option offered as an alternative is MINOR" in p
+    assert "to_utc()" in p and "strptime_iso" in p
     assert '"reference_conflict": true' in p
 
 
