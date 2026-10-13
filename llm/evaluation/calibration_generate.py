@@ -160,8 +160,22 @@ def write_registry(runs: list[dict], git: dict, registry_path: Path, started_at:
         "n_annotation_items": N_ANNOTATION_ITEMS,
         "runs": [{"run_label": r["run_label"], "condition": r["condition"],
                   "output_path": repo_relative(r["output_path"]), "config_hash": r["config_hash"],
-                  "n_records": r.get("n_records")} for r in runs],
+                  "n_records": r.get("n_records"),
+                  # tree state just before this run started: any changed path must be one of this
+                  # batch's own outputs (`changed_paths_not_own_output` must stay empty)
+                  "changed_paths_at_run_start": r.get("changed_paths_at_run_start"),
+                  "changed_paths_not_own_output": r.get("changed_paths_not_own_output")} for r in runs],
     }, indent=2) + "\n")
+
+
+def own_output_paths(runs: list[dict], registry_path: Path) -> list[Path]:
+    """Every file this batch itself writes that git can see: the three
+    outputs, each condition's run_history.jsonl, and the registry.
+    (Manifests, per-run logs and resume sidecars are git-ignored.)"""
+    paths = [registry_path]
+    for r in runs:
+        paths += [r["output_path"], r["cwd"] / "logs" / "run_history.jsonl"]
+    return paths
 
 
 def count_records(path: Path, config_hash: str) -> int:
@@ -203,6 +217,15 @@ def main(argv=None) -> int:
     print(f"[registry] calibration runs registered -> {registry_path} (judge-v2.x is now refused on them)")
 
     for r in runs:
+        own = own_output_paths(runs, registry_path)
+        before = repo_state(own)
+        r["changed_paths_at_run_start"] = before["git_status"]
+        r["changed_paths_not_own_output"] = [e for e in before["git_status"] if e[3:] not in before["git_exempted"]]
+        if not before["git_tree_clean"]:
+            write_registry(runs, git, registry_path, started_at)
+            print(f"[STOP] before {r['run_label']}: changes outside this batch's own outputs: "
+                  f"{r['changed_paths_not_own_output']}")
+            return 1
         print(f"\n=== {r['run_label']} -> {repo_relative(r['output_path'])} ===", flush=True)
         proc = subprocess.run([sys.executable, r["script"], *r["args"]], cwd=r["cwd"])
         r["n_records"] = count_records(r["output_path"], r["config_hash"])
