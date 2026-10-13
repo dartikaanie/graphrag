@@ -1,0 +1,15 @@
+
+==============================================================================
+LEVEL KORPUS -- distribusi degree Question (gabungan IS_RELATED_TO + TAG_COOCCUR + EMBED_SIM)
+==============================================================================
+Total Question           : 2,685,814
+Question isolated (deg=0): 620,542 (23.10%) [target: <= 30.0%] PASS
+Mean degree              : 8.2411 [target: >= 3.0] PASS
+Median degree            : 6.0000 [target: >= 1.0] PASS
+
+[sample] 384 Question id diambil random dari Neo4j (HAS_ACCEPTED_ANSWER) -- BUKAN reservoir-sample seed=42, pakai --question-ids-file untuk sample resmi yang reproducible.
+
+==============================================================================
+LEVEL SAMPEL EVALUASI -- 384 pertanyaan, top-5 vector search
+==============================================================================
+[ABORT] Cache FAISS/embedding tidak ditemukan di _kg_workspace/. Jalankan dulu 11_densify_embedding_similarity.py --stage all sebelum validasi level sampel.
