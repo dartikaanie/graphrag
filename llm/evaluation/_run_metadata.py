@@ -173,6 +173,27 @@ def _load_history_records(history_path: Path) -> list[dict]:
     return records
 
 
+# Committed copy of the calibration runs' history entries (docs/
+# DECISION_C_SCORING.md, Amendment 4). Conditions A and B keep their
+# logs/run_history.jsonl git-ignored, so on a fresh clone those entries do
+# not exist; calibration_generate.py copies the three calibration entries
+# here VERBATIM (same fields, so the same run_id) and this file is read as
+# an additional history source.
+CALIBRATION_HISTORY_PATH = REPO_ROOT / "llm" / "evaluation" / "calibration" / "calibration_run_history.jsonl"
+
+
+def _output_path_matches(record_output_path: str, condition: str, result_path: Path) -> bool:
+    """A history entry's output_path may be absolute, or relative to the
+    condition's own folder (A and B write "results/<file>.jsonl" relative
+    to the cwd they are run from). Both are accepted; a relative path is
+    resolved against the condition folder, not the caller's cwd."""
+    p = Path(record_output_path)
+    if p.is_absolute():
+        return p.resolve() == result_path
+    condition_dir = HISTORY_PATHS[condition].parent.parent
+    return (condition_dir / p).resolve() == result_path or p.resolve() == result_path
+
+
 def resolve_run_metadata(result_file_path: str) -> dict:
     """Returns a dict with: run_id, condition, run_label, fusion_mode
     (full value, e.g. "trust_weighted", never shortened), grounding
@@ -194,7 +215,7 @@ def resolve_run_metadata(result_file_path: str) -> dict:
     condition = infer_condition_from_filename(result_path)
 
     history_path = HISTORY_PATHS[condition]
-    all_records = _load_history_records(history_path)
+    all_records = _load_history_records(history_path) + _load_history_records(CALIBRATION_HISTORY_PATH)
     if not all_records:
         raise RunMetadataNotFoundError(
             f"{history_path} does not exist or is empty -- cannot resolve run parameters for "
@@ -204,12 +225,13 @@ def resolve_run_metadata(result_file_path: str) -> dict:
     matches = []
     for record in all_records:
         output_path = record.get("output_path")
-        if output_path and Path(output_path).resolve() == result_path:
+        if output_path and _output_path_matches(output_path, condition, result_path):
             matches.append(record)
 
     if not matches:
         raise RunMetadataNotFoundError(
-            f"No entry in {history_path} has output_path == '{result_path}'. This file's "
+            f"No entry in {history_path} (or {CALIBRATION_HISTORY_PATH.name}) has output_path == "
+            f"'{result_path}'. This file's "
             f"fusion_mode/retrieval_version cannot be reliably determined -- refusing to guess. "
             f"Check that the file wasn't renamed/moved after its run_history entry was written."
         )

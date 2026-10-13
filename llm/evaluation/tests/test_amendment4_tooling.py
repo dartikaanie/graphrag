@@ -447,3 +447,41 @@ def test_calibration_registry_records_data_fingerprint(tmp_path):
     out = tmp_path / "o.jsonl"
     out.write_text('{"question_id": 2}\n{"question_id": 1}\n')
     assert cg.output_question_ids(out) == [2, 1] and cg.output_question_ids(tmp_path / "none") == []
+
+
+def test_run_metadata_reads_calibration_history_and_relative_output_paths(tmp_path, monkeypatch):
+    """A/B write output_path relative to their own folder and keep their history git-ignored: the label
+    must resolve from the committed calibration history, from any cwd, with an unchanged run_id."""
+    import _run_metadata as rm
+
+    entry = {"output_path": "results/condition_a_openai_gpt-4o-mini_n50_seed42_dev_v3_zzz.jsonl",
+             "run_started_at": "2026-01-01T00:00:00+00:00", "status": "success", "sample_split": "dev",
+             "prompt_version": "v3"}
+    cal = tmp_path / "calibration_run_history.jsonl"
+    cal.write_text(json.dumps(entry) + "\n")
+    monkeypatch.setattr(rm, "CALIBRATION_HISTORY_PATH", cal)
+    monkeypatch.setitem(rm.HISTORY_PATHS, "A", tmp_path / "a_pure_llm" / "logs" / "run_history.jsonl")  # absent
+    monkeypatch.chdir(tmp_path)                                    # cwd is NOT the condition folder
+    target = tmp_path / "a_pure_llm" / "results" / "condition_a_openai_gpt-4o-mini_n50_seed42_dev_v3_zzz.jsonl"
+    meta = rm.resolve_run_metadata(str(target))
+    assert meta["run_label"] == "A [dev]" and meta["generator_prompt_version"] == "v3"
+    assert meta["run_id"] == rm._history_id("A", entry)
+    with pytest.raises(rm.RunMetadataNotFoundError):
+        rm.resolve_run_metadata(str(target.with_name("condition_a_other.jsonl")))
+
+
+def test_calibration_run_history_is_copied_verbatim(tmp_path):
+    import calibration_generate as cg
+
+    cwd = tmp_path / "a_pure_llm"
+    (cwd / "logs").mkdir(parents=True)
+    old = {"output_path": "results/x_dev.jsonl", "run_started_at": "2026-01-01T00:00:00", "status": "no_results"}
+    new = {"output_path": "results/x_dev.jsonl", "run_started_at": "2026-01-02T00:00:00", "status": "success", "k": 1}
+    other = {"output_path": "results/pilot.jsonl", "run_started_at": "2026-01-03T00:00:00", "status": "success"}
+    (cwd / "logs" / "run_history.jsonl").write_text("\n".join(json.dumps(x) for x in (old, new, other)) + "\n")
+    out = cg.write_calibration_run_history([{"cwd": cwd, "output_path": cwd / "results" / "x_dev.jsonl"}],
+                                           tmp_path / "calibration_run_history.jsonl")
+    assert out.read_text() == json.dumps(new) + "\n"
+    with pytest.raises(RuntimeError):
+        cg.write_calibration_run_history([{"cwd": cwd, "output_path": cwd / "results" / "missing.jsonl"}],
+                                         tmp_path / "h.jsonl")

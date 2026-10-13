@@ -86,7 +86,10 @@ def derive_run_label(condition: str, record: dict[str, Any]) -> dict[str, Any]:
     """See llm/evaluation/_run_metadata.py::derive_run_label() -- EXACT
     SAME formula, kept here as a manually-synced duplicate."""
     if condition == "A":
-        return {"run_label": "A", "fusion_mode": None, "grounding": None, "grounding_inferred": False, "is_dev": False}
+        # Kept identical to llm/evaluation/_run_metadata.py::derive_run_label (A dev runs: "A [dev]").
+        is_dev = record.get("sample_split") == "dev"
+        return {"run_label": "A [dev]" if is_dev else "A", "fusion_mode": None, "grounding": None,
+                "grounding_inferred": False, "is_dev": is_dev}
 
     fusion_mode = record.get("fusion_mode")
     grounding_inferred = False
