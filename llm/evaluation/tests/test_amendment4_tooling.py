@@ -416,3 +416,18 @@ def test_calibration_generate_plan_and_registry(tmp_path):
                                                          reference_path=tmp_path / "none.json")
     # refuses to generate from a dirty tree, before any subprocess
     assert cg.main(["--dry-run"]) == 0
+
+
+def test_calibration_registry_records_changed_paths_per_run(tmp_path):
+    import calibration_generate as cg
+
+    runs = cg.calibration_runs()
+    reg = tmp_path / "calibration_runs.json"
+    own = cg.own_output_paths(runs, reg)
+    assert reg in own and all(r["output_path"] in own for r in runs)
+    runs[1]["changed_paths_at_run_start"] = ["?? llm/a_pure_llm/results/a.jsonl"]
+    runs[1]["changed_paths_not_own_output"] = []
+    cg.write_registry(runs, {"git_commit": "abc", "git_tree_clean": True}, reg, "t")
+    data = json.loads(reg.read_text())
+    assert data["runs"][1]["changed_paths_at_run_start"] == ["?? llm/a_pure_llm/results/a.jsonl"]
+    assert data["runs"][1]["changed_paths_not_own_output"] == []

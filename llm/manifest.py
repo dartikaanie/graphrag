@@ -30,17 +30,40 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 _TRACKED_PACKAGES = ("openai", "anthropic", "sentence-transformers", "faiss-cpu", "neo4j", "duckdb", "pandas")
 
 
+def _parse_porcelain_z(raw: str) -> list[str]:
+    """`git status --porcelain -z` -> ["XY path", ...] (a rename/copy
+    entry's extra NUL-separated source path is skipped). -z avoids git's
+    quoting of paths with spaces."""
+    tokens, entries, i = raw.split("\0"), [], 0
+    while i < len(tokens):
+        tok = tokens[i]
+        i += 1
+        if not tok:
+            continue
+        entries.append(f"{tok[:2]} {tok[3:]}")
+        if "R" in tok[:2] or "C" in tok[:2]:
+            i += 1
+    return entries
+
+
 def _git_info() -> dict[str, Any]:
+    """commit_sha, dirty, and -- so a `dirty: true` can be audited -- the
+    exact list of changed paths at manifest-writing time (`changed_paths`,
+    "XY path" as git status prints them; untracked files listed
+    individually). A run's own freshly written output files appear here;
+    anything else would be a real uncommitted change."""
     try:
         sha = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True, stderr=subprocess.DEVNULL,
         ).strip()
         status = subprocess.check_output(
-            ["git", "status", "--porcelain"], cwd=REPO_ROOT, text=True, stderr=subprocess.DEVNULL,
+            ["git", "status", "--porcelain", "-z", "--untracked-files=all"], cwd=REPO_ROOT, text=True,
+            stderr=subprocess.DEVNULL,
         )
-        return {"commit_sha": sha, "dirty": bool(status.strip())}
+        changed = _parse_porcelain_z(status)
+        return {"commit_sha": sha, "dirty": bool(changed), "changed_paths": changed}
     except Exception:
-        return {"commit_sha": None, "dirty": None}
+        return {"commit_sha": None, "dirty": None, "changed_paths": None}
 
 
 def _package_versions() -> dict[str, str | None]:

@@ -147,3 +147,22 @@ def test_write_manifest_rerun_overwrites_manifest_for_same_output_path(tmp_path)
     manifest = json.loads(manifest_path.read_text())
     assert manifest["item_counts"]["attempted"] == 2
     assert manifest["finished_at_utc"] == "t3"
+
+
+def test_git_info_lists_changed_paths(monkeypatch):
+    """A `dirty: true` manifest must say WHICH paths changed, so it is visible whether the only
+    changes are the run's own outputs."""
+    import subprocess
+
+    from llm import manifest
+
+    def fake(cmd, **kw):
+        return "abc123\n" if "rev-parse" in cmd else \
+            "?? llm/a_pure_llm/results/out a.jsonl\0 M llm/b_rag/x.py\0R  new.md\0old.md\0"
+
+    monkeypatch.setattr(subprocess, "check_output", fake)
+    info = manifest._git_info()
+    assert info == {"commit_sha": "abc123", "dirty": True,
+                    "changed_paths": ["?? llm/a_pure_llm/results/out a.jsonl", " M llm/b_rag/x.py", "R  new.md"]}
+    monkeypatch.setattr(subprocess, "check_output", lambda cmd, **kw: "abc123\n" if "rev-parse" in cmd else "")
+    assert manifest._git_info() == {"commit_sha": "abc123", "dirty": False, "changed_paths": []}
