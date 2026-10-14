@@ -152,6 +152,14 @@ export function MethodologyPage() {
   return (
     <div className="max-w-4xl">
       <h1 className="text-lg font-semibold text-text-primary mb-1">Methodology — Conditions A, B, C &amp; D</h1>
+      <div className="text-xs text-text-secondary border border-border rounded-md bg-surface px-3 py-2 mb-3">
+        This page is a hand-written overview. For the current parameter values (read from the code), their documented
+        rationale, decision history and status, see{' '}
+        <Link to="/process" className="text-primary hover:underline">
+          Process &amp; Parameters
+        </Link>
+        .
+      </div>
       <p className="text-sm text-text-secondary mb-6">
         All four conditions share the same evaluation protocol — question sampling, the base 4-turn prompt skeleton
         (<code className="text-xs bg-bg border border-border rounded px-1 py-0.5">llm/prompts.py</code>), the same embedding
