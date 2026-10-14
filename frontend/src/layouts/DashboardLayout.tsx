@@ -9,6 +9,7 @@ import {
   History,
   Settings,
   BookOpen,
+  Workflow,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -23,6 +24,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { to: '/', label: 'Home', icon: <LayoutDashboard className="h-4 w-4" />, end: true },
   { to: '/methodology', label: 'Methodology', icon: <BookOpen className="h-4 w-4" /> },
+  { to: '/process', label: 'Process & Parameters', icon: <Workflow className="h-4 w-4" /> },
   { to: '/docs/metrics', label: 'Metrik Evaluasi', icon: <BookOpen className="h-4 w-4" /> },
 ]
 

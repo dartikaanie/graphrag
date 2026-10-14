@@ -15,6 +15,15 @@ import type { RunCreateParams, RunResultDetail, RunState } from '@/types/run'
 import type { HistoryBatchesResponse, HistoryListResponse } from '@/types/history'
 import type { JudgeAvailableInput, JudgeEvaluationSummary, JudgeRun, JudgeRunCreateParams } from '@/types/judge'
 import type { SettingsState, TestConnectionResult } from '@/types/settings'
+import type {
+  DecisionsResponse,
+  LiveResponse,
+  LogsResponse,
+  LogTail,
+  ParametersResponse,
+  RunsResponse,
+  StepsResponse,
+} from '@/types/process'
 
 export function useStatsSummary() {
   return useQuery({
@@ -928,5 +937,66 @@ export function useHistoryResultGraph(historyId: string, questionId: number | st
     queryKey: ['history-result-graph', historyId, questionId],
     queryFn: () => apiGet<GraphData>(`/api/history/${historyId}/results/${questionId}/graph`),
     enabled: !!historyId && questionId !== undefined,
+  })
+}
+
+// ---- Process & Parameters page (read-only; backend/app/routers/process.py) ----
+
+export function useProcessSteps() {
+  return useQuery({
+    queryKey: ['process-steps'],
+    queryFn: () => apiGet<StepsResponse>('/api/process/steps'),
+  })
+}
+
+export function useProcessParameters() {
+  return useQuery({
+    queryKey: ['process-parameters'],
+    queryFn: () => apiGet<ParametersResponse>('/api/process/parameters'),
+  })
+}
+
+export function useProcessDecisions() {
+  return useQuery({
+    queryKey: ['process-decisions'],
+    queryFn: () => apiGet<DecisionsResponse>('/api/process/decisions'),
+  })
+}
+
+export function useProcessRuns() {
+  return useQuery({
+    queryKey: ['process-runs'],
+    queryFn: () => apiGet<RunsResponse>('/api/process/runs'),
+  })
+}
+
+export function useProcessLogs() {
+  return useQuery({
+    queryKey: ['process-logs'],
+    queryFn: () => apiGet<LogsResponse>('/api/process/logs'),
+  })
+}
+
+export function useProcessLogTail(logId: string | null, tail: number) {
+  return useQuery({
+    queryKey: ['process-log-tail', logId, tail],
+    queryFn: () =>
+      apiGet<LogTail>(`/api/process/logs/${(logId ?? '').split('/').map(encodeURIComponent).join('/')}`, { tail }),
+    enabled: !!logId,
+  })
+}
+
+export function useProcessLive() {
+  return useQuery({
+    queryKey: ['process-live'],
+    queryFn: () => apiGet<LiveResponse>('/api/process/live'),
+  })
+}
+
+export function useRefreshProcessLive() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => apiPost<LiveResponse>('/api/process/live/refresh'),
+    onSuccess: (data) => queryClient.setQueryData(['process-live'], data),
   })
 }
