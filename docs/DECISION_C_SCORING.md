@@ -297,8 +297,98 @@ Tie margins as in stage 1: ≤ 2 percentage points (1 question) on the primary c
 3. `7_build_knowledge_graph.py` now computes the reputation term from the AUTHOR_TRUST weight, so a rebuild uses the same definition.
 4. The graph state is not part of `config_hash`; runs are attributed to the updated graph by date and by the `trustScoreVersion` tag. Every stage-2 and official run happens after step 2.
 
-- DB update applied: [date, log file]
-- Verify-applied: [result]
+- DB update applied: 2026-10-13, 20:04:20–20:08:03 WIB (13:04:20–13:08:03 UTC), log `01_data_cleaning/logs/20261013T130420Z_apply_reputation_trust.log`. 725,795 Answer nodes read (715,604 with an `AUTHOR_TRUST` edge; 10,191 without, w = 0); precondition check OK (`authorReputation != 0`: 0 nodes; `trustScore` min 0.1001). Backup: `01_data_cleaning/_kg_workspace/answer_trust_backup_pre_amendment5.parquet`. `trustScore` before: min 0.1001, max 0.8916, mean 0.2144; after: min 0.0017, max 0.9840, mean 0.2611. Read-back verification: max difference 0.00e+00; 725,795 / 725,795 tagged `v2-reputation`. (Dry-run just before: log `20261013T130302Z_apply_reputation_trust.log`, same numbers.)
+- Verify-applied: no saved output of the `reputation_stage1_recheck.py --verify-applied` run was found in the repository. The same property was re-checked on 2026-10-14 (WIB) by `logscore_stage1_recheck.py` (no judge calls): ranking from the stored `v2-reputation` values reproduces the `repfix` top-5 exactly (50 questions × 5 α).
+
+---
+
+## Amendment 6 (2026-10-14): log-normalised upvote score in trustScore
+
+Written after the Amendment 5 graph update and BEFORE any stage-2 run, any run on the test sample (n = 384), and any change to the graph for this amendment. Stage 1 is done; stage 2 has not started.
+
+**Status: all four decision points and the stage-1 rule below were confirmed by the author on 2026-10-14. Not yet applied to the graph.**
+
+### Finding
+- Answer `score` ranges from −26 to 6,095 (n = 725,795; median 1; P99 = 46; 11,925 negative; 249,542 equal to 0). `trustScore_A` normalises it with a global min-max, so the range is set by a few extreme answers: `minmax(score_A)` has median 0.0044 and P90 0.0052, i.e. for 90% of answers the upvote term contributes less than 0.5 × 0.0053 ≈ 0.003 to `trustScore_A`. The upvote signal is effectively absent from the trust score.
+- Current `trustScore_A` (`v2-reputation`): min 0.0017, median 0.189, P90 0.495, max 0.984.
+- Question `score` has the same shape (−42 to 11,651; n = 2,685,814; median 1; P99 = 30; `minmax(score_Q)` P90 0.0039).
+- This is inconsistent with the rationale already recorded in Amendment 5: reputation is log-scaled *because* a few very high values would compress everyone else to ≈ 0. Vote score has the same skew but was not treated the same way.
+
+### Formulas
+
+Old (`7_build_knowledge_graph.py`, with `w_auth` from Amendment 5):
+
+```
+trust_Q = 0.7 · minmax(score_Q) + 0.3 · minmax(log1p(views))
+trust_A = 0.5 · minmax(score_A) + 0.3 · is_accepted + 0.2 · w_auth
+w_auth  = clip(log1p(rep) / log1p(P99_rep), 0, 1)
+```
+
+New:
+
+```
+norm_log(score; P99) = clip(log1p(max(score, 0)) / log1p(P99), 0, 1)
+trust_Q = 0.7 · norm_log(score_Q; P99_Q) + 0.3 · minmax(log1p(views))
+trust_A = 0.5 · norm_log(score_A; P99_A) + 0.3 · is_accepted + 0.2 · w_auth
+trustScoreVersion = "v3-logscore"
+```
+
+### Decision points (all confirmed 2026-10-14)
+1. **Formula** *(confirmed 2026-10-14)*. `norm_log` as above. Negative scores give 0; scores at or above P99 give 1.
+2. **P99 population** *(confirmed 2026-10-14)*. P99 is computed on the raw `score` (negatives included) over the full population of the same node type: all Answer nodes for `trust_A`, all Question nodes for `trust_Q`, separately. Quantile method: numpy `linear` at 0.99 (the numpy/pandas default; the same definition as DuckDB `quantile_cont`), in the build and in the update. A P99 ≤ 0 is an error. Dry-run values: **P99_A = 46.0, P99_Q = 30.0**.
+3. **Weights unchanged** *(confirmed 2026-10-14)*. Answer 0.5 / 0.3 / 0.2; Question 0.7 / 0.3; `w_auth` unchanged. The `views` term of `trust_Q`, `minmax(log1p(views))`, is **unchanged**: only the score term changes.
+4. **`trust_Q` also changes** *(confirmed 2026-10-14: Answer and Question nodes are both updated)*, for consistency, although Question `trustScore` is not used in any ranking. Code search (2026-10-14): Conditions A, B, C, D and the evaluation scripts never read Question `trustScore`; C reads only `a.trustScore` (`c_graphrag.py:511`, `:536`, `:623`). The dashboard **displays** Question `trustScore` as a node property (`backend/app/services/graph_service.py`, `frontend/src/components/GraphView.tsx`, `frontend/src/pages/QuestionDetailPage.tsx`); it does not sort, filter, or compute with it. This display-only use is accepted: after the update the dashboard shows the v3 values.
+
+### Justification
+This is a measurement-validity correction based on the distribution of the score in the data, not on hallucination results. It is made before stage 2 and before the test sample has been touched.
+
+Order of events: the formula, the P99 population, the unchanged weights, the inclusion of `trust_Q`, and this justification were fixed in writing (`docs/agent_prompt_c_amendment6_logscore.md`, 2026-10-14 01:05 WIB) from the score distribution alone, before the dry-run of the new values and before any dev-set impact number was produced. The dev-set impact seen afterwards was small: in the stage-1 recheck plan run (no judge calls), the v3 top-5 contain 0 / 1 / 0 / 2 / 2 context items without a cached ctxrel-v2 label at α = 0 / 0.25 / 0.5 / 0.75 / 1, out of 236 selected items per α (3 unique items to judge).
+
+### Scope
+- Changes: `trustScore` and `trustScoreVersion` of Answer and Question nodes.
+- Unchanged: `HAS_ANSWER` edge weights (per-thread min-max, fallback 0.5) and every other edge weight, `combined_trust = 0.7 × path trust + 0.3 × answer trust`, the final ranking formula, the α candidates, the stage-1 decision rule, `w_auth`, and `authorReputation`.
+- All trust formulas live in one module, `01_data_cleaning/trust_formulas.py`, imported by the KG build and by the update script, so a rebuild and the update give identical values for the same inputs.
+
+### Expected effect (dry-run, 2026-10-14, no writes)
+
+| Node | Version | min | median | P90 | max | nodes at 0 | nodes at 1 |
+|---|---|---|---|---|---|---|---|
+| Answer | v2-reputation | 0.0017 | 0.1888 | 0.4952 | 0.9840 | 0 | 0 |
+| Answer | v3-logscore | 0.0000 | 0.3161 | 0.6658 | 1.0000 | 3,528 | 1,434 |
+| Question | (untagged) | 0.0025 | 0.1022 | 0.1467 | 0.9853 | 0 | 0 |
+| Question | v3-logscore | 0.0000 | 0.2028 | 0.4761 | 1.0000 | 1 | 1 |
+
+Nodes whose `trustScore` changes: 725,794 of 725,795 Answer; 2,685,812 of 2,685,814 Question. The score term itself (`norm_log`) has median 0.180 and P90 0.505 for Answer (was 0.0044 and 0.0052).
+
+### Procedure
+1. `01_data_cleaning/14_apply_logscore_trust.py` (dry-run by default). `--apply` checks the graph state and free disk space, backs up `trustScore` + `trustScoreVersion` of every node to a timestamped parquet, writes the new values, and requires max |diff| = 0 on read-back. `--restore --backup <file>` undoes it; `--verify-applied` re-checks without writing.
+2. `llm/c_graphrag/logscore_top5_check.py` (read-only, no API calls): top-5 under v2 vs v3 on the dev set at α = 0.25 and 0.5; α = 0 must give 0 changes.
+3. `llm/c_graphrag/logscore_stage1_recheck.py`: stage 1 again with v3 for the five α values. The v2 ranking must reproduce the stage-1 result of record (Amendment 5) exactly. Cached ctxrel-v2 primary labels are reused; only new items are judged, and only with `--run-judge`. The stage-1 selection rule is applied unchanged.
+4. `llm/c_graphrag/stage2_report.py` accepts only stage-2 runs that started after the update (`TRUST_V3_APPLIED_AT`, compared timezone-aware) and whose manifest records `v3-logscore`; it refuses to produce a report while `TRUST_V3_APPLIED_AT` is empty.
+
+### Stage-1 rule (fixed 2026-10-14, BEFORE any judging of v3 items)
+- The v3 stage-1 recheck is **binding**: after it, the v3 result is the stage-1 result of record, replacing the Amendment 5 (`repfix`) result.
+- It is computed with the unchanged stage-1 procedure: same dev set, same ctxrel-v2 primary judge, same metrics code, same selection helper and tie margins ("Selection procedure"), including the keep-current rule.
+- If the v3 `top_two` equal {0.5, 0.25}, the stage-2 candidates stay α = 0.5 and α = 0.25.
+- If the v3 `top_two` differ, the stage-2 candidates become the v3 `top_two`, and `STAGE2_ALPHAS` in `stage2_report.py` is updated to them before any stage-2 run. Until the recheck is done, `STAGE2_ALPHAS` stays (0.5, 0.25).
+- No other outcome of the recheck changes Amendment 6: it is not a test of whether to apply the correction.
+
+### Run attribution and archive
+- Condition C runs record the graph's `trustScoreVersion` in their manifest (`graph.trustScoreVersion`, read from the Answer nodes at run start; CLI and dashboard runs). `stage2_report.py` rejects a run whose manifest does not record `v3-logscore`, in addition to the start-time check.
+- A KG rebuild writes `trustScoreVersion = "v3-logscore"` on Question and Answer nodes; `9_load_author_trust.py` takes `w_auth` from `trust_formulas.py`.
+- The v2 stage-1 files are kept unchanged as an archive: the five stage-1 retrieval files `llm/c_graphrag/results/condition_c_*_dev_v3_*.jsonl`, `results/reputation_check/stage1_repfix_alpha*.jsonl`, their reports, and the judge label files. The v3 files are written to a separate directory, `results/logscore_check/`.
+
+### Record (fill in after apply)
+- Decision points 1–4 and the stage-1 rule confirmed: 2026-10-14
+- Code commit used for apply (pre-registration commit #1): [ ]
+- Apply timestamp (ISO 8601 with timezone): [ ]
+- P99_A: [ ]  |  P99_Q: [ ]  |  quantile method: [ ]
+- Rows updated: Answer [ ]  |  Question [ ]
+- Backup path: [ ]
+- Verify result (max |diff|): [ ]
+- Top-5 check (v2 vs v3, dev set): [report path, % questions changed at α = 0.25 / 0.5]
+- Stage-1 recheck: [report path, new judged items, v3 `top_two`, `STAGE2_ALPHAS` changed yes/no]
+- Git commit: [ ]
 
 ---
 

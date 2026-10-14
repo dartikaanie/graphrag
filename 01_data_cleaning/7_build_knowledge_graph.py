@@ -77,6 +77,10 @@ import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import trust_formulas as tf  # noqa: E402
+
 load_dotenv()
 
 LOG_DIR = Path("logs")
@@ -407,34 +411,47 @@ def load_users_reputation(con, args, user_ids: list, logger) -> pd.DataFrame:
 # STEP 4 - Hitung trustScore node (Question & Answer) -- Tabel II.2
 # ---------------------------------------------------------------------
 
-def minmax_normalize(series: pd.Series) -> pd.Series:
-    lo, hi = series.min(), series.max()
-    if hi == lo:
-        return pd.Series(0.5, index=series.index)
-    return ((series - lo) / (hi - lo)).clip(0, 1)
+WRITE_QUESTION_NODES = """
+            UNWIND $rows AS row
+            MERGE (q:Question {id: row.id})
+            SET q.title = row.title, q.body = row.body, q.score = row.score,
+                q.viewCount = row.viewCount, q.creationDate = row.creationDate,
+                q.domainTag = row.domainTag, q.trustScore = row.trustScore,
+                q.trustScoreVersion = row.trustScoreVersion
+            """
+WRITE_ANSWER_NODES = """
+            UNWIND $rows AS row
+            MERGE (a:Answer {id: row.id})
+            SET a.body = row.body, a.score = row.score, a.isAccepted = row.isAccepted,
+                a.authorReputation = row.authorReputation, a.trustScore = row.trustScore,
+                a.trustScoreVersion = row.trustScoreVersion
+            """
 
 
 def compute_trust_scores(questions: pd.DataFrame, answers: pd.DataFrame, logger):
+    """trustScore of Question and Answer nodes. All formulas live in
+    trust_formulas.py (docs/DECISION_C_SCORING.md Amendments 5 and 6);
+    14_apply_logscore_trust.py imports the same functions, so a rebuild and
+    the in-place update give identical values for the same inputs.
+
+    The upvote score is log-normalised against the P99 of all nodes of the
+    same type in this build. The reputation term is the AUTHOR_TRUST weight
+    (0 when the author is unknown)."""
     q = questions.copy()
-    q["norm_score"] = minmax_normalize(q["Score"].fillna(0))
-    q["norm_log_view"] = minmax_normalize(np.log1p(q["ViewCount"].fillna(0)))
-    q["trustScore"] = 0.7 * q["norm_score"] + 0.3 * q["norm_log_view"]
+    p99_q = tf.compute_p99(q["Score"])
+    q["trustScore"] = tf.trust_question(q["Score"], q["ViewCount"], p99_q)
+    q["trustScoreVersion"] = tf.TRUST_SCORE_VERSION
 
     a = answers.copy()
-    a["norm_score"] = minmax_normalize(a["Score"].fillna(0))
-    # Suku reputasi = bobot AUTHOR_TRUST (log1p(rep)/log1p(rep_P99), dipotong
-    # [0,1]); 0 bila penulis tidak diketahui. Docs/DECISION_C_SCORING.md
-    # Amendment 5: versi lama memakai minmax_normalize(reputation), yang
-    # menjadi konstanta 0.5 ketika data reputasi kosong saat build -- sehingga
-    # reputasi tidak pernah memengaruhi ranking. KG yang sudah ada diperbaiki
-    # oleh 13_apply_reputation_trust.py dengan rumus yang sama.
-    author_weight = a["author_weight"].fillna(0.0) if "author_weight" in a.columns else 0.0
-    a["trustScore"] = (
-        0.5 * a["norm_score"]
-        + 0.3 * a["is_accepted"].astype(float)
-        + 0.2 * author_weight
-    )
+    p99_a = tf.compute_p99(a["Score"])
+    author_weight = a["author_weight"] if "author_weight" in a.columns else np.zeros(len(a))
+    a["trustScore"] = tf.trust_answer(a["Score"], a["is_accepted"], author_weight, p99_a)
+    a["trustScoreVersion"] = tf.TRUST_SCORE_VERSION
 
+    logger.info(
+        f"trustScore {tf.TRUST_SCORE_VERSION} -- P99 score Question={p99_q:g} Answer={p99_a:g} "
+        f"(quantile method: {tf.QUANTILE_METHOD})"
+    )
     logger.info(
         f"trustScore Question -- min={q['trustScore'].min():.3f} "
         f"max={q['trustScore'].max():.3f} mean={q['trustScore'].mean():.3f}"
@@ -579,7 +596,7 @@ def compute_author_trust_weight(users: pd.DataFrame, logger) -> pd.DataFrame:
     p99 = users["reputation"].quantile(0.99)
     if p99 <= 0:
         p99 = users["reputation"].max() or 1
-    users["weight"] = (np.log1p(users["reputation"]) / np.log1p(p99)).clip(0, 1)
+    users["weight"] = tf.author_weight(users["reputation"], p99)
     logger.info(f"P99 reputation (basis normalisasi)  : {p99:,.0f}")
     return users
 
@@ -715,34 +732,25 @@ def main():
         q_df = questions.assign(
             creationDate=questions["CreationDate"].astype(str),
             domainTag=domain_tag,
-        )[["Id", "Title", "Body", "Score", "ViewCount", "creationDate", "domainTag", "trustScore"]].rename(
+        )[["Id", "Title", "Body", "Score", "ViewCount", "creationDate", "domainTag", "trustScore",
+           "trustScoreVersion"]].rename(
             columns={"Id": "id", "Title": "title", "Body": "body", "Score": "score", "ViewCount": "viewCount"}
         )
         write_batched(
             driver, database,
-            """
-            UNWIND $rows AS row
-            MERGE (q:Question {id: row.id})
-            SET q.title = row.title, q.body = row.body, q.score = row.score,
-                q.viewCount = row.viewCount, q.creationDate = row.creationDate,
-                q.domainTag = row.domainTag, q.trustScore = row.trustScore
-            """,
+            WRITE_QUESTION_NODES,
             q_df, args.batch_size, logger, "Question",
         )
 
         a_df = answers.assign(
             authorReputation=answers["reputation"].fillna(0),
-        )[["answer_id", "Body", "Score", "is_accepted", "authorReputation", "trustScore"]].rename(
+        )[["answer_id", "Body", "Score", "is_accepted", "authorReputation", "trustScore",
+           "trustScoreVersion"]].rename(
             columns={"answer_id": "id", "Body": "body", "Score": "score", "is_accepted": "isAccepted"}
         )
         write_batched(
             driver, database,
-            """
-            UNWIND $rows AS row
-            MERGE (a:Answer {id: row.id})
-            SET a.body = row.body, a.score = row.score, a.isAccepted = row.isAccepted,
-                a.authorReputation = row.authorReputation, a.trustScore = row.trustScore
-            """,
+            WRITE_ANSWER_NODES,
             a_df, args.batch_size, logger, "Answer",
         )
 

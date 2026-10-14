@@ -11,6 +11,13 @@ QIDS = list(range(1000, 1050))
 AFTER = "2026-10-14T01:00:00+00:00"
 
 
+@pytest.fixture(autouse=True)
+def _graph_update_applied(monkeypatch):
+    """TRUST_V3_APPLIED_AT is None until Amendment 6 is applied (the report then fails closed,
+    see test_fails_closed_without_applied_at); the other tests need a filled-in value."""
+    monkeypatch.setattr(s2, "TRUST_V3_APPLIED_AT", "2026-10-13T13:04:20+00:00")
+
+
 def _cfg(alpha, grounded, **over):
     return {"condition": "C", "c_retrieval_version": "v3", "sample_split": "dev", "alpha": alpha,
             "require_grounding": grounded, **over}
@@ -20,7 +27,8 @@ def _run(tmp: Path, alpha, grounded, started=AFTER, qids=QIDS, **over) -> Path:
     path = tmp / f"run_a{alpha}_{'g' if grounded else 'p'}.jsonl"
     path.write_text("".join(json.dumps({"question_id": q, "config": _cfg(alpha, grounded, **over)}) + "\n"
                             for q in qids))
-    path.with_name(path.name + ".manifest.json").write_text(json.dumps({"started_at_utc": started}))
+    path.with_name(path.name + ".manifest.json").write_text(json.dumps(
+        {"started_at_utc": started, "graph": {"trustScoreVersion": "v3-logscore"}}))
     return path
 
 
@@ -78,7 +86,14 @@ def test_rejects_wrong_config(tmp_path, over, msg):
 def test_rejects_run_before_graph_update(tmp_path):
     runs = [_run(tmp_path, a, g, started="2026-10-12T00:00:00+00:00" if (a, g) == (0.5, True) else AFTER)
             for a in (0.5, 0.25) for g in (True, False)]
-    with pytest.raises(s2.Stage2Error, match="Amendment 5"):
+    with pytest.raises(s2.Stage2Error, match="Amendment 6"):
+        s2.load_runs(runs)
+
+
+def test_fails_closed_without_applied_at(tmp_path, monkeypatch):
+    monkeypatch.setattr(s2, "TRUST_V3_APPLIED_AT", None)  # overrides the autouse fixture
+    runs = [_run(tmp_path, a, g) for a in (0.5, 0.25) for g in (True, False)]
+    with pytest.raises(s2.Stage2Error, match="TRUST_V3_APPLIED_AT is not set"):
         s2.load_runs(runs)
 
 

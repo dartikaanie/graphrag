@@ -41,6 +41,10 @@ import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import trust_formulas as tf  # noqa: E402
+
 load_dotenv()
 
 LOG_DIR = Path("logs")
@@ -119,6 +123,18 @@ def write_batched(driver, database, cypher: str, df: pd.DataFrame, batch_size: i
                     f"  [{label}] {written:,}/{total:,} baris tertulis "
                     f"({rate:,.0f} baris/detik, ETA ~{eta / 60:.1f} menit)"
                 )
+
+
+def author_trust_weights(users: pd.DataFrame) -> tuple[pd.DataFrame, float]:
+    """Copy of `users` with the AUTHOR_TRUST `weight` (w_auth, trust_formulas.author_weight)
+    and the P99 reputation it is normalised against."""
+    users = users.copy()
+    users["reputation"] = users["reputation"].fillna(0).clip(lower=0)
+    p99 = users["reputation"].quantile(0.99)
+    if p99 <= 0:
+        p99 = users["reputation"].max() or 1
+    users["weight"] = tf.author_weight(users["reputation"], p99)
+    return users, p99
 
 
 def main():
@@ -213,12 +229,7 @@ def main():
     logger.info(f"User dengan reputation ditemukan: {len(users):,} / {len(unique_owner_ids):,} unik dibutuhkan")
 
     step(logger, 4, "Hitung bobot AUTHOR_TRUST -- normalize(log(reputation)), clip P99")
-    users = users.copy()
-    users["reputation"] = users["reputation"].fillna(0).clip(lower=0)
-    p99 = users["reputation"].quantile(0.99)
-    if p99 <= 0:
-        p99 = users["reputation"].max() or 1
-    users["weight"] = (np.log1p(users["reputation"]) / np.log1p(p99)).clip(0, 1)
+    users, p99 = author_trust_weights(users)
     logger.info(f"P99 reputation (basis normalisasi): {p99:,.0f}")
 
     trust_df = answer_owners.dropna(subset=["owner_user_id"]).merge(
