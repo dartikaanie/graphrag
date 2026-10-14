@@ -308,6 +308,8 @@ Written after the Amendment 5 graph update and BEFORE any stage-2 run, any run o
 
 **Status: all four decision points and the stage-1 rule below were confirmed by the author on 2026-10-14. Not yet applied to the graph.**
 
+> Update 2026-10-14: applied to the graph at 2026-10-14T15:56:53+07:00 (code 6a42942); see Record.
+
 ### Finding
 - Answer `score` ranges from −26 to 6,095 (n = 725,795; median 1; P99 = 46; 11,925 negative; 249,542 equal to 0). `trustScore_A` normalises it with a global min-max, so the range is set by a few extreme answers: `minmax(score_A)` has median 0.0044 and P90 0.0052, i.e. for 90% of answers the upvote term contributes less than 0.5 × 0.0053 ≈ 0.003 to `trustScore_A`. The upvote signal is effectively absent from the trust score.
 - Current `trustScore_A` (`v2-reputation`): min 0.0017, median 0.189, P90 0.495, max 0.984.
@@ -380,15 +382,43 @@ Nodes whose `trustScore` changes: 725,794 of 725,795 Answer; 2,685,812 of 2,685,
 
 ### Record (fill in after apply)
 - Decision points 1–4 and the stage-1 rule confirmed: 2026-10-14
-- Code commit used for apply (pre-registration commit #1): [ ]
-- Apply timestamp (ISO 8601 with timezone): [ ]
-- P99_A: [ ]  |  P99_Q: [ ]  |  quantile method: [ ]
-- Rows updated: Answer [ ]  |  Question [ ]
-- Backup path: [ ]
-- Verify result (max |diff|): [ ]
-- Top-5 check (v2 vs v3, dev set): [report path, % questions changed at α = 0.25 / 0.5]
-- Stage-1 recheck: [report path, new judged items, v3 `top_two`, `STAGE2_ALPHAS` changed yes/no]
-- Git commit: [ ]
+- Code commit used for apply (pre-registration commit #1): `6a42942`. No file used by the apply (`14_apply_logscore_trust.py`, `trust_formulas.py`), the top-5 check or the stage-1 recheck changed after `6a42942`; see the note on `e539423` below.
+- Apply timestamp (ISO 8601 with timezone): **2026-10-14T15:56:53+07:00** (= 2026-10-14T08:56:53+00:00), the APPLIED_AT line of log `01_data_cleaning/logs/20261014T085255Z_apply_logscore_trust.log`. Dry-runs before it: `20261013T181349Z` and `20261014T085014Z` (same numbers as the apply).
+- P99_A: 46.0  |  P99_Q: 30.0  |  quantile method: numpy `linear` at 0.99
+- Rows updated: Answer 725,795 (725,794 with a changed value)  |  Question 2,685,814 (2,685,812 with a changed value); all tagged `trustScoreVersion = "v3-logscore"`. Graph state before: Answer `v2-reputation` 725,795; Question untagged 2,685,814.
+- Backup path: `01_data_cleaning/_kg_workspace/trust_backup_pre_amendment6_20261014T085414Z.parquet` (3,411,609 rows; not in git)
+- Verify result (max |diff|): 0 for Answer and Question on read-back after writing; `--verify-applied` re-check (log `20261014T085801Z_apply_logscore_trust.log`): max |diff| = 0, 0 nodes differing, Answer 725,795 / 725,795 and Question 2,685,814 / 2,685,814 `v3-logscore`.
+- Top-5 check (v2 vs v3, dev set): `llm/c_graphrag/results/logscore_check/logscore_top5_20261014T090618Z.md`; top-5 set changed for 4 / 50 questions (8%) at α = 0.25 and 11 / 50 (22%) at α = 0.5; α = 0 sanity check 0 / 50 (passed).
+- Stage-1 recheck: `llm/c_graphrag/results/logscore_check/stage1_logscore_report_20261014T091601Z.md` (run 2026-10-14T09:16:01Z with `--run-judge`, at commit `e539423`); v2 reproduced the Amendment 5 stage-1 result of record exactly (50 × 5); 3 new items judged (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`; 1 at α = 0.25, 2 at α = 0.75, 2 at α = 1, 3 unique), labels in `results/logscore_check/ctxrel_v2_logscore_primary.jsonl`; v3 `top_two` = [0.5, 0.25], keep_current = False; **`STAGE2_ALPHAS` changed: no**. The binding v3 recheck confirms the stage-2 candidates of record: **α = 0.5 and α = 0.25**. The v3 result is now the stage-1 result of record.
+- Note on `e539423` ("update trustscore v3", 2026-10-14 16:14:08 +07:00): a post-apply commit, made after the apply (backup `085414Z`) and the top-5 check, and before the `--run-judge` recheck (16:16). It adds the apply logs, the top-5 report (`.md`/`.json`/`.csv`) and the five stage-1 v3 retrieval files `stage1_logscore_alpha*.jsonl`. The retrieval files were rewritten by the `--run-judge` run with byte-identical content (same git blob), so the committed versions are final. Its code changes only make the FAISS/embedding cache directory configurable through `KG_WORKSPACE_DIR` (`01_data_cleaning/11_densify_embedding_similarity.py`, `01_data_cleaning/12_validate_densification.py`, `backend/app/config.py`, `backend/app/services/engine_service.py`); none of these files is imported by the apply, the top-5 check or the recheck. These changes were already in the working tree, uncommitted, when the apply and the top-5 check ran; that is why the top-5 report records `6a42942`. From then on the cache was read from external storage (`KG_WORKSPACE_DIR`). Its five files are byte-identical (SHA-256) to the local cache used before. No secrets in the diff.
+- Git commit: the commit that adds this Record (Amendment 6 commit #2).
+
+### Results (dev set, n = 50)
+
+Top-5 change, v2-reputation → v3-logscore (Condition C, top_k = 5; a change is not an improvement):
+
+| α | Top-5 set changed | Mean Jaccard | Rank-1 changed | Order changed | Accepted in / out |
+|---|---|---|---|---|---|
+| 0.0 | 0 / 50 (0%) | 1.0000 | 0 | 0 | 0 / 0 |
+| 0.25 | 4 / 50 (8%) | 0.9733 | 4 | 15 | 2 / 2 |
+| 0.5 | 11 / 50 (22%) | 0.9267 | 2 | 23 | 6 / 3 |
+
+Stage 1, v2 (Amendment 5 result of record) → v3 (ctxrel-v2 primary):
+
+| α | % q ≥1 RELEVANT (v2 → v3) | mean score (v2 → v3) | % accepted (v2 → v3) |
+|---|---|---|---|
+| 0.0 | 48.0 → 48.0 | 0.3263 → 0.3263 | 37.29 → 37.29 |
+| 0.25 | 48.0 → 48.0 | 0.3242 → 0.3305 | 41.95 → 41.95 |
+| 0.5 | 48.0 → 48.0 | 0.3178 → 0.3157 | 52.12 → 53.39 |
+| 0.75 | 46.0 → 46.0 | 0.2860 → 0.2818 | 67.80 → 66.95 |
+| 1.0 | 36.0 → 34.0 | 0.2225 → 0.2225 | 74.58 → 72.88 |
+
+Selection with the unchanged rule ("Selection procedure"; `select_stage1_candidates`, `llm/c_graphrag/ctxrel_sweep.py`), v3:
+1. Primary criterion, tie margin 2 pp: best 48.0%. α = 0.0, 0.25, 0.5 (48.0) and α = 0.75 (46.0) are within 2 pp and form one tied group; α = 1.0 (34.0) is ranked after it.
+2. Tie-breaker within that group, margin 0.02: best mean score 0.3305 (α = 0.25). α = 0.0 (0.3263, −0.0042) and α = 0.5 (0.3157, −0.0148) are tied with it; α = 0.75 (0.2818, −0.0487) is not and is ranked after them.
+3. Larger α among ties on both: 0.5 > 0.25 > 0.0.
+
+Ranking: 0.5, 0.25, 0.0, 0.75, 1.0 → `top_two` = [0.5, 0.25]. α = 1 does not rank first, and not every α is tied with α = 1, so keep-current does not apply. v2 gives the same ranking.
 
 ---
 

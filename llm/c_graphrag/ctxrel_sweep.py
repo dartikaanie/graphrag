@@ -144,14 +144,20 @@ def select_stage1_candidates(stage1_report: dict[float, dict]) -> dict:
             ),
         }
 
+    def _describe(alpha: float) -> str:
+        m = stage1_report[alpha]
+        return f"alpha={alpha} ({m['pct_questions_with_relevant']}%, mean score {m['mean_relevance_score']})"
+
     top_two = [a for a, _ in ranked[:2]]
     return {
         "ranked": ranked, "top_two": top_two, "keep_current": False,
         "reasoning": (
-            f"Top two by primary criterion (% questions with >=1 RELEVANT item), tie-broken by mean relevance "
-            f"score then larger alpha: alpha={ranked[0][0]} ({ranked[0][1]}%), "
-            f"alpha={ranked[1][0] if len(ranked) > 1 else '-'} "
-            f"({ranked[1][1] if len(ranked) > 1 else '-'}%) advance to stage 2."
+            f"Ranked by primary criterion (% questions with >=1 RELEVANT item; tied within "
+            f"{TIE_THRESHOLD_PERCENTAGE_POINTS} pp), then mean relevance score among primary ties (tied within "
+            f"{RELEVANCE_SCORE_TIE_THRESHOLD}), then larger alpha among ties on both. "
+            f"Full ranking: {', '.join(str(a) for a in ranked_alphas)}. "
+            f"{_describe(ranked[0][0])} and {_describe(ranked[1][0]) if len(ranked) > 1 else '-'} "
+            f"advance to stage 2."
         ),
     }
 

@@ -79,9 +79,9 @@ from judge_binary import (CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED,  # noqa: E402
                           CATEGORY_NOT_HALLUCINATED, category_of, is_unusable, severity_of)
 from trust_formulas import TRUST_SCORE_VERSION  # noqa: E402
 
-# Stage-2 candidates. Amendment 6: the v3 stage-1 recheck is binding; if its
-# top_two differ from these, this constant is updated to the v3 top_two
-# before any stage-2 run.
+# Stage-2 candidates. Amendment 6: the v3 stage-1 recheck is binding; it gave
+# top_two = [0.5, 0.25] (report results/logscore_check/
+# stage1_logscore_report_20261014T091601Z.md), so these are unchanged.
 STAGE2_ALPHAS = (0.5, 0.25)
 N_DEV = 50
 JUDGE_ID = "primary"
@@ -89,7 +89,7 @@ JUDGE_ID = "primary"
 # --apply` after its verification passed (Amendment 6, Record). ISO 8601 WITH
 # a UTC offset, e.g. "2026-10-14T09:30:00+07:00". Runs must start after this.
 # None = Amendment 6 not applied yet: no report is produced.
-TRUST_V3_APPLIED_AT = None
+TRUST_V3_APPLIED_AT = "2026-10-14T15:56:53+07:00"  # log 01_data_cleaning/logs/20261014T085255Z_apply_logscore_trust.log
 OUT_DIR = Path(__file__).resolve().parent / "results" / "stage2"
 OFFICIAL_DEFAULTS = {
     "sample_split": "test", "max_hops": 2,
