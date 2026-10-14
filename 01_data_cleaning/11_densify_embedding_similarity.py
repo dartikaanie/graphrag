@@ -96,7 +96,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 LOG_DIR = Path("logs")
-WORKSPACE_DIR = Path("_kg_workspace")
+WORKSPACE_DIR = Path(os.getenv("KG_WORKSPACE_DIR", "_kg_workspace"))
 EMBED_DIM = 384  # all-MiniLM-L6-v2
 DEFAULT_TOP_K = 10
 DEFAULT_COSINE_THRESHOLD = 0.7
