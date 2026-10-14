@@ -227,6 +227,7 @@ def test_condition_c_pilot_configs_produce_records_history_and_manifest(
     _redirect_io(monkeypatch, tmp_path, cond, "c_logs")
     monkeypatch.setattr(cond, "get_all_answer_ids_for_questions", lambda *a, **k: {})
     monkeypatch.setattr(cond, "connect_neo4j", lambda *a, **k: (FakeDriver(), "neo4j"))
+    monkeypatch.setattr(cond, "fetch_trust_score_version", lambda *a, **k: "v3-logscore")
     monkeypatch.setattr(cond, "anchor_via_vector_search", lambda *a, **k: [(101, 0.9)])
     monkeypatch.setattr(cond, "traverse_graph", lambda *a, **k: [{
         "answer_id": 9101, "via_question_id": 101, "via_question_title": "How do I do X?",

@@ -565,6 +565,21 @@ def fetch_author_trust(driver, database, answer_ids: list[int]) -> dict[int, flo
         return {int(record["answer_id"]): float(record["weight"]) for record in result}
 
 
+def fetch_trust_score_version(driver, database) -> str | None:
+    """trustScoreVersion of the Answer nodes (docs/DECISION_C_SCORING.md
+    Amendments 5-6), recorded in the run manifest. One version on every
+    node -> that version; no node tagged -> None; anything else -> a
+    "mixed(...)" string, which no check accepts."""
+    with driver.session(database=database) as session:
+        counts = {r["version"]: r["n"] for r in session.run(
+            "MATCH (a:Answer) RETURN a.trustScoreVersion AS version, count(*) AS n")}
+    if not counts or set(counts) == {None}:
+        return None
+    if len(counts) == 1:
+        return next(iter(counts))
+    return "mixed(" + ", ".join(f"{v}={n}" for v, n in sorted(counts.items(), key=lambda kv: str(kv[0]))) + ")"
+
+
 # ---------------------------------------------------------------------
 # TAHAP c. SEMANTIC EXPANSION -- simpul hasil traversal jadi anchor baru
 # ---------------------------------------------------------------------
@@ -1488,6 +1503,8 @@ def main():
 
     # --- 5: koneksi Neo4j + FAISS cache ---
     driver, database = connect_neo4j(log)
+    graph_state = {"trustScoreVersion": fetch_trust_score_version(driver, database)}
+    log(f"[5/9] Graph trustScoreVersion: {graph_state['trustScoreVersion']}")
     kg_workspace_dir = Path(args.kg_workspace_dir)
     faiss_index, faiss_ids, faiss_embeddings, id_to_row = load_faiss_cache(kg_workspace_dir, log)
 
@@ -1590,7 +1607,7 @@ def main():
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
-            prompt_version=PROMPT_VERSION,
+            prompt_version=PROMPT_VERSION, graph=graph_state,
         )
         log(f"[logging] Manifest (gagal) ditulis -> {manifest_path}")
         return
@@ -1690,6 +1707,7 @@ def main():
                      "failed": args.n_sample - len(results_df)},
         prompt_version=PROMPT_VERSION,
         total_tokens=sum_usage_tokens(results_df.to_dict("records")),
+        graph=graph_state,
     )
     log(f"[logging] Manifest ditulis -> {manifest_path}")
 

@@ -221,6 +221,7 @@ def write_manifest(
     status: str = "completed",
     config_hash: str | None = None,
     log_path: str | None = None,
+    graph: dict | None = None,
 ) -> Path:
     """Writes "<output_path>.manifest.json". Returns the manifest path.
 
@@ -239,6 +240,9 @@ def write_manifest(
     runs always have one; dashboard-launched runs only since the
     per-run-log-file fix -- see docs/Agent prompt grounding factor ui.md
     follow-ups). None when no per-run log file exists.
+    `graph`: state of the knowledge graph the run read, e.g.
+    {"trustScoreVersion": "v3-logscore"} (Condition C; the graph is not part
+    of `config`/`config_hash`). Written only when given.
     """
     output_path = Path(output_path)
     all_files = [output_path] + [Path(p) for p in (extra_output_files or [])]
@@ -261,6 +265,9 @@ def write_manifest(
         "item_counts": item_counts,
         "total_tokens": total_tokens,
     }
+
+    if graph is not None:
+        manifest["graph"] = graph
 
     manifest_path = output_path.with_name(output_path.name + ".manifest.json")
     manifest_path.parent.mkdir(parents=True, exist_ok=True)

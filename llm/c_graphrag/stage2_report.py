@@ -2,7 +2,7 @@
 stage2_report.py
 =====================================
 Stage 2 of the C retrieval v3 α selection (docs/DECISION_C_SCORING.md,
-"Selection procedure" + Amendment 4 + Amendment 5). No LLM calls: this
+"Selection procedure" + Amendments 4, 5 and 6). No LLM calls: this
 script only READS already-generated C runs and their judge outputs, checks
 that they are exactly the runs the procedure requires, computes the pooled
 binary hallucination counts per α, and applies
@@ -11,9 +11,10 @@ ctxrel_sweep.select_stage2_winner() -- the same helper the procedure names.
 INPUT (all required)
 ------------------------------------------------------------
 --run-files    The 4 C generation runs on the dev split: for each stage-2
-               candidate α (default 0.5 and 0.25, the stage-2 candidates of
-               record from Amendment 5), one run with grounding on and one
-               with grounding off.
+               candidate α (STAGE2_ALPHAS: 0.5 and 0.25, the Amendment 5
+               candidates; replaced by the top_two of the Amendment 6
+               stage-1 recheck if that differs), one run with grounding
+               on and one with grounding off.
 --judge-files  judge-v2.x output file(s) (llm_judge_hallucination_v2_1.py
                --out ...) containing the PRIMARY judge's records for those
                4 runs. Other judge_ids in the same files are ignored.
@@ -26,8 +27,13 @@ if every check passes)
   - Each run: condition C, c_retrieval_version v3, sample_split dev,
     alpha in the candidates, exactly one run per (alpha, grounding), and
     the same 50 dev question_ids in every run.
-  - Each run's manifest started after the Amendment 5 graph update
-    (TRUST_V2_APPLIED_AT), so every run used trustScore with reputation.
+  - Each run's manifest started after the Amendment 6 graph update
+    (TRUST_V3_APPLIED_AT), so every run used trustScore "v3-logscore".
+    Timestamps are compared timezone-aware. While TRUST_V3_APPLIED_AT is
+    not filled in, the script refuses to produce a report.
+  - Each run's manifest records the graph's trustScoreVersion (read from
+    Neo4j at run start) and it is "v3-logscore". A manifest without it is
+    rejected.
   - Exactly one primary-judge record per (run, question), all with the
     frozen judge_version, none unusable (failed call / parse error).
 
@@ -66,17 +72,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "evaluation"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "01_data_cleaning"))
 
 from ctxrel_sweep import select_stage2_winner  # noqa: E402
 from judge_binary import (CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED,  # noqa: E402
                           CATEGORY_NOT_HALLUCINATED, category_of, is_unusable, severity_of)
+from trust_formulas import TRUST_SCORE_VERSION  # noqa: E402
 
+# Stage-2 candidates. Amendment 6: the v3 stage-1 recheck is binding; if its
+# top_two differ from these, this constant is updated to the v3 top_two
+# before any stage-2 run.
 STAGE2_ALPHAS = (0.5, 0.25)
 N_DEV = 50
 JUDGE_ID = "primary"
-# Start of `01_data_cleaning/logs/20261013T130420Z_apply_reputation_trust.log`
-# (Amendment 5, "Applying the decision"). Runs must start after this.
-TRUST_V2_APPLIED_AT = "2026-10-13T13:04:20+00:00"
+# The APPLIED_AT line printed by `01_data_cleaning/14_apply_logscore_trust.py
+# --apply` after its verification passed (Amendment 6, Record). ISO 8601 WITH
+# a UTC offset, e.g. "2026-10-14T09:30:00+07:00". Runs must start after this.
+# None = Amendment 6 not applied yet: no report is produced.
+TRUST_V3_APPLIED_AT = None
 OUT_DIR = Path(__file__).resolve().parent / "results" / "stage2"
 OFFICIAL_DEFAULTS = {
     "sample_split": "test", "max_hops": 2,
@@ -105,10 +118,50 @@ def _grounding(config: dict) -> str:
     return "on" if g else "off"
 
 
-def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str = TRUST_V2_APPLIED_AT) -> dict:
+def _parse_iso(value) -> datetime:
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
+
+def trust_cutoff(applied_at: str | None = None) -> datetime:
+    """Timezone-aware moment of the Amendment 6 graph update. Fails closed
+    when it is not set, not ISO 8601, or has no UTC offset."""
+    value = TRUST_V3_APPLIED_AT if applied_at is None else applied_at
+    if not value:
+        raise Stage2Error("TRUST_V3_APPLIED_AT is not set: fill it in with the APPLIED_AT line printed by "
+                          "14_apply_logscore_trust.py --apply (Amendment 6) before running stage 2.")
+    try:
+        cutoff = _parse_iso(value)
+    except ValueError:
+        raise Stage2Error(f"TRUST_V3_APPLIED_AT is not an ISO 8601 timestamp: {value!r}") from None
+    if cutoff.tzinfo is None:
+        raise Stage2Error(f"TRUST_V3_APPLIED_AT has no UTC offset: {value!r} (write e.g. ...+07:00)")
+    return cutoff
+
+
+def _started_at(manifest: dict, name: str) -> datetime:
+    """Timezone-aware run start; `started_at_utc` without an offset is UTC."""
+    started = manifest.get("started_at_utc")
+    try:
+        dt = _parse_iso(started) if started else None
+    except ValueError:
+        dt = None
+    if dt is None:
+        raise Stage2Error(f"{name}: manifest has no valid started_at_utc ({started!r})")
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _recorded_trust_version(manifest: dict) -> str | None:
+    for holder in (manifest, manifest.get("config") or {}, manifest.get("graph") or {}):
+        for key in ("trustScoreVersion", "trust_score_version"):
+            if holder.get(key) is not None:
+                return holder[key]
+    return None
+
+
+def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str | None = None) -> dict:
     """{(alpha, grounding): {"path", "question_ids", "started_at"}} after all run checks."""
     runs, qid_sets = {}, []
-    cutoff = datetime.fromisoformat(applied_at)
+    cutoff = trust_cutoff(applied_at)
     for path in run_files:
         path = Path(path)
         recs = _read_jsonl(path)
@@ -134,9 +187,15 @@ def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str = TRU
         manifest = path.with_name(path.name + ".manifest.json")
         if not manifest.exists():
             raise Stage2Error(f"{path.name}: manifest missing ({manifest.name})")
-        started = json.loads(manifest.read_text()).get("started_at_utc")
-        if not started or datetime.fromisoformat(started) <= cutoff:
-            raise Stage2Error(f"{path.name}: started {started}, not after the Amendment 5 graph update ({applied_at})")
+        manifest_data = json.loads(manifest.read_text())
+        started = manifest_data.get("started_at_utc")
+        if _started_at(manifest_data, path.name) <= cutoff:
+            raise Stage2Error(f"{path.name}: started {started}, not after the Amendment 6 graph update "
+                              f"({cutoff.isoformat()})")
+        version = _recorded_trust_version(manifest_data)
+        if version != TRUST_SCORE_VERSION:
+            raise Stage2Error(f"{path.name}: manifest records trustScoreVersion {version!r}, "
+                              f"expected {TRUST_SCORE_VERSION!r}")
         runs[key] = {"path": path, "question_ids": set(qids), "started_at": started}
         qid_sets.append(set(qids))
     expected = {(a, g) for a in alphas for g in ("on", "off")}
@@ -243,7 +302,8 @@ def build_markdown(pooled, per_run, selection, runs, judge_version, judge_files,
               f"- reasoning: {selection['reasoning']}", "",
               "## DRAFT -- Outcome section for docs/DECISION_C_SCORING.md (review, then paste)", "",
               "```markdown",
-              f"- Stage 1 of record: Amendment 5 recheck (repfix), top_two = [0.5, 0.25].",
+              f"- Stage 1 of record: Amendment 6 recheck (trustScore {TRUST_SCORE_VERSION}), "
+              f"top_two = {list(STAGE2_ALPHAS)}.",
               f"- Stage 2: {judge_version} (primary judge), pooled grounding on + off, n = "
               f"{next(iter(pooled.values()))['n']} answers per alpha.",
               *[f"  - alpha = {a}: hallucination rate excl. ABSTAIN {m['rate_excl_abstain']} "

@@ -891,6 +891,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     n_candidates_after_token_filter: int | None = None
 
     driver = None
+    graph_state: dict[str, Any] | None = None
     run_log_path = _run_log_path("c_graphrag", run_id)
     log = _make_run_logger(run_log_path)
     original_cond_log = cond.log
@@ -954,6 +955,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         all_answer_ids_map = cond.get_all_answer_ids_for_questions(con, _answers_parquet(), eval_question_ids)
 
         driver, database = cond.connect_neo4j(log)
+        graph_state = {"trustScoreVersion": cond.fetch_trust_score_version(driver, database)}
+        log(f"[5/9] Graph trustScoreVersion: {graph_state['trustScoreVersion']}")
         kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
         faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
@@ -1042,6 +1045,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
                          "failed": params.get("n_sample", 1) - len(results)},
             prompt_version=cond.PROMPT_VERSION, total_tokens=_sum_usage_tokens(results),
+            graph=graph_state,
         )
         run_registry.update_run(
             run_id, status="cancelled" if cancelled else "completed",
