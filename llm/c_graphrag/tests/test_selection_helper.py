@@ -128,6 +128,29 @@ def test_stage1_all_alpha_at_zero_percent_relevant_but_tiebreaker_disagrees_does
     assert result["top_two"] == [0.0, 0.25]
 
 
+def test_stage1_amendment6_v3_result_and_reasoning_states_both_tie_margins():
+    """The v3 stage-1 recheck of record (Amendment 6). 0.0, 0.25, 0.5 and
+    0.75 tie on the primary criterion (46-48%, within 2 pp); among them
+    0.0, 0.25 and 0.5 tie on the mean score (0.3157-0.3305, within 0.02),
+    so larger alpha decides: [0.5, 0.25] -- although 0.25 and 0.0 have the
+    two highest mean scores. The reasoning must state both tie margins
+    and the full ranking, not read as a plain sort by mean score."""
+    report = _stage1(
+        {0.0: 48.0, 0.25: 48.0, 0.5: 48.0, 0.75: 46.0, 1.0: 34.0},
+        {0.0: 0.3263, 0.25: 0.3305, 0.5: 0.3157, 0.75: 0.2818, 1.0: 0.2225},
+    )
+    result = select_stage1_candidates(report)
+    assert [a for a, _ in result["ranked"]] == [0.5, 0.25, 0.0, 0.75, 1.0]
+    assert result["top_two"] == [0.5, 0.25]
+    assert result["keep_current"] is False
+    reasoning = result["reasoning"]
+    assert "tied within 2.0 pp" in reasoning
+    assert "tied within 0.02" in reasoning
+    assert "larger alpha among ties on both" in reasoning
+    assert "Full ranking: 0.5, 0.25, 0.0, 0.75, 1.0." in reasoning
+    assert "alpha=0.5 (48.0%, mean score 0.3157) and alpha=0.25 (48.0%, mean score 0.3305)" in reasoning
+
+
 def test_stage1_empty_report_raises():
     with pytest.raises(ValueError):
         select_stage1_candidates({})
