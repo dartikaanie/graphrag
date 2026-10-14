@@ -1,0 +1,13 @@
+01:13:49 | Log: logs/20261013T181349Z_apply_logscore_trust.log
+01:13:49 | Connected to Neo4j: bolt://localhost:7687 | database: graphrag
+01:13:49 | Mode: dry-run | labels: ['Answer', 'Question'] | target version: v3-logscore
+01:14:07 | Answer: 725,795 nodes read | trustScoreVersion: {'v2-reputation': 725795}
+01:15:06 | Question: 2,685,814 nodes read | trustScoreVersion: {'(none)': 2685814}
+01:15:06 | P99 score -- Answer: 46.0 | Question: 30.0 | quantile method: numpy 'linear' at 0.99
+01:15:06 | Answer   old: min 0.0017 | median 0.1888 | p90 0.4952 | max 0.9840 | ==0: 0 | ==1: 0
+01:15:06 | Answer   new: min 0.0000 | median 0.3161 | p90 0.6658 | max 1.0000 | ==0: 3,528 | ==1: 1,434
+01:15:06 | Answer   nodes whose trustScore would change: 725,794 of 725,795
+01:15:06 | Question old: min 0.0025 | median 0.1022 | p90 0.1467 | max 0.9853 | ==0: 0 | ==1: 0
+01:15:06 | Question new: min 0.0000 | median 0.2028 | p90 0.4761 | max 1.0000 | ==0: 1 | ==1: 1
+01:15:06 | Question nodes whose trustScore would change: 2,685,812 of 2,685,814
+01:15:06 | Dry-run: nothing was written. Use --apply to write.

@@ -957,7 +957,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         driver, database = cond.connect_neo4j(log)
         graph_state = {"trustScoreVersion": cond.fetch_trust_score_version(driver, database)}
         log(f"[5/9] Graph trustScoreVersion: {graph_state['trustScoreVersion']}")
-        kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
+        kg_workspace_dir = get_settings().resolved_kg_workspace_dir()
         faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
 
@@ -1129,7 +1129,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         all_answer_ids_map = cond.get_all_answer_ids_for_questions(con, _answers_parquet(), eval_question_ids)
 
         driver, database = cond.connect_neo4j(log)
-        kg_workspace_dir = REPO_ROOT / "01_data_cleaning" / "_kg_workspace"
+        kg_workspace_dir = get_settings().resolved_kg_workspace_dir()
         faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
 

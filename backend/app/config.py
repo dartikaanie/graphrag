@@ -29,6 +29,8 @@ class Settings(BaseSettings):
 
     questions_parquet: str = "00_datasource/merged/questions_raw_union.parquet"
     answers_parquet: str = "00_datasource/merged/answers_raw_union.parquet"
+    # FAISS index + embedding cache (KG_WORKSPACE_DIR in .env); may live on external storage
+    kg_workspace_dir: str = "01_data_cleaning/_kg_workspace"
 
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
@@ -42,6 +44,10 @@ class Settings(BaseSettings):
     def resolved_answers_parquet(self) -> str:
         p = Path(self.answers_parquet)
         return str(p if p.is_absolute() else REPO_ROOT / p)
+
+    def resolved_kg_workspace_dir(self) -> Path:
+        p = Path(self.kg_workspace_dir)
+        return p if p.is_absolute() else REPO_ROOT / p
 
 
 @lru_cache

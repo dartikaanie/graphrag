@@ -1,0 +1,8 @@
+15:58:01 | Log: logs/20261014T085801Z_apply_logscore_trust.log
+15:58:02 | Connected to Neo4j: bolt://localhost:7687 | database: graphrag
+15:58:02 | Mode: verify-applied | labels: ['Answer', 'Question'] | target version: v3-logscore
+15:58:19 | Answer: 725,795 nodes read | trustScoreVersion: {'v3-logscore': 725795}
+15:59:20 | Question: 2,685,814 nodes read | trustScoreVersion: {'v3-logscore': 2685814}
+15:59:20 | P99 score -- Answer: 46.0 | Question: 30.0 | quantile method: numpy 'linear'
+15:59:20 | Verify-applied Answer: max |diff| = 0.000e+00; nodes differing: 0; trustScoreVersion: {'v3-logscore': 725795} -> OK
+15:59:21 | Verify-applied Question: max |diff| = 0.000e+00; nodes differing: 0; trustScoreVersion: {'v3-logscore': 2685814} -> OK

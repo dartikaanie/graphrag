@@ -1,0 +1,57 @@
+15:52:55 | Log: logs/20261014T085255Z_apply_logscore_trust.log
+15:52:56 | Connected to Neo4j: bolt://localhost:7687 | database: graphrag
+15:52:56 | Mode: apply | labels: ['Answer', 'Question'] | target version: v3-logscore
+15:53:14 | Answer: 725,795 nodes read | trustScoreVersion: {'v2-reputation': 725795}
+15:54:14 | Question: 2,685,814 nodes read | trustScoreVersion: {'(none)': 2685814}
+15:54:14 | P99 score -- Answer: 46.0 | Question: 30.0 | quantile method: numpy 'linear' at 0.99
+15:54:14 | Answer   old: min 0.0017 | median 0.1888 | p90 0.4952 | max 0.9840 | ==0: 0 | ==1: 0
+15:54:14 | Answer   new: min 0.0000 | median 0.3161 | p90 0.6658 | max 1.0000 | ==0: 3,528 | ==1: 1,434
+15:54:14 | Answer   nodes whose trustScore would change: 725,794 of 725,795
+15:54:14 | Question old: min 0.0025 | median 0.1022 | p90 0.1467 | max 0.9853 | ==0: 0 | ==1: 0
+15:54:14 | Question new: min 0.0000 | median 0.2028 | p90 0.4761 | max 1.0000 | ==0: 1 | ==1: 1
+15:54:14 | Question nodes whose trustScore would change: 2,685,812 of 2,685,814
+15:54:14 | Free disk space: 18.9 GB (minimum 3.0 GB)
+15:54:16 | Backup written: _kg_workspace/trust_backup_pre_amendment6_20261014T085414Z.parquet (3,411,609 rows)
+15:54:17 |   [apply Answer] 10,000/725,795 (9,329/s)
+15:54:21 |   [apply Answer] 110,000/725,795 (22,331/s)
+15:54:24 |   [apply Answer] 210,000/725,795 (28,223/s)
+15:54:26 |   [apply Answer] 310,000/725,795 (32,164/s)
+15:54:28 |   [apply Answer] 410,000/725,795 (34,032/s)
+15:54:31 |   [apply Answer] 510,000/725,795 (34,765/s)
+15:54:33 |   [apply Answer] 610,000/725,795 (35,995/s)
+15:54:35 |   [apply Answer] 710,000/725,795 (37,249/s)
+15:54:35 |   [apply Answer] 725,795/725,795 (37,539/s)
+15:54:37 |   [apply Question] 10,000/2,685,814 (8,747/s)
+15:54:40 |   [apply Question] 110,000/2,685,814 (26,265/s)
+15:54:42 |   [apply Question] 210,000/2,685,814 (31,898/s)
+15:54:44 |   [apply Question] 310,000/2,685,814 (34,925/s)
+15:54:47 |   [apply Question] 410,000/2,685,814 (36,827/s)
+15:54:49 |   [apply Question] 510,000/2,685,814 (38,278/s)
+15:54:51 |   [apply Question] 610,000/2,685,814 (39,298/s)
+15:54:53 |   [apply Question] 710,000/2,685,814 (39,868/s)
+15:54:55 |   [apply Question] 810,000/2,685,814 (40,661/s)
+15:54:58 |   [apply Question] 910,000/2,685,814 (41,176/s)
+15:55:00 |   [apply Question] 1,010,000/2,685,814 (41,490/s)
+15:55:02 |   [apply Question] 1,110,000/2,685,814 (41,858/s)
+15:55:04 |   [apply Question] 1,210,000/2,685,814 (42,071/s)
+15:55:06 |   [apply Question] 1,310,000/2,685,814 (42,449/s)
+15:55:09 |   [apply Question] 1,410,000/2,685,814 (42,532/s)
+15:55:11 |   [apply Question] 1,510,000/2,685,814 (42,675/s)
+15:55:13 |   [apply Question] 1,610,000/2,685,814 (42,879/s)
+15:55:15 |   [apply Question] 1,710,000/2,685,814 (43,044/s)
+15:55:17 |   [apply Question] 1,810,000/2,685,814 (43,128/s)
+15:55:20 |   [apply Question] 1,910,000/2,685,814 (43,241/s)
+15:55:22 |   [apply Question] 2,010,000/2,685,814 (43,217/s)
+15:55:24 |   [apply Question] 2,110,000/2,685,814 (43,221/s)
+15:55:26 |   [apply Question] 2,210,000/2,685,814 (43,358/s)
+15:55:29 |   [apply Question] 2,310,000/2,685,814 (43,437/s)
+15:55:31 |   [apply Question] 2,410,000/2,685,814 (43,473/s)
+15:55:33 |   [apply Question] 2,510,000/2,685,814 (43,490/s)
+15:55:35 |   [apply Question] 2,610,000/2,685,814 (43,520/s)
+15:55:37 |   [apply Question] 2,685,814/2,685,814 (43,594/s)
+15:55:54 | Verify Answer: max |diff| = 0.000e+00; 725,795/725,795 tagged v3-logscore -> OK
+15:56:53 | Verify Question: max |diff| = 0.000e+00; 2,685,814/2,685,814 tagged v3-logscore -> OK
+15:56:53 | APPLIED_AT (local): 2026-10-14T15:56:53+07:00
+15:56:53 | APPLIED_AT (UTC)  : 2026-10-14T08:56:53+00:00
+15:56:53 | Paste one of the two lines above (same instant) into the Amendment 6 Record and into TRUST_V3_APPLIED_AT in llm/c_graphrag/stage2_report.py.
+15:56:53 | Backup path for the Record: _kg_workspace/trust_backup_pre_amendment6_20261014T085414Z.parquet

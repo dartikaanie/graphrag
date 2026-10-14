@@ -45,6 +45,7 @@ CARA PAKAI
 """
 
 import argparse
+import os
 import statistics
 import sys
 import time
@@ -55,7 +56,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-WORKSPACE_DIR = Path("_kg_workspace")
+WORKSPACE_DIR = Path(os.getenv("KG_WORKSPACE_DIR", "_kg_workspace"))
 EMBED_DIM = 384
 DENSIFY_REL_TYPES = "IS_RELATED_TO|TAG_COOCCUR|EMBED_SIM"
 
