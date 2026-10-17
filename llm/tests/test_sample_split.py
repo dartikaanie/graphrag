@@ -51,24 +51,34 @@ def test_test_runs_keep_config_and_filename_dev_runs_get_their_own():
     # the committed pilot files keep their exact names
     assert a.build_output_path("r", "openai", "gpt-4o-mini", 10, 42, oversample_pool=1536).name == \
         "condition_a_openai_gpt-4o-mini_n10_seed42_v3_caf85ba006.jsonl"
-    assert b.build_output_path("r", "openai", "gpt-4o-mini", 10, 42, True, False, 1536, 5).name == \
+    assert b.build_output_path("r", "openai", "gpt-4o-mini", 10, 42, True, False, 1536, 5,
+                               corpus="legacy_sample").name == \
         "condition_b_openai_gpt-4o-mini_n10_seed42_plain_v3_37e6072d55.jsonl"
-    assert b.build_output_path("r", "openai", "gpt-4o-mini", 10, 42, True, True, 1536, 5).name == \
+    assert b.build_output_path("r", "openai", "gpt-4o-mini", 10, 42, True, True, 1536, 5,
+                               corpus="legacy_sample").name == \
         "condition_b_openai_gpt-4o-mini_n10_seed42_grounded_v3_b0f24482bd.jsonl"
     assert "_dev_" in a.build_output_path("r", "openai", "gpt-4o-mini", 50, 42, oversample_pool=1536,
                                           sample_split="dev").name
     names = {b.build_output_path("r", "openai", "gpt-4o-mini", 50, 42, True, g, 1536, 5, "dev").name for g in (True, False)}
     assert len(names) == 2 and all("_dev_" in n for n in names)
     assert "sample_split" not in b.build_config("openai", "gpt-4o-mini", 10, 42, 1536, 5, True, True)
+    # the KG corpus gets its own config_hash / filename; legacy keeps the old ones
+    legacy = b.build_config("openai", "gpt-4o-mini", 10, 42, 1536, 5, True, True, corpus="legacy_sample")
+    kg = b.build_config("openai", "gpt-4o-mini", 10, 42, 1536, 5, True, True)
+    assert "corpus" not in legacy and kg["corpus"] == "kg_answers_v1_tok400"
+    assert compute_config_hash(kg) != compute_config_hash(legacy)
 
 
-def test_b_index_leakage_check():
-    meta = pd.DataFrame({"question_id": [1, 2, 3], "answer_id": [11, 22, 33]})
-    b.assert_index_has_no_eval_leakage(meta, eval_question_ids=[7, 8], accepted_answer_ids=[77, 88])  # clean
-    with pytest.raises(b.IndexLeakageError, match="1 evaluation question thread"):
-        b.assert_index_has_no_eval_leakage(meta, eval_question_ids=[2], accepted_answer_ids=[99])
-    with pytest.raises(b.IndexLeakageError, match="1 accepted answer"):
-        b.assert_index_has_no_eval_leakage(meta, eval_question_ids=[9], accepted_answer_ids=[33])
+def test_b_per_query_leakage_check():
+    """B's index-level check was replaced by a per-query assert (llm/common/leakage.py)."""
+    from llm.common.leakage import assert_no_leakage, build_exclusion
+
+    retrieved = [{"question_id": 1, "answer_id": 11}, {"question_id": 2, "answer_id": 22}]
+    assert_no_leakage(retrieved, build_exclusion(7, [77], 78))  # clean
+    with pytest.raises(b.LeakageError, match="1 item"):
+        assert_no_leakage(retrieved, build_exclusion(2, [99]))  # own question
+    with pytest.raises(b.LeakageError, match="1 item"):
+        assert_no_leakage(retrieved, build_exclusion(9, [], accepted_answer_id=11))  # own accepted answer
 
 
 def test_repo_state_parsing_and_exemptions(monkeypatch):

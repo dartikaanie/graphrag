@@ -55,6 +55,7 @@ def test_all_9_real_pilot_run_config_hashes_unchanged():
         config = b_condition_b_rag.build_config(
             r["provider"], r["model"], r["n_sample_target"], r["seed"], r["oversample_pool"],
             r["top_k"], r["require_citation"], r["require_grounding"],
+            corpus="legacy_sample",  # every pilot run predates the KG corpus
         )
         assert compute_config_hash(config) == r["config_hash"], f"B run {r['output_path']} hash changed"
         checked += 1

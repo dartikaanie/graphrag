@@ -107,14 +107,14 @@ STEPS: tuple[Step, ...] = (
          "00_datasource/merged/*_raw_union.parquet, question_links.parquet"),
     Step("sampling", 2, "Cleaning and sampling",
          "Draw the evaluation questions from one fixed permutation of the token-filtered candidate pool: the "
-         "test sample is positions 1-384, the development set positions 385-434. Evaluation answers are "
-         "excluded from every retrieval corpus.",
+         "test sample is positions 1-384, the development set positions 385-434. Each evaluation "
+         "question's own thread (the question and all its answers) is excluded from retrieval, per query.",
          (SPLIT, C, B, ENGINE),
          "Merged question/answer parquet",
          "Ordered evaluation questions (test / dev split)",
          (Quote(DEC, "Test sample = positions 1-384 (1-based)"),
           Quote(DEC, "Dev set = positions 385-434 (1-based)"),
-          Quote(B, "PENCEGAHAN DATA LEAKAGE (ketat, by design)"))),
+          Quote(B, "PENCEGAHAN DATA LEAKAGE (ketat, PER QUERY -- sama dengan Kondisi C)"))),
     Step("kg_build", 3, "Knowledge graph build and densification",
          "Load Question, Answer, Tag and User nodes into Neo4j with weighted edges, then add TAG_COOCCUR and "
          "EMBED_SIM edges so that most questions have graph neighbours.",
@@ -343,7 +343,10 @@ PARAMETERS: tuple[Param, ...] = (
       note="v3 (alpha ranking) is selected per run with --c-retrieval-version v3; stage 1 ran with v3."),
     P("cond.d_retrieval_version", "D retrieval version", "conditions", Src("const", D, "D_RETRIEVAL_VERSION"), "",
       (D,)),
-    P("cond.b_top_k", "B: top_k", "conditions", Src("cli_default", B, "--top-k"), "chunks", (B,)),
+    P("cond.b_top_k", "B: top_k", "conditions", Src("cli_default", B, "--top-k"), "answers", (B,)),
+    P("cond.b_corpus", "B: retrieval corpus", "conditions", Src("cli_default", B, "--corpus"), "", (B,),
+      note="kg_answers = every KG Answer node (the set C reaches), one vector per answer, built offline by "
+           "llm/b_rag/build_kg_answer_index.py; legacy_sample = the old 8,000-answer pilot index."),
     P("cond.d_n_low_level", "D: low-level anchors", "conditions", Src("cli_default", D, "--n-low-level"),
       "questions", (D,)),
     P("cond.d_n_high_level", "D: high-level neighbours", "conditions", Src("cli_default", D, "--n-high-level"),

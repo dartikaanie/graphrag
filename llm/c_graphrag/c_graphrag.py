@@ -149,6 +149,9 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
+from llm.common.leakage import build_exclusion
+from llm.common.text import answer_doc_text, build_query_text
+from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F401 -- moved to llm/common/text.py; name kept for stage1_sweep.py
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
 
@@ -651,13 +654,6 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
 # FUSI -- dedup, rerank by combined trust score, chunking, cap top-K
 # ---------------------------------------------------------------------
 
-def _truncate_doc_text(enc, doc_text: str, token_chunk_limit: int) -> str:
-    token_ids = enc.encode(doc_text)
-    if len(token_ids) > token_chunk_limit:
-        return enc.decode(token_ids[:token_chunk_limit])
-    return doc_text
-
-
 def min_max_normalize(values: list[float]) -> list[float]:
     """Per docs/DECISION_C_SCORING.md's sim_norm definition: min-max over
     the given pool. If all values are equal (including a single-item
@@ -818,7 +814,7 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
 
         final = []
         for c in top:
-            doc_text = f"Q: {c['via_question_title']}\nA: {c['answer_body']}"
+            doc_text = answer_doc_text(c['via_question_title'], c['answer_body'])
             doc_text = _truncate_doc_text(enc, doc_text, token_chunk_limit)
             final.append({
                 "question_id": int(c["via_question_id"]),
@@ -853,7 +849,7 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
 
     doc_texts = []
     for c in pool:
-        doc_text = f"Q: {c['via_question_title']}\nA: {c['answer_body']}"
+        doc_text = answer_doc_text(c['via_question_title'], c['answer_body'])
         doc_texts.append(_truncate_doc_text(enc, doc_text, token_chunk_limit))
 
     answer_ids = [int(c["answer_id"]) for c in pool]
@@ -989,9 +985,10 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 t_query_start = time.time()
 
                 # leakage exclusion set untuk pertanyaan evaluasi INI SAJA
-                exclude_question_ids = {qid}
-                exclude_answer_ids = set(all_answer_ids_map.get(qid, []))
-                exclude_answer_ids.add(int(row["AcceptedAnswerId"]))
+                # (llm/common/leakage.py -- satu definisi utk B, C, D)
+                exclusion = build_exclusion(qid, all_answer_ids_map.get(qid, []), row["AcceptedAnswerId"])
+                exclude_question_ids = set(exclusion.question_ids)
+                exclude_answer_ids = set(exclusion.answer_ids)
 
                 # kalau embedding pertanyaan ini sendiri sudah ada di cache
                 # (harusnya iya, KG dibangun full population), pakai LANGSUNG
@@ -1002,7 +999,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
                     query_emb = np.ascontiguousarray(query_emb)
                 else:
-                    query_text = f"{row['Title']} {str(row['Body'])[:1000]}"
+                    query_text = build_query_text(row['Title'], row['Body'])
                     query_emb = embed_query(query_text, embed_model)
 
                 # --- a. Entity Anchoring ---

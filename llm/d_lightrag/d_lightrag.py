@@ -164,6 +164,7 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
+from llm.common.leakage import build_exclusion
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_lightrag_messages
 
@@ -590,9 +591,10 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
                 t_query_start = time.time()
 
-                exclude_question_ids = {qid}
-                exclude_answer_ids = set(all_answer_ids_map.get(qid, []))
-                exclude_answer_ids.add(int(row["AcceptedAnswerId"]))
+                # llm/common/leakage.py -- satu definisi exclusion utk B, C, D
+                exclusion = build_exclusion(qid, all_answer_ids_map.get(qid, []), row["AcceptedAnswerId"])
+                exclude_question_ids = set(exclusion.question_ids)
+                exclude_answer_ids = set(exclusion.answer_ids)
 
                 if qid in id_to_row:
                     query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
