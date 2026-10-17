@@ -17,19 +17,37 @@ Sama seperti Kondisi A untuk bagian yang overlap (supaya perbandingan adil):
     to-apple.
 
 Yang BARU dibanding Kondisi A (retrieval-augmented generation):
-  1. Korpus retrieval: pasangan (Title pertanyaan + Body jawaban) dari
-     Answers x Questions parquet (JOIN via ParentId), di-flat-chunk (tanpa
-     struktur graph -- itu yang membedakan dari Kondisi C), di-index pakai
-     FAISS (IndexFlatIP atas embedding ternormalisasi = cosine similarity).
-  2. Retrieval top-k per pertanyaan evaluasi sebelum prompting.
+  1. Korpus retrieval (default --corpus kg_answers, reports/b_corpus_parity.md):
+     SEMUA Answer node di Knowledge Graph yang sama dengan yang dijangkau
+     Kondisi C (725.795 jawaban pada KG 2026-10-17), satu vektor per
+     jawaban dengan teks "Q: <title pertanyaan induk>\nA: <body jawaban>"
+     dipotong ke TOKEN_CHUNK_LIMIT token -- teks PERSIS yang dilihat C per
+     kandidat (llm/common/text.py: answer_doc_text + truncate_doc_text).
+     Di-index pakai FAISS IndexFlatIP (exact search) atas embedding
+     all-MiniLM-L6-v2 ternormalisasi (= cosine similarity), tanpa graph,
+     relasi, maupun trust -- itu yang membedakan B dari C.
+     Neo4j HANYA dipakai offline sebagai sumber ekspor teks
+     (build_kg_answer_index.py --stage export); saat runtime B membaca
+     index FAISS + kg_answers.parquet (lookup teks via DuckDB) dan TIDAK
+     PERNAH mengakses Neo4j.
+     --corpus legacy_sample: korpus lama (sampel acak INDEX_POOL jawaban
+     dari parquet, multi-chunk, query "Title\nBody") -- HANYA untuk
+     reproduksi pilot lama.
+  2. Retrieval top-k per pertanyaan evaluasi sebelum prompting. Teks query
+     (korpus KG) = build_query_text(Title, Body) = f"{Title} {str(Body)[:1000]}"
+     -- format PERSIS yang dipakai Kondisi C (embed_query) dan
+     11_densify_embedding_similarity.py (title + " " + body[:1000]),
+     di-encode satu teks per panggilan di CPU seperti embed_query() C.
   3. Prompt memakai struktur 4-turn chat dialog yang SAMA PERSIS dengan
      Kondisi A (system persona umum -> user persona dari tags -> assistant
      priming -> user pertanyaan+deskripsi), DITAMBAH konteks hasil
      retrieval disisipkan di turn user terakhir sebelum pertanyaan. LLM
      dipanggil via factory provider yang SAMA PERSIS dengan Kondisi A
      (get_llm_client).
-  4. Index di-cache ke disk (INDEX_CACHE_DIR) supaya tidak perlu di-build
-     ulang setiap run -- pakai --rebuild-index untuk paksa rebuild.
+  4. Index di-cache ke disk (INDEX_CACHE_DIR). Korpus KG: dibangun SEKALI
+     oleh build_kg_answer_index.py (cache key kg_answers_v1_tok<N>_<model>_
+     <hash daftar answer_id>). legacy_sample: dibangun saat run pertama,
+     --rebuild-index untuk paksa rebuild.
 
 KEPUTUSAN METODOLOGIS EKSPLISIT (didokumentasikan supaya bisa dipertanggung-
 jawabkan di sidang / bab metodologi)
@@ -38,20 +56,20 @@ jawabkan di sidang / bab metodologi)
     jawaban saja) -- jawaban SO seringkali ambigu tanpa konteks
     pertanyaannya, jadi title diikutsertakan ke setiap chunk supaya
     retrieval secara semantik lebih bermakna.
-  - PENCEGAHAN DATA LEAKAGE (ketat, by design): korpus index yang dibangun
-    di Step 5 secara eksplisit MENGECUALIKAN (a) accepted answer dari
-    seluruh pertanyaan evaluasi (target yang sedang diprediksi), DAN
-    (b) semua jawaban lain (non-accepted) yang ParentId-nya sama dengan
-    pertanyaan evaluasi manapun. Artinya retrieval TIDAK PERNAH bisa
-    menemukan kembali jawaban dari pertanyaan yang sedang dievaluasi,
-    baik langsung maupun tidak langsung -- supaya cosine similarity yang
-    diukur benar-benar mencerminkan kemampuan generalisasi RAG, bukan
-    kebetulan menemukan jawabannya sendiri di index.
-  - Chunking: setiap dokumen (title + body) dipotong per TOKEN_CHUNK_LIMIT
-    token (tiktoken cl100k_base, konsisten dgn cara hitung token Kondisi A)
-    -- dokumen pendek jadi 1 chunk, dokumen panjang jadi beberapa chunk
-    berurutan tanpa overlap (desain sederhana utk Kondisi B; strategi
-    chunking lebih canggih/overlap bisa jadi perbaikan Kondisi C kalau perlu).
+  - PENCEGAHAN DATA LEAKAGE (ketat, PER QUERY -- sama dengan Kondisi C):
+    korpus KG memuat juga thread pertanyaan evaluasi, jadi exclusion
+    dilakukan saat search: over-fetch top_k + |jawaban thread| + 5, buang
+    hasil yang question_id-nya = pertanyaan yang sedang dijawab atau
+    answer_id-nya milik thread itu (+ accepted answer), lalu potong ke
+    top_k (llm/common/leakage.py, satu definisi utk B/C/D; jawaban thread
+    diambil dari kg_answers.parquet, bukan Neo4j). Setiap hasil retrieval
+    di-assert: retrieved ∩ exclusion set = ∅ (LeakageError bila tidak).
+    (Korpus legacy_sample: exclusion global saat build seperti dulu, plus
+    assert per query yang sama.)
+  - Satu vektor per jawaban (korpus KG): dokumen dipotong ke
+    TOKEN_CHUNK_LIMIT token (tiktoken cl100k_base) dengan fungsi yang SAMA
+    dengan C, tanpa multi-chunk. (legacy_sample: multi-chunk berurutan
+    tanpa overlap, seperti pilot lama.)
   - retrieved_context disimpan lengkap di output (bukan cuma teks final
     LLM) supaya nanti bisa dipakai utk metrik RAGAS (context precision/
     recall) di Bab VI tanpa perlu re-run retrieval.
@@ -80,10 +98,10 @@ SETUP .env (WAJIB)
     OVERSAMPLE_POOL=1200
 
     # Parameter retrieval (BARU utk Kondisi B)
+    B_CORPUS=kg_answers   # atau legacy_sample (reproduksi pilot lama saja)
     INDEX_POOL=8000
-    # ^ jumlah kandidat jawaban (sebelum chunking) yang di-sample utk index
-    #   FAISS. Mulai kecil (5000-10000) utk dev/pilot run, naikkan (mis.
-    #   50000+) utk run resmi supaya korpus lebih representatif.
+    # ^ HANYA utk --corpus legacy_sample: jumlah kandidat jawaban (sebelum
+    #   chunking) yang di-sample utk index FAISS lama.
     TOP_K=5
     TOKEN_CHUNK_LIMIT=400
     INDEX_CACHE_DIR=index_cache
@@ -99,19 +117,23 @@ SETUP .env (WAJIB)
 
 CARA PAKAI
 ----------
-    # Run pertama akan build index (lama), run berikutnya pakai cache (cepat)
-    python b_condition_b_rag.py
+    # Sekali (offline): bangun korpus KG + index FAISS (satu-satunya langkah yg pakai Neo4j)
+    python build_kg_answer_index.py --stage all --device mps
 
-    # Pilot run cepat dgn sample kecil + index kecil + provider dev (ollama)
-    python b_condition_b_rag.py --provider ollama --model qwen2.5:1.5b --n-sample 10 --index-pool 2000
+    python b_condition_b_rag.py --sample-split dev --n-sample 35
 
-    # Paksa rebuild index (mis. setelah ganti INDEX_POOL atau data sumber berubah)
-    python b_condition_b_rag.py --rebuild-index
+    # Reproduksi pilot lama (korpus sampel 8.000 jawaban)
+    python b_condition_b_rag.py --corpus legacy_sample
+
+    # legacy_sample dgn index kecil + provider dev (ollama); paksa rebuild index lama
+    python b_condition_b_rag.py --corpus legacy_sample --provider ollama --model qwen2.5:1.5b --n-sample 10 --index-pool 2000
+    python b_condition_b_rag.py --corpus legacy_sample --rebuild-index
 
 Skrip ini RESUMABLE (pola sama dgn Kondisi A): kalau terhenti di tengah
 jalan, jalankan ulang command yang sama -- pertanyaan yang sudah diproses
-(tercatat di file output) otomatis dilewati. Index yang sudah di-cache TIDAK
-di-rebuild ulang kecuali --rebuild-index dipakai.
+(tercatat di file output) otomatis dilewati. Index korpus KG tidak pernah
+dibangun di sini; index legacy yang sudah di-cache TIDAK di-rebuild ulang
+kecuali --rebuild-index dipakai.
 """
 
 import argparse
@@ -144,7 +166,10 @@ load_dotenv()
 # terduplikasi/berisiko diam-diam berbeda antar file kondisi.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.citations import compute_citation_report, extract_citations
+from llm.b_rag.kg_corpus import CORPUS_CHOICES, CORPUS_KG, CORPUS_LEGACY, KGAnswerIndex, corpus_dir_name, encode_query
 from llm.client_factory import get_llm_client
+from llm.common.leakage import LeakageError, assert_no_leakage, build_exclusion  # noqa: F401 -- LeakageError re-exported
+from llm.common.text import build_query_text
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_rag_messages
 
@@ -354,32 +379,6 @@ def chunk_corpus(df: pd.DataFrame, token_limit: int) -> pd.DataFrame:
     return chunk_df
 
 
-class IndexLeakageError(RuntimeError):
-    """The retrieval index contains an evaluation question's own thread."""
-
-
-def assert_index_has_no_eval_leakage(meta_df: pd.DataFrame, eval_question_ids, accepted_answer_ids) -> None:
-    """The index cache key (build_or_load_faiss_index) does NOT include the
-    exclusion set, so a cached index built for a DIFFERENT evaluation
-    sample (e.g. the test sample) is silently reused for this one (e.g.
-    the dev split). Leakage exclusion is therefore re-checked on whatever
-    index is actually loaded: it must contain no answer belonging to an
-    evaluation question and no evaluation question's accepted answer.
-    Raises IndexLeakageError otherwise (fix: --rebuild-index)."""
-    eval_q = {int(q) for q in eval_question_ids}
-    eval_a = {int(a) for a in accepted_answer_ids}
-    leaked_q = sorted(eval_q & {int(q) for q in meta_df["question_id"]})
-    leaked_a = sorted(eval_a & {int(a) for a in meta_df["answer_id"]})
-    if leaked_q or leaked_a:
-        raise IndexLeakageError(
-            f"retrieval index contains {len(leaked_q)} evaluation question thread(s) {leaked_q[:5]} and "
-            f"{len(leaked_a)} accepted answer(s) {leaked_a[:5]} -- the cached index was built for a different "
-            f"evaluation sample. Re-run with --rebuild-index."
-        )
-    log(f"      [leakage check] index bersih: 0 dari {len(eval_q)} pertanyaan evaluasi / "
-        f"{len(eval_a)} accepted answer ada di index.")
-
-
 # ---------------------------------------------------------------------
 # 6. Build/Load FAISS index (IndexFlatIP atas embedding ternormalisasi
 #    = cosine similarity) -- di-cache ke disk supaya tidak rebuild tiap run
@@ -467,6 +466,37 @@ def retrieve_full_candidate_ids(embed_model, index, meta_df: pd.DataFrame, query
     return [int(meta_df.iloc[idx]["question_id"]) for idx in indices[0] if idx != -1]
 
 
+def retrieve_context_kg(embed_model, kg: KGAnswerIndex, query_text: str, top_k: int, exclusion,
+                        query_emb: np.ndarray | None = None) -> list[dict]:
+    """Korpus KG: top_k jawaban (cosine, exact search) SETELAH exclusion per
+    query (kg.search over-fetch lalu filter), teks diambil dari
+    kg_answers.parquet via DuckDB -- doc_text = teks yang di-encode saat
+    build, identik dgn chunk_text C utk answer_id yang sama. Tanpa Neo4j."""
+    if query_emb is None:
+        query_emb = encode_query(embed_model, query_text)
+    hits = kg.search(query_emb, top_k, exclusion)
+    docs = kg.fetch_docs([int(kg.answer_ids[row]) for row, _ in hits])
+    results = []
+    for row, score in hits:
+        aid = int(kg.answer_ids[row])
+        d = docs[aid]
+        results.append({
+            "answer_id": aid,
+            "question_id": int(d["question_id"]),
+            "question_title": d["question_title"],
+            "chunk_text": d["doc_text"],
+            "score": score,
+            "is_accepted": bool(d["is_accepted"]),
+        })
+    return results
+
+
+def retrieve_full_candidate_ids_kg(kg: KGAnswerIndex, query_emb: np.ndarray, pool_k: int, exclusion) -> list:
+    """Padanan retrieve_full_candidate_ids() utk korpus KG (exclusion yang
+    sama diterapkan, supaya thread pertanyaan itu sendiri tidak ikut)."""
+    return [int(kg.question_ids[row]) for row, _ in kg.search(query_emb, pool_k, exclusion)]
+
+
 # ---------------------------------------------------------------------
 # 7. Prompt retrieval-augmented & pemanggilan model -- lihat
 #    llm/prompts.py (build_rag_messages) dan llm/client_factory.py
@@ -524,6 +554,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     already_done = already_done or set()
     total = len(sample_df)
     results = []
+    # `index` = KGAnswerIndex (korpus KG, default) ATAU index FAISS lama +
+    # meta_df (korpus legacy_sample). Jawaban thread tiap pertanyaan utk
+    # exclusion per query: dari kg_answers.parquet (korpus KG) -- tidak
+    # pernah dari Neo4j.
+    use_kg = isinstance(index, KGAnswerIndex)
+    thread_answer_ids = index.thread_answer_ids(sample_df["Id"].astype(int).tolist()) if use_kg else {}
     with open(output_path, "a") as f_out:
         for i, row in sample_df.iterrows():
             if check_cancel is not None and check_cancel():
@@ -534,16 +570,28 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             if qid in already_done:
                 continue
 
+            exclusion = build_exclusion(qid, thread_answer_ids.get(qid, []), row["AcceptedAnswerId"])
             t_retrieval_start = time.time()
-            query_text = f"{row['Title']}\n{row['Body']}"
-            retrieved = retrieve_context(embed_model, index, meta_df, query_text, top_k)
+            if use_kg:
+                query_text = build_query_text(row["Title"], row["Body"])
+                query_emb = encode_query(embed_model, query_text)
+                retrieved = retrieve_context_kg(embed_model, index, query_text, top_k, exclusion, query_emb)
+            else:
+                query_text = f"{row['Title']}\n{row['Body']}"  # format pilot lama, reproduksi saja
+                retrieved = retrieve_context(embed_model, index, meta_df, query_text, top_k)
             retrieval_latency = time.time() - t_retrieval_start
+            assert_no_leakage(retrieved, exclusion)
 
             all_candidate_question_ids = None
             if log_full_candidates:
-                all_candidate_question_ids = retrieve_full_candidate_ids(
-                    embed_model, index, meta_df, query_text, max(50, top_k * 5),
-                )
+                if use_kg:
+                    all_candidate_question_ids = retrieve_full_candidate_ids_kg(
+                        index, query_emb, max(50, top_k * 5), exclusion,
+                    )
+                else:
+                    all_candidate_question_ids = retrieve_full_candidate_ids(
+                        embed_model, index, meta_df, query_text, max(50, top_k * 5),
+                    )
 
             messages = build_rag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                            require_citation=require_citation,
@@ -582,6 +630,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 # context items sent to the LLM, == len(retrieved_context)
                 # (B's FAISS top-k retrieval already caps at top_k directly).
                 "n_context_items_used": len(retrieved),
+                "query_text": query_text,
                 "retrieval_latency_sec": round(retrieval_latency, 3),
                 "prompt_messages": messages,
                 "llm_answer": llm_answer,
@@ -636,23 +685,35 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
                   top_k: int, require_citation: bool, require_grounding: bool,
-                  sample_split: str = "test") -> dict:
+                  sample_split: str = "test", corpus: str = CORPUS_KG, token_chunk_limit: int = 400) -> dict:
     """The full set of parameters that affect Condition B's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists (stored in every record/manifest AND hashed into
-    the output filename)."""
+    the output filename).
+
+    `corpus`: the KG-answer corpus (default) adds "corpus":
+    "kg_answers_v1_tok<limit>", so its runs never share a config_hash /
+    output file (and resume state) with a legacy-corpus run. The key is
+    absent for corpus="legacy_sample" -- every existing run's hash is
+    unchanged."""
     from llm.sample_split import add_split_to_config
-    return add_split_to_config({
+    config = {
         "condition": "B", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
         "oversample_pool": oversample_pool, "top_k": top_k,
         "require_citation": require_citation, "require_grounding": require_grounding,
-    }, sample_split)  # sample_split only present when not "test" -- existing hashes unchanged
+    }
+    if corpus == CORPUS_KG:
+        config["corpus"] = corpus_dir_name(token_chunk_limit)
+    elif corpus != CORPUS_LEGACY:
+        raise ValueError(f"Unknown corpus '{corpus}' -- must be one of {CORPUS_CHOICES}")
+    return add_split_to_config(config, sample_split)  # sample_split only present when not "test" -- existing hashes unchanged
 
 
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
                        require_citation: bool = False, require_grounding: bool = False,
                        oversample_pool: int | None = None, top_k: int = 5,
-                       sample_split: str = "test") -> Path:
+                       sample_split: str = "test", corpus: str = CORPUS_KG,
+                       token_chunk_limit: int = 400) -> Path:
     """Nama file JSONL otomatis dari provider+model+n_sample+seed -- identik
     pola Kondisi A, format:
     condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl.
@@ -680,7 +741,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     suffix = ("_grounded" if require_grounding else "_plain") if require_citation else ""
     config_hash = compute_config_hash(
         build_config(provider, model, n_sample, seed, oversample_pool, top_k, require_citation, require_grounding,
-                     sample_split)
+                     sample_split, corpus, token_chunk_limit)
     )
     from llm.sample_split import split_filename_tag
     return Path(output_dir) / f"{base}{suffix}{split_filename_tag(sample_split)}_{PROMPT_VERSION}_{config_hash}.jsonl"
@@ -711,20 +772,26 @@ def main():
                          help="Default dari LLM_PROVIDER di .env")
     parser.add_argument("--model", default=os.getenv("LLM_MODEL", "gpt-4o-mini"),
                          help="Default dari LLM_MODEL di .env")
+    parser.add_argument("--corpus", choices=CORPUS_CHOICES, default=os.getenv("B_CORPUS", "kg_answers"),
+                         help="kg_answers (default): SEMUA Answer node KG yang sama dgn Kondisi C, index "
+                              "dibangun offline oleh build_kg_answer_index.py. legacy_sample: korpus pilot "
+                              "lama (sampel --index-pool jawaban dari parquet) -- HANYA utk reproduksi.")
     parser.add_argument("--index-pool", type=int, default=int(os.getenv("INDEX_POOL", 8000)),
-                         help="Jumlah kandidat jawaban (sebelum chunking) utk index FAISS. "
-                              "Default dari INDEX_POOL di .env")
+                         help="HANYA --corpus legacy_sample: jumlah kandidat jawaban (sebelum chunking) "
+                              "utk index FAISS lama. Default dari INDEX_POOL di .env")
     parser.add_argument("--top-k", type=int, default=int(os.getenv("TOP_K", 5)),
                          help="Jumlah chunk yang diambil per pertanyaan. Default dari TOP_K di .env")
     parser.add_argument("--token-chunk-limit", type=int, default=int(os.getenv("TOKEN_CHUNK_LIMIT", 400)),
                          help="Ukuran maksimal token per chunk korpus. Default dari TOKEN_CHUNK_LIMIT di .env")
-    parser.add_argument("--index-cache-dir", default=os.getenv("INDEX_CACHE_DIR", "index_cache"),
+    parser.add_argument("--index-cache-dir",
+                         default=os.getenv("INDEX_CACHE_DIR", str(Path(__file__).resolve().parent / "index_cache")),
                          help="Direktori cache index FAISS. Default dari INDEX_CACHE_DIR di .env")
     parser.add_argument("--embed-model", default=os.getenv("EMBED_MODEL", "all-MiniLM-L6-v2"),
                          help="Model sentence-transformers utk indexing/retrieval/scoring. "
                               "HARUS SAMA dgn Kondisi A supaya similarity comparable.")
     parser.add_argument("--rebuild-index", action="store_true",
-                         help="Paksa rebuild index FAISS meski cache sudah ada")
+                         help="HANYA --corpus legacy_sample: paksa rebuild index FAISS lama meski cache "
+                              "sudah ada (korpus KG dibangun ulang lewat build_kg_answer_index.py)")
     parser.add_argument("--require-citation", action=argparse.BooleanOptionalAction,
                          default=os.getenv("CONDITION_B_REQUIRE_CITATION", "true").strip().lower()
                          in ("1", "true", "yes", "on"),
@@ -781,7 +848,8 @@ def main():
                                              require_citation=args.require_citation,
                                              require_grounding=args.require_grounding,
                                              oversample_pool=oversample_pool, top_k=args.top_k,
-                                             sample_split=args.sample_split))
+                                             sample_split=args.sample_split, corpus=args.corpus,
+                                             token_chunk_limit=args.token_chunk_limit))
         log(f"[config] output auto-generated dari provider='{args.provider}' "
               f"model='{args.model}' -> '{args.output}'")
 
@@ -795,8 +863,9 @@ def main():
     log(f"[config] output            = {args.output}")
     log(f"[config] n_sample={args.n_sample} seed={args.seed} "
           f"provider={args.provider} model={args.model}")
-    log(f"[config] index_pool={args.index_pool} top_k={args.top_k} "
-          f"token_chunk_limit={args.token_chunk_limit} embed_model={args.embed_model}")
+    log(f"[config] corpus={args.corpus}"
+        + (f" index_pool={args.index_pool}" if args.corpus == CORPUS_LEGACY else "")
+        + f" top_k={args.top_k} token_chunk_limit={args.token_chunk_limit} embed_model={args.embed_model}")
     log(f"[config] require_citation={args.require_citation} "
           f"({'[SO-<id>] labels + citation instruction, format sama dgn Kondisi C' if args.require_citation else 'RAG konvensional tanpa instruksi sitasi'})")
     if args.require_citation:
@@ -829,29 +898,44 @@ def main():
               f"di Answers parquet -- SEHARUSNYA jarang terjadi setelah semi-join di Step 1.")
     sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
 
-    # --- 5: bangun korpus retrieval (exclude leakage) + chunking ---
-    eval_question_ids = sample_df["Id"].astype(int).tolist()
-    corpus_df = build_retrieval_corpus(
-        con, args.questions_parquet, args.answers_parquet, args.index_pool, args.seed,
-        exclude_question_ids=eval_question_ids, exclude_answer_ids=accepted_ids,
-    )
-    chunk_df = chunk_corpus(corpus_df, args.token_chunk_limit)
+    corpus_meta = {}
+    if args.corpus == CORPUS_KG:
+        # --- 5-6: korpus KG -- index FAISS + kg_answers.parquet yang dibangun
+        # offline (build_kg_answer_index.py). TIDAK ada Neo4j di sini; leakage
+        # exclusion dilakukan per query di process_sample().
+        log(f"[5/8] Korpus KG ({corpus_dir_name(args.token_chunk_limit)}) -- leakage exclusion per query.")
+        log(f"[6/8] Load model embedding ({args.embed_model}, device=cpu seperti Kondisi C)...")
+        from sentence_transformers import SentenceTransformer
+        embed_model = SentenceTransformer(args.embed_model, device="cpu")
+        from llm.b_rag.kg_corpus import load_kg_answer_index
+        index = load_kg_answer_index(args.index_cache_dir, args.token_chunk_limit, args.embed_model, log=log)
+        meta_df = None
+        corpus_meta = {"corpus_cache_key": index.cache_key, "corpus_ids_sha256": index.manifest["ids_sha256"],
+                       "corpus_n_vectors": index.ntotal}
+    else:
+        # --- 5: bangun korpus retrieval legacy (exclude leakage global) + chunking ---
+        eval_question_ids = sample_df["Id"].astype(int).tolist()
+        corpus_df = build_retrieval_corpus(
+            con, args.questions_parquet, args.answers_parquet, args.index_pool, args.seed,
+            exclude_question_ids=eval_question_ids, exclude_answer_ids=accepted_ids,
+        )
+        chunk_df = chunk_corpus(corpus_df, args.token_chunk_limit)
 
-    # --- 6: load embedding model + build/load index FAISS ---
-    log(f"[6/8] Load model embedding ({args.embed_model})...")
-    from sentence_transformers import SentenceTransformer
-    embed_model = SentenceTransformer(args.embed_model)
+        # --- 6: load embedding model + build/load index FAISS ---
+        log(f"[6/8] Load model embedding ({args.embed_model})...")
+        from sentence_transformers import SentenceTransformer
+        embed_model = SentenceTransformer(args.embed_model)
 
-    index, meta_df = build_or_load_faiss_index(
-        chunk_df, embed_model, Path(args.index_cache_dir),
-        args.index_pool, args.token_chunk_limit, args.embed_model, args.rebuild_index,
-    )
-    assert_index_has_no_eval_leakage(meta_df, eval_question_ids, accepted_ids)
+        index, meta_df = build_or_load_faiss_index(
+            chunk_df, embed_model, Path(args.index_cache_dir),
+            args.index_pool, args.token_chunk_limit, args.embed_model, args.rebuild_index,
+        )
 
     # --- Resume support: baca Id yang sudah pernah diproses ---
     from llm.manifest import compute_config_hash
     config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool,
-                           args.top_k, args.require_citation, args.require_grounding, args.sample_split)
+                           args.top_k, args.require_citation, args.require_grounding, args.sample_split,
+                           args.corpus, args.token_chunk_limit)
     config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -890,7 +974,9 @@ def main():
             "sample_split": args.sample_split,
             "oversample_pool": oversample_pool,
             "log_full_candidates": args.log_full_candidates,
-            "index_pool": args.index_pool,
+            "corpus": args.corpus,
+            **corpus_meta,
+            "index_pool": args.index_pool if args.corpus == CORPUS_LEGACY else None,
             "top_k": args.top_k,
             "config_hash": config_hash,
             "output_path": str(output_path),
@@ -925,7 +1011,9 @@ def main():
             "sample_split": args.sample_split,
             "oversample_pool": oversample_pool,
             "log_full_candidates": args.log_full_candidates,
-            "index_pool": args.index_pool,
+            "corpus": args.corpus,
+            **corpus_meta,
+            "index_pool": args.index_pool if args.corpus == CORPUS_LEGACY else None,
             "top_k": args.top_k,
             "config_hash": config_hash,
             "output_path": str(output_path),
@@ -1003,7 +1091,9 @@ def main():
         "oversample_pool": oversample_pool,
         "n_candidates_after_token_filter": len(candidates),
         "log_full_candidates": args.log_full_candidates,
-        "index_pool": args.index_pool,
+        "corpus": args.corpus,
+        **corpus_meta,
+        "index_pool": args.index_pool if args.corpus == CORPUS_LEGACY else None,
         "top_k": args.top_k,
         "token_chunk_limit": args.token_chunk_limit,
         "require_citation": args.require_citation,

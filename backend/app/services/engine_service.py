@@ -285,6 +285,23 @@ def _faiss_cache(kg_workspace_dir_str: str):
     return result
 
 
+@lru_cache
+def _b_kg_index(index_cache_dir_str: str, token_chunk_limit: int, embed_model_name: str):
+    """Condition B's KG-answer index (llm/b_rag/kg_corpus.py), loaded once
+    per backend process: IndexFlatIP over every KG answer (~1.1GB) + id
+    arrays; text stays in kg_answers.parquet (DuckDB lookup per query).
+    Built offline by llm/b_rag/build_kg_answer_index.py -- never here, and
+    nothing on this path touches Neo4j. Cleared by release_faiss_cache()."""
+    from llm.b_rag.kg_corpus import load_kg_answer_index
+
+    before = _process_memory_mb()
+    kg = load_kg_answer_index(index_cache_dir_str, token_chunk_limit, embed_model_name, log=print)
+    after = _process_memory_mb()
+    if before is not None and after is not None:
+        print(f"      [b-kg-index] RSS {before:.0f} -> {after:.0f} MB (+{after - before:.0f} MB)")
+    return kg
+
+
 def release_faiss_cache() -> dict[str, Any]:
     """Clears the @lru_cache on _faiss_cache() -- the NEXT Condition C/D run
     re-reads the FAISS index + embedding memmap from disk (a few seconds)
@@ -295,6 +312,7 @@ def release_faiss_cache() -> dict[str, Any]:
     (e.g. a big judge batch) without restarting the whole backend."""
     before = _process_memory_mb()
     _faiss_cache.cache_clear()
+    _b_kg_index.cache_clear()
     after = _process_memory_mb()
     return {
         "released": True,
@@ -687,9 +705,12 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
 
 def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
     """Batch or single-question run of Condition B (dense RAG). Same shape as
-    run_condition_a, plus building/loading the flat FAISS retrieval corpus
-    (llm/b_rag/index_cache/), reusing build_retrieval_corpus/chunk_corpus/
-    build_or_load_faiss_index exactly as the CLI does.
+    run_condition_a, plus the FAISS retrieval corpus (llm/b_rag/index_cache/):
+    params["corpus"] = "kg_answers" (default) loads the prebuilt KG-answer
+    index (_b_kg_index; leakage exclusion per query inside process_sample,
+    no Neo4j); "legacy_sample" rebuilds/loads the old pilot index via
+    build_retrieval_corpus/chunk_corpus/build_or_load_faiss_index exactly
+    as the CLI does.
     """
     cond = _condition_b_module()
     run_started_at = datetime.now(timezone.utc)
@@ -698,6 +719,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
     provider = params["provider"]
     model = params["model"]
     top_k = int(params.get("top_k") or 5)
+    corpus = params.get("corpus") or cond.CORPUS_KG
     index_pool = 8000
     token_chunk_limit = 400
     embed_model_name = "all-MiniLM-L6-v2"
@@ -730,7 +752,8 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             output_path = Path("results") / f"condition_b_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
             seed = 42
-            config = cond.build_config(provider, model, 1, seed, None, top_k, require_citation, require_grounding)
+            config = cond.build_config(provider, model, 1, seed, None, top_k, require_citation, require_grounding,
+                                        corpus=corpus, token_chunk_limit=token_chunk_limit)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -746,11 +769,13 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
             config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
-                                        require_citation, require_grounding)
+                                        require_citation, require_grounding,
+                                        corpus=corpus, token_chunk_limit=token_chunk_limit)
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed,
                 require_citation=require_citation, require_grounding=require_grounding,
                 oversample_pool=oversample_pool, top_k=top_k,
+                corpus=corpus, token_chunk_limit=token_chunk_limit,
             )
 
         config_hash = _compute_config_hash(config)
@@ -760,17 +785,25 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
 
         run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
 
-        eval_question_ids = sample_df["Id"].astype(int).tolist()
-        corpus_df = cond.build_retrieval_corpus(
-            con, _questions_parquet(), _answers_parquet(),
-            index_pool, seed, eval_question_ids, accepted_ids,
-        )
-        chunk_df = cond.chunk_corpus(corpus_df, token_chunk_limit)
-        embed_model = _embed_model()
         index_cache_dir = REPO_ROOT / "llm" / "b_rag" / "index_cache"
-        index, meta_df = cond.build_or_load_faiss_index(
-            chunk_df, embed_model, index_cache_dir, index_pool, token_chunk_limit, embed_model_name, rebuild=False,
-        )
+        corpus_meta: dict[str, Any] = {}
+        if corpus == cond.CORPUS_KG:
+            embed_model = _embed_model()
+            index = _b_kg_index(str(index_cache_dir), token_chunk_limit, embed_model_name)
+            meta_df = None
+            corpus_meta = {"corpus_cache_key": index.cache_key, "corpus_ids_sha256": index.manifest["ids_sha256"],
+                           "corpus_n_vectors": index.ntotal}
+        else:
+            eval_question_ids = sample_df["Id"].astype(int).tolist()
+            corpus_df = cond.build_retrieval_corpus(
+                con, _questions_parquet(), _answers_parquet(),
+                index_pool, seed, eval_question_ids, accepted_ids,
+            )
+            chunk_df = cond.chunk_corpus(corpus_df, token_chunk_limit)
+            embed_model = _embed_model()
+            index, meta_df = cond.build_or_load_faiss_index(
+                chunk_df, embed_model, index_cache_dir, index_pool, token_chunk_limit, embed_model_name, rebuild=False,
+            )
 
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, top_k, model, output_path, already_done,
@@ -826,7 +859,9 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             "grounding": (("on" if require_grounding else "off") if require_citation else None),
             "config_hash": config_hash,
             "log_full_candidates": log_full_candidates,
-            "index_pool": index_pool,
+            "corpus": corpus,
+            **corpus_meta,
+            "index_pool": index_pool if corpus == cond.CORPUS_LEGACY else None,
             "top_k": top_k,
             "output_path": str(output_path),
             "log_path": str(run_log_path),

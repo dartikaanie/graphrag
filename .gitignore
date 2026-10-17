@@ -49,3 +49,12 @@ Icon?
 # see llm/c_graphrag/embedding_cache.py) and retrieval-only resume sidecars
 embedding_cache.sqlite3*
 *.resume.json
+
+# Condition B KG-answer corpus (llm/b_rag/build_kg_answer_index.py) -- parquet
+# export, embedding memmaps, FAISS index + meta, checkpoints and build log.
+# Large, rebuilt locally; never committed. (The legacy idx*_tok400 pilot
+# index files already tracked under index_cache/ are left as they are.)
+llm/b_rag/index_cache/kg_answers_*/
+llm/b_rag/index_cache/**/*.parquet
+llm/b_rag/index_cache/**/*.f32
+llm/b_rag/index_cache/**/*.i64

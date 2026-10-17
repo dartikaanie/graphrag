@@ -60,7 +60,9 @@ def calibration_runs() -> list[dict]:
 
     common = ["--provider", PROVIDER, "--model", MODEL, "--n-sample", str(N_DEV), "--seed", str(SEED),
               "--oversample-pool", str(OVERSAMPLE_POOL), "--sample-split", "dev", "--dev-offset", str(DEV_OFFSET)]
-    b_common = common + ["--top-k", str(B_TOP_K), "--index-pool", str(B_INDEX_POOL),
+    # The calibration batch ran on B's legacy 8,000-answer index (before the KG
+    # corpus, reports/b_corpus_parity.md) -- pinned so this keeps describing it.
+    b_common = common + ["--corpus", "legacy_sample", "--top-k", str(B_TOP_K), "--index-pool", str(B_INDEX_POOL),
                          "--token-chunk-limit", str(B_TOKEN_CHUNK_LIMIT), "--require-citation"]
     runs = [{
         "run_label": "A [dev]", "condition": "A", "cwd": A_DIR, "script": "a_baseline_replication.py", "args": common,
@@ -74,10 +76,11 @@ def calibration_runs() -> list[dict]:
             "run_label": label, "condition": "B", "cwd": B_DIR, "script": "b_condition_b_rag.py",
             "args": b_common + ["--require-grounding" if grounding else "--no-require-grounding"],
             "output_path": B_DIR / b.build_output_path("results", PROVIDER, MODEL, N_DEV, SEED, True, grounding,
-                                                       OVERSAMPLE_POOL, B_TOP_K, "dev"),
-            "config": b.build_config(PROVIDER, MODEL, N_DEV, SEED, OVERSAMPLE_POOL, B_TOP_K, True, grounding, "dev"),
+                                                       OVERSAMPLE_POOL, B_TOP_K, "dev", corpus="legacy_sample"),
+            "config": b.build_config(PROVIDER, MODEL, N_DEV, SEED, OVERSAMPLE_POOL, B_TOP_K, True, grounding, "dev",
+                                     corpus="legacy_sample"),
             "pilot_file": B_DIR / b.build_output_path("results", PROVIDER, MODEL, 10, SEED, True, grounding,
-                                                      OVERSAMPLE_POOL, B_TOP_K),
+                                                      OVERSAMPLE_POOL, B_TOP_K, corpus="legacy_sample"),
         })
     for r in runs:
         r["config_hash"] = compute_config_hash(r["config"])

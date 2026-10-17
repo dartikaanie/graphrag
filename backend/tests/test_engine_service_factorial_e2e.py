@@ -188,9 +188,24 @@ def test_condition_a_pilot_config_produces_records_history_and_manifest(common_p
     _run_and_collect(params, engine_service.run_condition_a, cond, "A", stale_path=stale_path)
 
 
+class FakeKGIndex(engine_service._condition_b_module().KGAnswerIndex):
+    """Stands in for the prebuilt KG-answer index -- no files, no Neo4j."""
+
+    cache_key = "kg_answers_v1_tok400_all-MiniLM-L6-v2_fake"
+    manifest = {"ids_sha256": "0" * 64}
+    ntotal = 0
+
+    def __init__(self):
+        pass
+
+    def thread_answer_ids(self, question_ids):
+        return {}
+
+
+@pytest.mark.parametrize("corpus", ["kg_answers", "legacy_sample"])
 @pytest.mark.parametrize("require_grounding,run_label", [(False, "B-plain"), (True, "B-grounded")])
 def test_condition_b_pilot_configs_produce_records_history_and_manifest(
-    common_patches, monkeypatch, require_grounding, run_label,
+    common_patches, monkeypatch, require_grounding, run_label, corpus,
 ):
     tmp_path = common_patches
     cond = engine_service._condition_b_module()
@@ -200,9 +215,12 @@ def test_condition_b_pilot_configs_produce_records_history_and_manifest(
     monkeypatch.setattr(cond, "chunk_corpus", lambda *a, **k: pd.DataFrame())
     monkeypatch.setattr(cond, "build_or_load_faiss_index", lambda *a, **k: (None, pd.DataFrame()))
     monkeypatch.setattr(cond, "retrieve_context", lambda *a, **k: [])
+    monkeypatch.setattr(engine_service, "_b_kg_index", lambda *a, **k: FakeKGIndex())
+    monkeypatch.setattr(cond, "encode_query", lambda *a, **k: np.zeros((1, 3), dtype="float32"))
+    monkeypatch.setattr(cond, "retrieve_context_kg", lambda *a, **k: [])
 
     params = {"condition": "B", "mode": "batch", "provider": "openai", "model": "gpt-4o-mini",
-              "n_sample": 2, "seed": 42, "top_k": 5,
+              "n_sample": 2, "seed": 42, "top_k": 5, "corpus": corpus,
               "require_citation": True, "require_grounding": require_grounding}
     # Pre-fix, B's filename never encoded grounding at all -- both B-plain
     # and B-grounded shared this SAME stale name (the structural half of

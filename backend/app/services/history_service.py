@@ -309,6 +309,11 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
             # regardless of what was actually used.
             "log_full_candidates": record.get("log_full_candidates"),
             "index_pool": record.get("index_pool"),
+            # Condition B retrieval corpus (reports/b_corpus_parity.md): "kg_answers"
+            # or "legacy_sample"; absent on runs from before the KG corpus existed
+            # (all of them legacy_sample).
+            "corpus": record.get("corpus"),
+            "corpus_cache_key": record.get("corpus_cache_key"),
             "fusion_mode": record.get("fusion_mode"),
             "fusion_w_path_trust": record.get("fusion_w_path_trust"),
             "fusion_w_intrinsic": record.get("fusion_w_answer_intrinsic_trust"),
