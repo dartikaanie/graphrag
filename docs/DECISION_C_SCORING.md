@@ -422,6 +422,37 @@ Ranking: 0.5, 0.25, 0.0, 0.75, 1.0 → `top_two` = [0.5, 0.25]. α = 1 does not 
 
 ---
 
+## Amendment 7 (2026-10-17): corpus and query-text parity of Condition B with Condition C
+
+**Status: confirmed by the author.** Written after stage 1 and before stage 2 and the official evaluation on the test sample (n = 384). This change does not touch the test sample; the only new run is Condition B on the dev split (positions 385–419, n = 35). Earlier pilots that used some test items have been archived and are not used as the basis for any decision, including this one. Technical details are in `reports/b_corpus_parity.md`.
+
+### Finding
+- Condition B built its FAISS index from a **random sample of 8,000 answers** (`INDEX_POOL`) from the parquet. Condition C reaches **all 725,795 Answer nodes** in the Neo4j KG (`graphrag`). B therefore saw only about 1.1% of the answers C can reach.
+- B's query text (`f"{Title}\n{Body}"`, full body) differed from C's (`f"{Title} {str(Body)[:1000]}"`, the same text `11_densify_embedding_similarity.py` encodes).
+- As a result, differences in results between B and C could be caused by corpus size or by different query input, not by the graph structure and trust-weighting under test. This is a threat to the validity of the comparison, not a finding from hallucination results.
+
+### Decision
+1. **B's corpus = all Answer nodes of the same KG as C** (725,795 answers; every answer has exactly one parent Question via `HAS_ANSWER`/`HAS_ACCEPTED_ANSWER`; 0 orphan answers, 0 with two parents).
+2. **Answer text representation identical to C**: one vector per answer, text `Q: <parent question title>\nA: <answer body>` cut to 400 cl100k_base tokens with the same truncation function as C (moved unchanged to `llm/common/text.py`). No multi-chunking.
+3. **Query text identical to C**: `build_query_text(title, body) = f"{title} {str(body)[:1000]}"`, one shared function for B and C. B's query vector equals C's within a tolerance of 1e-6 (maximum measured difference 1.8e-7 over 35 dev questions).
+4. **Neo4j is only an offline export source.** `build_kg_answer_index.py --stage export` reads Neo4j once (read-only) and writes `kg_answers.parquet`. At runtime, Condition B **does not access Neo4j at all**: retrieval stays pure FAISS (`IndexFlatIP`, exact search, L2-normalised all-MiniLM-L6-v2 embeddings), text is taken from the parquet. B uses no graph, relations or trust.
+5. **B's leakage exclusion becomes per query**, the same as C: over-fetch, drop the question being answered together with every answer in its thread (and its accepted answer), then cut to `top_k`. Its definition is one shared function for B, C and D (`llm/common/leakage.py`), with a per-query assert: retrieval results ∩ exclusion set = ∅. The exclusion currently covers the question's own thread. Extending it to Duplicate and near-duplicate questions (and a Linked option) is decided separately in Amendment 8.
+6. **Condition C's behaviour does not change.** C is only switched to call the shared functions. C's retrieval on 12 dev questions × 4 configurations is identical to the snapshot taken before the refactor (ids, scores and hashes of the context text). Trust weights, α values and the Neo4j data are not changed.
+7. The old corpus is kept behind `--corpus legacy_sample`, only to reproduce the old pilot. KG-corpus runs have their own `config_hash` (`"corpus": "kg_answers_v1_tok400"`), so they are never mixed with old runs.
+
+### Unchanged
+Sampling and split, prompt (`PROMPT_VERSION` v3), generator model, `top_k = 5`, `TOKEN_CHUNK_LIMIT = 400`, embedding model, evaluation metrics, and all behaviour of Conditions A, C and D.
+
+The LLM-as-Judge calibration batch (`calibration_generate.py`) keeps using the `legacy_sample` corpus, because the batch and its annotations were already made with that corpus. Calibration tests the reliability of the judge, not the quality of B's retrieval, so the difference in corpus does not affect its validity.
+
+### Impact on pilot results
+The old B pilot results (n = 10, **test items**, 8,000-answer corpus) and the old B dev run (n = 50, 8,000-answer corpus) were produced with a different corpus and query text. Neither **can be compared directly** with new B runs or with C; both remain recorded as `legacy_sample` corpus results. The comparison of the new vs old dev run on the same 35 dev questions is reported in `reports/b_corpus_parity.md` §7 for information only, not as a basis for selection. All official B runs (n = 384) use the KG corpus.
+
+### Justification
+This is a correction of experimental-design validity (corpus and input parity between the compared conditions), decided on the structure of the pipeline, not on hallucination results. The change was made before the test sample was touched.
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 
