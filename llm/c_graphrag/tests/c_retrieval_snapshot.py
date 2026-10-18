@@ -43,7 +43,9 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def take_snapshot(n_dev: int = N_DEV) -> dict:
+def take_snapshot(n_dev: int = N_DEV, leakage_mode: str | None = None) -> dict:
+    """`leakage_mode` (llm/common/leakage.py): None = process_sample()'s
+    default (MODE_THREAD, the exclusion the fixture was taken with)."""
     for p in (REPO_ROOT, C_DIR):
         if str(p) not in sys.path:
             sys.path.insert(0, str(p))
@@ -68,6 +70,9 @@ def take_snapshot(n_dev: int = N_DEV) -> dict:
     driver, database = cg.connect_neo4j(lambda *a, **k: None)
     index, ids_arr, embeddings, id_to_row = cg.load_faiss_cache(Path(os.environ["KG_WORKSPACE_DIR"]), lambda *a, **k: None)
     model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+    from llm.common.leakage import LeakageContext
+
+    leakage = LeakageContext.from_mode(leakage_mode) if leakage_mode else None
 
     original_embed_query = cg.embed_query
     out = {"dev_question_ids": sample_df["Id"].astype(int).tolist(), "configs": {}}
@@ -88,7 +93,7 @@ def take_snapshot(n_dev: int = N_DEV) -> dict:
                     recs, _ = cg.process_sample(
                         sample_df[sample_df["Id"] == row["Id"]], None, None, model, driver, database,
                         index, ids_arr, embeddings, id_to_row if precomputed else {}, all_answer_ids_map,
-                        5, 3, 3, 400, "none", Path(tmp) / "out.jsonl", retrieval_only=True, **kwargs,
+                        5, 3, 3, 400, "none", Path(tmp) / "out.jsonl", retrieval_only=True, leakage=leakage, **kwargs,
                     )
                     records += recs
             out["configs"][label] = [{

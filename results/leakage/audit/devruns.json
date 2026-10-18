@@ -1,0 +1,110 @@
+{
+ "B_parity_thread": {
+  "file": "condition_b_openai_gpt-4o-mini_n35_seed42_plain_dev_v3_c8fb5cfbe0.jsonl",
+  "n": 35,
+  "id_self_retrieval_vs_thread": 0,
+  "id_self_retrieval_vs_dup+neardup0.95": 0,
+  "text_substring50": 7,
+  "text_cosine095": 0,
+  "cosine_mean": 0.5912,
+  "cosine_median": 0.6024,
+  "final_k_lt_k": 0,
+  "final_k_0": 0,
+  "latency_mean": 0.373,
+  "latency_p95": 0.541,
+  "pct_valid_citation": 74.3,
+  "leakage_modes": [
+   "thread (pre-Amendment 8 record)"
+  ]
+ },
+ "B_default": {
+  "file": "condition_b_openai_gpt-4o-mini_n35_seed42_plain_dev_v3_12fe4bd2bd.jsonl",
+  "n": 35,
+  "id_self_retrieval_vs_thread": 0,
+  "id_self_retrieval_vs_dup+neardup0.95": 0,
+  "text_substring50": 7,
+  "text_cosine095": 0,
+  "cosine_mean": 0.5866,
+  "cosine_median": 0.6108,
+  "final_k_lt_k": 0,
+  "final_k_0": 0,
+  "latency_mean": 1.114,
+  "latency_p95": 3.388,
+  "pct_valid_citation": 71.4,
+  "leakage_modes": [
+   "dup+neardup0.95"
+  ]
+ },
+ "C_thread": {
+  "file": "condition_c_openai_gpt-4o-mini_n35_seed42_fw0-7-0-3_v3-alpha0-5_dev_v3_0900a9c562.jsonl",
+  "n": 35,
+  "id_self_retrieval_vs_thread": 0,
+  "id_self_retrieval_vs_dup+neardup0.95": 0,
+  "text_substring50": 7,
+  "text_cosine095": 0,
+  "cosine_mean": 0.5762,
+  "cosine_median": 0.5821,
+  "final_k_lt_k": 3,
+  "final_k_0": 0,
+  "latency_mean": 0.625,
+  "latency_p95": 1.208,
+  "pct_valid_citation": 74.3,
+  "leakage_modes": [
+   "thread"
+  ]
+ },
+ "C_default": {
+  "file": "condition_c_openai_gpt-4o-mini_n35_seed42_fw0-7-0-3_v3-alpha0-5_dev_v3_b2e9be84c7.jsonl",
+  "n": 35,
+  "id_self_retrieval_vs_thread": 0,
+  "id_self_retrieval_vs_dup+neardup0.95": 0,
+  "text_substring50": 7,
+  "text_cosine095": 0,
+  "cosine_mean": 0.5847,
+  "cosine_median": 0.6085,
+  "final_k_lt_k": 3,
+  "final_k_0": 0,
+  "latency_mean": 0.765,
+  "latency_p95": 1.596,
+  "pct_valid_citation": 71.4,
+  "leakage_modes": [
+   "dup+neardup0.95"
+  ]
+ },
+ "D_thread": {
+  "file": "condition_d_openai_gpt-4o-mini_n35_seed42_grounded_dev_v3_5bce0893f4.jsonl",
+  "n": 35,
+  "id_self_retrieval_vs_thread": 0,
+  "id_self_retrieval_vs_dup+neardup0.95": 0,
+  "text_substring50": 4,
+  "text_cosine095": 0,
+  "cosine_mean": 0.5842,
+  "cosine_median": 0.6059,
+  "final_k_lt_k": 22,
+  "final_k_0": 0,
+  "latency_mean": 0.209,
+  "latency_p95": 0.33,
+  "pct_valid_citation": 54.3,
+  "leakage_modes": [
+   "thread"
+  ]
+ },
+ "D_default": {
+  "file": "condition_d_openai_gpt-4o-mini_n35_seed42_grounded_dev_v3_405b8ba0f3.jsonl",
+  "n": 35,
+  "id_self_retrieval_vs_thread": 0,
+  "id_self_retrieval_vs_dup+neardup0.95": 0,
+  "text_substring50": 4,
+  "text_cosine095": 0,
+  "cosine_mean": 0.5677,
+  "cosine_median": 0.5877,
+  "final_k_lt_k": 22,
+  "final_k_0": 0,
+  "latency_mean": 0.28,
+  "latency_p95": 0.543,
+  "pct_valid_citation": 54.3,
+  "leakage_modes": [
+   "dup+neardup0.95"
+  ]
+ }
+}

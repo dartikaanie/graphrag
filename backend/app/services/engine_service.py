@@ -182,7 +182,7 @@ def compute_run_config_hash(condition: str, params: dict[str, Any]) -> str:
         require_citation = bool(params.get("require_citation", True))
         require_grounding = bool(params.get("require_grounding", False))
         config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
-                                    require_citation, require_grounding)
+                                    require_citation, require_grounding, leakage_mode=_leakage_mode(params))
     elif condition == "C":
         cond = _condition_c_module()
         top_k = int(params.get("top_k") or 5)
@@ -198,7 +198,8 @@ def compute_run_config_hash(condition: str, params: dict[str, Any]) -> str:
         enable_semantic_expansion = True if enable_semantic_expansion is None else bool(enable_semantic_expansion)
         config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_anchor,
                                     n_semantic_expansion, fusion_mode, fusion_w_path_trust, fusion_w_intrinsic,
-                                    semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion)
+                                    semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion,
+                                    leakage_mode=_leakage_mode(params))
     elif condition == "D":
         cond = _condition_d_module()
         top_k = int(params.get("top_k") or 5)
@@ -207,7 +208,7 @@ def compute_run_config_hash(condition: str, params: dict[str, Any]) -> str:
         require_grounding = params.get("require_grounding")
         require_grounding = True if require_grounding is None else bool(require_grounding)
         config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
-                                    n_low_level, n_high_level, require_grounding)
+                                    n_low_level, n_high_level, require_grounding, leakage_mode=_leakage_mode(params))
     else:
         raise ValueError(f"Unknown condition '{condition}'")
 
@@ -300,6 +301,24 @@ def _b_kg_index(index_cache_dir_str: str, token_chunk_limit: int, embed_model_na
     if before is not None and after is not None:
         print(f"      [b-kg-index] RSS {before:.0f} -> {after:.0f} MB (+{after - before:.0f} MB)")
     return kg
+
+
+def _leakage_mode(params: dict[str, Any]) -> str:
+    """Leakage exclusion mode for a B/C/D run (llm/common/leakage.py):
+    params["leakage_mode"] if given, else LeakageSettings (LEAKAGE_* env /
+    .env; default "dup+neardup0.95")."""
+    from llm.common.leakage import LeakageSettings
+
+    return params.get("leakage_mode") or LeakageSettings().mode
+
+
+@lru_cache
+def _leakage_context(mode: str):
+    """LeakageContext for `mode` -- loads results/leakage/exclusion_sets.parquet
+    once per mode (small; no Neo4j)."""
+    from llm.common.leakage import LeakageContext
+
+    return LeakageContext.from_mode(mode)
 
 
 def release_faiss_cache() -> dict[str, Any]:
@@ -737,6 +756,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
     # _read_already_done() below).
     require_citation = bool(params.get("require_citation", True))
     require_grounding = bool(params.get("require_grounding", False))
+    leakage_mode = _leakage_mode(params)
 
     run_log_path = _run_log_path("b_rag", run_id)
     log = _make_run_logger(run_log_path)
@@ -753,7 +773,8 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             output_path = Path("results") / f"condition_b_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
             seed = 42
             config = cond.build_config(provider, model, 1, seed, None, top_k, require_citation, require_grounding,
-                                        corpus=corpus, token_chunk_limit=token_chunk_limit)
+                                        corpus=corpus, token_chunk_limit=token_chunk_limit,
+                                        leakage_mode=leakage_mode)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -770,12 +791,13 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
             config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
                                         require_citation, require_grounding,
-                                        corpus=corpus, token_chunk_limit=token_chunk_limit)
+                                        corpus=corpus, token_chunk_limit=token_chunk_limit,
+                                        leakage_mode=leakage_mode)
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed,
                 require_citation=require_citation, require_grounding=require_grounding,
                 oversample_pool=oversample_pool, top_k=top_k,
-                corpus=corpus, token_chunk_limit=token_chunk_limit,
+                corpus=corpus, token_chunk_limit=token_chunk_limit, leakage_mode=leakage_mode,
             )
 
         config_hash = _compute_config_hash(config)
@@ -810,7 +832,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
             require_citation=require_citation, require_grounding=require_grounding,
             log_full_candidates=log_full_candidates,
-            config=config, config_hash=config_hash,
+            config=config, config_hash=config_hash, leakage=_leakage_context(leakage_mode),
         )
 
         cancelled = run_registry.is_cancelled(run_id)
@@ -860,6 +882,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             "config_hash": config_hash,
             "log_full_candidates": log_full_candidates,
             "corpus": corpus,
+            "leakage_mode": leakage_mode,
             **corpus_meta,
             "index_pool": index_pool if corpus == cond.CORPUS_LEGACY else None,
             "top_k": top_k,
@@ -911,6 +934,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     semantic_expansion_trust_cap = float(params.get("semantic_expansion_trust_cap") if params.get("semantic_expansion_trust_cap") is not None else 0.4)
     require_grounding = params.get("require_grounding")
     require_grounding = True if require_grounding is None else bool(require_grounding)
+    leakage_mode = _leakage_mode(params)
     enable_semantic_expansion = params.get("enable_semantic_expansion")
     enable_semantic_expansion = True if enable_semantic_expansion is None else bool(enable_semantic_expansion)
     log_full_candidates = bool(params.get("log_full_candidates"))
@@ -943,7 +967,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
                                         semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion,
                                         c_retrieval_version=c_retrieval_version, alpha=alpha,
                                         sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
-                                        use_author_trust=use_author_trust, accepted_only=accepted_only)
+                                        use_author_trust=use_author_trust, accepted_only=accepted_only,
+                                        leakage_mode=leakage_mode)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -966,7 +991,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
                                         semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion,
                                         c_retrieval_version=c_retrieval_version, alpha=alpha,
                                         sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
-                                        use_author_trust=use_author_trust, accepted_only=accepted_only)
+                                        use_author_trust=use_author_trust, accepted_only=accepted_only,
+                                        leakage_mode=leakage_mode)
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed,
                 fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
@@ -1008,6 +1034,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             config=config, config_hash=config_hash,
             c_retrieval_version=c_retrieval_version, alpha=alpha, max_hops=max_hops, edge_types=edge_types,
             use_author_trust=use_author_trust, accepted_only=accepted_only,
+            leakage=_leakage_context(leakage_mode),
         )
 
         cancelled = run_registry.is_cancelled(run_id) or stats["interrupted"]
@@ -1039,7 +1066,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "sample_split": sample_split,
             "max_hops": max_hops,
             "edge_types": list(edge_types) if edge_types else None,
-            "use_author_trust": use_author_trust,
+            "use_author_trust": use_author_trust, "leakage_mode": leakage_mode,
             "accepted_only": accepted_only,
             "run_started_at": run_started_at.isoformat(),
             "condition": "C",
@@ -1114,6 +1141,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
     n_high_level = int(params.get("n_high_level") or 3)
     require_grounding = params.get("require_grounding")
     require_grounding = True if require_grounding is None else bool(require_grounding)
+    leakage_mode = _leakage_mode(params)
     token_chunk_limit = 400
     oversample_pool: int | None = None
     n_candidates_after_token_filter: int | None = None
@@ -1131,7 +1159,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             sample_df = _build_single_question_df(int(params["question_id"]), _condition_a_module())
             output_path = Path("results") / f"condition_d_{provider}_{_safe_model_name(model)}_single_{params['question_id']}_{run_id}.jsonl"
             config = cond.build_config(provider, model, 1, 42, None, top_k, n_low_level, n_high_level,
-                                        require_grounding)
+                                        require_grounding, leakage_mode=leakage_mode)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -1147,10 +1175,11 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
             sample_df = sample_df.dropna(subset=["AcceptedAnswerBody"]).reset_index(drop=True)
             config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k,
-                                        n_low_level, n_high_level, require_grounding)
+                                        n_low_level, n_high_level, require_grounding, leakage_mode=leakage_mode)
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed, require_grounding=require_grounding,
                 oversample_pool=oversample_pool, top_k=top_k, n_low_level=n_low_level, n_high_level=n_high_level,
+                leakage_mode=leakage_mode,
             )
 
         config_hash = _compute_config_hash(config)
@@ -1174,7 +1203,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             top_k, n_low_level, n_high_level, token_chunk_limit, model, output_path, already_done,
             require_grounding=require_grounding,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
-            config=config, config_hash=config_hash,
+            config=config, config_hash=config_hash, leakage=_leakage_context(leakage_mode),
         )
 
         cancelled = run_registry.is_cancelled(run_id) or stats["interrupted"]
@@ -1213,7 +1242,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             "n_candidates_after_token_filter": n_candidates_after_token_filter,
             "top_k": top_k,
             "n_low_level": n_low_level,
-            "n_high_level": n_high_level,
+            "n_high_level": n_high_level, "leakage_mode": leakage_mode,
             "require_grounding": require_grounding,
             "grounding": "on" if require_grounding else "off",
             "config_hash": config_hash,

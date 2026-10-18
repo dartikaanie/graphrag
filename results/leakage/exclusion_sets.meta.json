@@ -1,0 +1,25 @@
+{
+  "modes": [
+    "thread",
+    "dup",
+    "dup+neardup0.95",
+    "dup+linked+neardup0.95"
+  ],
+  "n_questions": 1471,
+  "n_pool": 1471,
+  "pool": {
+    "oversample_pool": 1536,
+    "seed": 42,
+    "sampler": "get_candidate_questions + filter_by_token_limit"
+  },
+  "near_dup": {
+    "top_n": 100,
+    "nprobe": 32,
+    "index": "question_embeddings_ivf.faiss (C)",
+    "rescored": "exact inner product of stored L2-normalized vectors"
+  },
+  "neo4j_database": "graphrag",
+  "sha256": "d2eeb0a08e08a9d7decff0b665b5f58fb5536b4d1bcf797be1dcdd7aa7ae7a3d",
+  "built_at_utc": "2026-10-17T23:55:08+00:00",
+  "duration_sec": 314.1
+}

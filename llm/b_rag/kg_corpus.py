@@ -176,25 +176,31 @@ class KGAnswerIndex:
             out[int(q)].append(int(a))
         return out
 
-    def search(self, query_emb: np.ndarray, top_k: int, exclusion=None) -> list[tuple[int, float]]:
+    def search(self, query_emb: np.ndarray, top_k: int, exclusion=None, stats: dict | None = None) -> list[tuple[int, float]]:
         """Top-k (row, score) with the exclusion applied BEFORE the cut:
-        over-fetch top_k + |excluded answers| + 5 (an excluded hit is one
-        of the thread's answers, so at most that many can be dropped),
-        widen further if needed, filter, cut to top_k."""
+        over-fetch top_k + |excluded answers| + 5 (every answer of every
+        excluded question is in exclusion.answer_ids, so at most that many
+        hits can be dropped), widen further if needed, filter, cut to top_k.
+        Fewer than top_k only if the whole corpus runs out. `stats`
+        (optional): stats["n_hits_filtered"] = hits dropped by the exclusion
+        in the pass that produced the result."""
         n_excl = len(exclusion.answer_ids) if exclusion is not None else 0
         fetch = min(self.ntotal, top_k + n_excl + 5)
         while True:
             scores, rows = self.index.search(np.ascontiguousarray(query_emb, dtype="float32"), fetch)
-            kept = []
+            kept, dropped = [], 0
             for score, row in zip(scores[0], rows[0]):
                 if row == -1:
                     continue
                 if exclusion is not None and exclusion.excludes(self.question_ids[row], self.answer_ids[row]):
+                    dropped += 1
                     continue
                 kept.append((int(row), float(score)))
                 if len(kept) >= top_k:
-                    return kept
-            if fetch >= self.ntotal:
+                    break
+            if stats is not None:
+                stats["n_hits_filtered"] = dropped
+            if len(kept) >= top_k or fetch >= self.ntotal:
                 return kept
             fetch = min(self.ntotal, fetch * 2)
 

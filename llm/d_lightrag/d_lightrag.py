@@ -164,7 +164,8 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
-from llm.common.leakage import build_exclusion
+from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, add_leakage_arguments,  # noqa: F401
+                                assert_no_leakage, build_exclusion, config_leakage_key, leakage_mode_from_args)
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_lightrag_messages
 
@@ -356,9 +357,10 @@ def embed_query(text: str, sbert_model) -> np.ndarray:
 # ---------------------------------------------------------------------
 
 def anchor_via_vector_search(query_emb: np.ndarray, index, ids_arr: np.ndarray,
-                              top_n: int, exclude_ids: set) -> list:
+                              top_n: int, exclude_ids: set, stats: dict | None = None) -> list:
     """Cari top_n Question id paling mirip via FAISS, EXCLUDE eval
-    question's own id (leakage prevention #1)."""
+    question's own id (leakage prevention #1). `stats` (opsional): hitung
+    hit yang dibuang karena exclusion -- tidak mengubah hasil."""
     search_n = top_n + len(exclude_ids) + 5
     scores, indices = index.search(query_emb, search_n)
     results = []
@@ -367,6 +369,8 @@ def anchor_via_vector_search(query_emb: np.ndarray, index, ids_arr: np.ndarray,
             continue
         qid = int(ids_arr[idx])
         if qid in exclude_ids:
+            if stats is not None:
+                stats["n_hits_filtered"] = stats.get("n_hits_filtered", 0) + 1
             continue
         results.append((qid, float(score)))
         if len(results) >= top_n:
@@ -561,6 +565,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     model: str, output_path: Path, already_done: set | None = None,
                     on_progress=None, check_cancel=None, require_grounding: bool = True,
                     config: dict | None = None, config_hash: str | None = None,
+                    leakage: LeakageContext | None = None, retrieval_only: bool = False,
                     ) -> tuple[list[dict], dict]:
     """Pola SAMA PERSIS process_sample() Kondisi C: retrieval (dual-level, bukan
     trust-weighted) + prompt (grounded/ungrounded sesuai require_grounding) +
@@ -569,8 +574,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
     Return (results, stats). `on_progress(dict)` / `check_cancel()` opsional,
     dipakai dashboard backend (engine_service.run_condition_d).
+
+    `leakage` (llm/common/leakage.py): mode + tabel exclusion; None = MODE_THREAD
+    (exclusion semua run sebelum Amendment 8). `retrieval_only`: tanpa LLM,
+    record retrieval saja (audit leakage), pola sama dgn Kondisi C.
     """
     already_done = already_done or set()
+    leakage = leakage or LEGACY_CONTEXT
     total = len(sample_df)
     results = []
     n_no_context = 0
@@ -592,7 +602,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 t_query_start = time.time()
 
                 # llm/common/leakage.py -- satu definisi exclusion utk B, C, D
-                exclusion = build_exclusion(qid, all_answer_ids_map.get(qid, []), row["AcceptedAnswerId"])
+                exclusion = leakage.exclusion_for(qid, all_answer_ids_map.get(qid, []), row["AcceptedAnswerId"])
+                leak_stats: dict = {"n_hits_filtered": 0}
                 exclude_question_ids = set(exclusion.question_ids)
                 exclude_answer_ids = set(exclusion.answer_ids)
 
@@ -606,7 +617,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 # --- Entity Anchoring (dipakai ulang sbg titik masuk keduanya) ---
                 anchors = anchor_via_vector_search(
                     query_emb, faiss_index, faiss_ids, max(n_low_level, n_high_level),
-                    exclude_question_ids,
+                    exclude_question_ids, stats=leak_stats,
                 )
 
                 # --- Low-level retrieval ---
@@ -626,6 +637,28 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 retrieval_latency = time.time() - t_query_start
                 if not retrieved:
                     n_no_context += 1
+                if leakage.active:
+                    assert_no_leakage(retrieved, exclusion)
+                # n_hits_filtered = anchor vector-search hits dropped by the exclusion
+                # (Cypher-level $exclude_q/$exclude_a filtering is not counted)
+                leakage_log = leakage.query_log(exclusion, leak_stats["n_hits_filtered"], len(retrieved))
+                log(f"      [leakage] Id={qid} " + " ".join(f"{k}={v}" for k, v in leakage_log.items()))
+
+                if retrieval_only:
+                    record = {
+                        "question_id": qid, "title": row["Title"], "tags": row["Tags"],
+                        "accepted_answer_id": int(row["AcceptedAnswerId"]),
+                        "retrieved_context": retrieved,
+                        "anchor_question_ids": [int(a) for a, _ in anchors],
+                        "n_low_level_candidates": len(low_level_candidates),
+                        "n_high_level_candidates": len(high_level_candidates),
+                        "retrieval_latency_sec": round(retrieval_latency, 3),
+                        "leakage": leakage_log, "config": config, "config_hash": config_hash,
+                    }
+                    results.append(record)
+                    f_out.write(json.dumps(record, default=str) + "\n")
+                    f_out.flush()
+                    continue
 
                 messages = build_lightrag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                                     require_grounding=require_grounding)
@@ -663,6 +696,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         {"question_id": int(aid), "similarity": round(float(score), 4)} for aid, score in anchors
                     ],
                     "prompt_messages": messages,
+                    "leakage": leakage_log,
                     "n_low_level_candidates": len(low_level_candidates),
                     "n_high_level_candidates": len(high_level_candidates),
                     # Actual number of context items sent to the LLM in this
@@ -737,22 +771,30 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 # ---------------------------------------------------------------------
 
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
-                  top_k: int, n_low_level: int, n_high_level: int, require_grounding: bool) -> dict:
+                  top_k: int, n_low_level: int, n_high_level: int, require_grounding: bool,
+                  sample_split: str = "test", leakage_mode: str = MODE_THREAD) -> dict:
     """The full set of parameters that affect Condition D's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists. Includes D_RETRIEVAL_VERSION since a retrieval
-    code fix changes answers just as much as a parameter does."""
-    return {
+    code fix changes answers just as much as a parameter does.
+
+    `sample_split` (only when not "test") and `leakage` (only when not
+    MODE_THREAD) are absent for every earlier run, so their hashes are unchanged."""
+    from llm.sample_split import add_split_to_config
+    config = {
         "condition": "D", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
         "oversample_pool": oversample_pool, "top_k": top_k, "n_low_level": n_low_level,
         "n_high_level": n_high_level, "require_grounding": require_grounding,
         "d_retrieval_version": D_RETRIEVAL_VERSION,
     }
+    config.update(config_leakage_key(leakage_mode))
+    return add_split_to_config(config, sample_split)
 
 
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
                        require_grounding: bool = True, oversample_pool: int | None = None,
-                       top_k: int = 5, n_low_level: int = 3, n_high_level: int = 3) -> Path:
+                       top_k: int = 5, n_low_level: int = 3, n_high_level: int = 3,
+                       sample_split: str = "test", leakage_mode: str = MODE_THREAD) -> Path:
     """Nama file menyertakan varian grounding supaya run grounded/ungrounded
     tidak saling menimpa file .jsonl satu sama lain -- plus prompt_version +
     config_hash (see llm.manifest.read_already_done's docstring for why --
@@ -760,10 +802,11 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     from llm.manifest import compute_config_hash
     safe_model = model.replace("/", "-").replace(":", "-").replace(".", "-")
     base = f"condition_d_{provider}_{safe_model}_n{n_sample}_seed{seed}"
-    suffix = "grounded" if require_grounding else "ungrounded"
+    from llm.sample_split import split_filename_tag
+    suffix = ("grounded" if require_grounding else "ungrounded") + split_filename_tag(sample_split)
     config_hash = compute_config_hash(
         build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_low_level,
-                     n_high_level, require_grounding)
+                     n_high_level, require_grounding, sample_split, leakage_mode)
     )
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
@@ -795,7 +838,13 @@ def main():
                          help="True (default): dual-constraint grounding+citation SAMA PERSIS Kondisi C. "
                               "False: hanya instruksi citation (identik Kondisi B require_citation=True), "
                               "TANPA instruksi grounding.")
+    parser.add_argument("--retrieval-only", action="store_true",
+                         help="Retrieval saja tanpa LLM (audit leakage) -- record retrieval per pertanyaan.")
+    from llm.sample_split import add_split_arguments
+    add_split_arguments(parser)
+    add_leakage_arguments(parser)
     args = parser.parse_args()
+    leakage_mode = leakage_mode_from_args(args)
 
     global log
     logger, log_path = setup_logging(args.provider, args.model)
@@ -816,7 +865,8 @@ def main():
         args.output = str(build_output_path(args.output_dir, args.provider, args.model,
                                              args.n_sample, args.seed, args.require_grounding,
                                              oversample_pool=oversample_pool, top_k=args.top_k,
-                                             n_low_level=args.n_low_level, n_high_level=args.n_high_level))
+                                             n_low_level=args.n_low_level, n_high_level=args.n_high_level,
+                                             sample_split=args.sample_split, leakage_mode=leakage_mode))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -839,7 +889,11 @@ def main():
     candidates = get_candidate_questions(con, args.questions_parquet, args.answers_parquet,
                                           oversample_pool, args.seed)
     candidates = filter_by_token_limit(candidates)
-    sample_df = sample_questions(candidates, args.n_sample, args.seed)
+    if args.sample_split == "test":
+        sample_df = sample_questions(candidates, args.n_sample, args.seed)
+    else:
+        from llm.sample_split import sample_questions_split
+        sample_df = sample_questions_split(candidates, args.n_sample, args.seed, args.sample_split, args.dev_offset)
 
     accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
     answers_df = get_accepted_answers(con, args.answers_parquet, accepted_ids)
@@ -859,8 +913,11 @@ def main():
 
     from llm.manifest import compute_config_hash
     config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool,
-                           args.top_k, args.n_low_level, args.n_high_level, args.require_grounding)
+                           args.top_k, args.n_low_level, args.n_high_level, args.require_grounding,
+                           args.sample_split, leakage_mode)
     config_hash = compute_config_hash(config)
+    leakage = LeakageContext.from_mode(leakage_mode)
+    log(f"[config] leakage mode = {leakage_mode}, sample_split = {args.sample_split}")
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     already_done = read_already_done(output_path, PROMPT_VERSION, config_hash)
@@ -876,9 +933,13 @@ def main():
         args.top_k, args.n_low_level, args.n_high_level, args.token_chunk_limit,
         args.model, output_path, already_done,
         require_grounding=args.require_grounding,
-        config=config, config_hash=config_hash,
+        config=config, config_hash=config_hash, leakage=leakage, retrieval_only=args.retrieval_only,
     )
     interrupted = stats["interrupted"]
+    if args.retrieval_only:
+        driver.close()
+        log(f"[retrieval-only] {len(results)} record retrieval -> {output_path}")
+        return
 
     driver.close()
     if interrupted:
@@ -893,6 +954,7 @@ def main():
         history_path = append_run_history({
             "prompt_version": PROMPT_VERSION,
             "d_retrieval_version": D_RETRIEVAL_VERSION,
+            "sample_split": args.sample_split, "leakage_mode": leakage_mode,
             "run_started_at": run_started_at.isoformat(), "condition": "D", "status": "no_results",
             "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
             "seed": args.seed, "output_path": str(output_path), "log_path": str(log_path),
@@ -903,7 +965,7 @@ def main():
             "duration_sec": round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1),
         })
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
-        run_label = "D-grounded" if args.require_grounding else "D-plain"
+        run_label = ("D-grounded" if args.require_grounding else "D-plain") + ("" if args.sample_split == "test" else f" [{args.sample_split}]")
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
             output_path, run_label=run_label, status="failed",
@@ -949,6 +1011,7 @@ def main():
     history_path = append_run_history({
         "prompt_version": PROMPT_VERSION,
         "d_retrieval_version": D_RETRIEVAL_VERSION,
+        "sample_split": args.sample_split, "leakage_mode": leakage_mode,
         "run_started_at": run_started_at.isoformat(), "condition": "D",
         "status": "interrupted" if interrupted else "success",
         "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
@@ -977,7 +1040,7 @@ def main():
     log(f"[logging] Ringkasan run dicatat -> {history_path}")
 
     finished_at = datetime.now(timezone.utc)
-    run_label = "D-grounded" if args.require_grounding else "D-plain"
+    run_label = ("D-grounded" if args.require_grounding else "D-plain") + ("" if args.sample_split == "test" else f" [{args.sample_split}]")
     manifest_path = write_manifest(
         output_path,
         run_label=run_label,

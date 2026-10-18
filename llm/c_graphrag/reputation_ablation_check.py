@@ -95,6 +95,8 @@ load_dotenv()
 import numpy as np  # noqa: E402
 
 import c_graphrag as cg  # noqa: E402
+from llm.common.leakage import build_exclusion  # noqa: E402
+from llm.common.text import build_query_text  # noqa: E402
 
 ALPHAS = (0.0, 0.25, 0.5, 0.75, 1.0)
 VARIANTS = ("base", "rep_in_trustscore", "author_switch")
@@ -252,13 +254,14 @@ def retrieve_candidates(row, faiss_index, faiss_ids, faiss_embeddings, id_to_row
     """Tahap a-c Kondisi C, PERSIS seperti process_sample() (default resmi:
     max_hops=2, semua edge type, semantic expansion aktif)."""
     qid = int(row["Id"])
-    exclude_q = {qid}
-    exclude_a = set(all_answer_ids_map.get(qid, []))
-    exclude_a.add(int(row["AcceptedAnswerId"]))
+    # shared exclusion (llm/common/leakage.py); thread-level, as this Amendment 5 check always ran
+    exclusion = build_exclusion(qid, all_answer_ids_map.get(qid, []), row["AcceptedAnswerId"])
+    exclude_q = set(exclusion.question_ids)
+    exclude_a = set(exclusion.answer_ids)
     if qid in id_to_row:
         query_emb = np.ascontiguousarray(faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1])
     else:
-        query_emb = cg.embed_query(f"{row['Title']} {str(row['Body'])[:1000]}", embed_model)
+        query_emb = cg.embed_query(build_query_text(row["Title"], row["Body"]), embed_model)
 
     anchors = cg.anchor_via_vector_search(query_emb, faiss_index, faiss_ids, n_anchor, exclude_q)
     anchor_ids = [a for a, _ in anchors]

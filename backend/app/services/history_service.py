@@ -314,6 +314,9 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
             # (all of them legacy_sample).
             "corpus": record.get("corpus"),
             "corpus_cache_key": record.get("corpus_cache_key"),
+            # per-query leakage exclusion mode (llm/common/leakage.py); absent on
+            # runs before Amendment 8, which all used the thread-level exclusion
+            "leakage_mode": record.get("leakage_mode"),
             "fusion_mode": record.get("fusion_mode"),
             "fusion_w_path_trust": record.get("fusion_w_path_trust"),
             "fusion_w_intrinsic": record.get("fusion_w_answer_intrinsic_trust"),
