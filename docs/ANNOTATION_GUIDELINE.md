@@ -1,9 +1,10 @@
 # Pedoman Anotasi: Halusinasi pada Jawaban Pertanyaan Pemrograman
 
 Pedoman ini dipakai untuk anotasi manusia pada set kalibrasi dan set konfirmasi
-(lihat `docs/DECISION_C_SCORING.md`, Amendment 4 dan Addendum-nya). Definisi di
-sini sama dengan definisi yang dipakai judge-v2.1. Semua contoh di pedoman ini
-adalah contoh buatan, bukan dari data penelitian.
+(lihat `docs/DECISION_C_SCORING.md`, Amendment 4 dan Addendum-nya, serta
+Amendment 11). Definisi di sini sama dengan definisi yang dipakai judge-v2.2.
+Semua contoh di pedoman ini adalah contoh buatan, bukan dari data penelitian.
+Urutan kerja praktisnya ada di `docs/ANNOTATION_QUICKSTART.md`.
 
 ## 1. Apa yang Anda kerjakan
 
@@ -15,18 +16,29 @@ Setiap baris di berkas anotasi berisi satu item:
 | `question` | Judul dan isi pertanyaan | Tidak |
 | `accepted_answer` | Jawaban yang diterima di Stack Overflow. Ini **referensi** Anda | Tidak |
 | `candidate_answer` | Jawaban yang dinilai | Tidak |
+| `context` | Potongan konteks yang diberikan kepada sistem, `[K1]` … `[K5]`. Kosong bila sistem tidak memakai konteks | Tidak |
+| `annotator_id` | Sudah terisi (mis. `annotator1`) | Tidak, kecuali Anda annotator lain |
 | `abstain` | `Y` atau `N` | Anda isi |
 | `hallucinated` | `Y` atau `N` | Anda isi |
 | `severity` | `PENUH` atau `SEBAGIAN` | Anda isi |
+| `wrong_claims` | Klaim yang salah beserta buktinya (Langkah 4) | Anda isi |
+| `faithfulness_level` | `all_supported`, `partly_supported`, atau `not_supported` (Langkah 5) | Anda isi |
+| `approach_match` | `same`, `different_valid`, atau `different_unassessable` (Langkah 6) | Anda isi |
+| `domain_familiarity` | `familiar` atau `not_familiar` (Langkah 7) | Anda isi |
+| `uncertain` | `Y` atau `N` (Langkah 7) | Anda isi |
 | `notes` | Catatan bebas | Anda isi |
 
 Anda tidak diberi tahu sistem mana yang menghasilkan jawaban kandidat. Penanda
-sitasi seperti `[SO-12345]` sudah dihapus dari jawaban kandidat; selain itu
-teksnya tidak diubah. Teks yang sangat panjang dipotong dan diberi tanda
-`[...truncated]`; nilai hanya bagian yang terlihat.
+sitasi seperti `[SO-12345]` sudah dihapus dari jawaban kandidat. Frasa yang
+menyebut "sumber" atau "konteks yang diberikan" sudah diganti dengan penanda
+netral `[catatan: informasi tidak tersedia]` atau dihapus (blind-v3); penanda
+ini bukan klaim. Selain itu teksnya tidak diubah. Teks yang sangat panjang
+dipotong dan diberi tanda `[...truncated]`; nilai hanya bagian yang terlihat.
 
-Kerjakan sendiri. Jangan berdiskusi dengan anotator lain sebelum semua item
-selesai diisi.
+Kerjakan sendiri. Bila ada anotator lain, jangan berdiskusi sebelum semua item
+selesai diisi. Untuk validasi dengan satu anotator, 20% item akan Anda nilai
+ulang dengan kode dan urutan baru, paling cepat 14 hari setelah lembar pertama
+selesai; jangan menyimpan catatan label lama untuk dibandingkan.
 
 ## 2. Standar penilaian
 
@@ -77,8 +89,9 @@ Apakah jawaban kandidat mencoba menjawab?
   masalah; mengulang pertanyaan; atau hanya memberi saran umum seperti "periksa
   dokumentasi". Ini berlaku walaupun jawabannya panjang.
 
-Jika `abstain = Y`, **kosongkan** `hallucinated` dan `severity`, lalu lanjut ke
-item berikutnya.
+Jika `abstain = Y`, **kosongkan** `hallucinated`, `severity`, `wrong_claims`,
+`faithfulness_level`, dan `approach_match`; isi hanya `domain_familiarity` dan
+`uncertain` (Langkah 7), lalu lanjut ke item berikutnya.
 
 ### Langkah 2: `hallucinated`
 
@@ -143,16 +156,74 @@ pilihan tambahan yang ditawarkan sebagai alternatif adalah `SEBAGIAN`.
 Jika ada beberapa klaim salah, pakai yang paling berat: satu kesalahan pada
 solusi utama sudah berarti `PENUH`.
 
+### Langkah 4: `wrong_claims`
+
+Wajib jika `hallucinated = Y`; kosong jika tidak. Tulis **setiap** klaim yang
+salah, satu per baris di dalam sel (Alt+Enter, atau Option+Enter di Mac):
+
+    jenis | klaim | bukti
+
+- `jenis`: `contradicted` (bertentangan dengan referensi atau fakta mapan) atau
+  `fabricated` (API, fungsi, parameter, opsi, atau pustaka yang tidak ada).
+- `klaim`: klaimnya, dengan keterangannya (versi, platform).
+- `bukti`: **URL** dokumentasi resmi, atau **kutipan dalam tanda petik** dari
+  referensi, thread, atau konteks (sebut `[Kn]` bila dari konteks).
+
+Baris dengan `hallucinated = Y` tanpa klaim berbukti ditolak saat berkas
+diperiksa.
+
+### Langkah 5: `faithfulness_level`
+
+Diisi hanya jika kolom `context` **tidak kosong** dan `abstain = N`. Kosongkan
+bila `context` kosong.
+
+Pertanyaannya: apakah klaim jawaban kandidat didukung oleh konteks `[K1]` …
+`[K5]`? Ini **bukan** soal benar atau salah terhadap referensi.
+
+- `all_supported`: semua klaim dinyatakan atau langsung tersirat oleh konteks.
+- `partly_supported`: sebagian klaim didukung konteks, sebagian tidak.
+- `not_supported`: tidak ada klaim yang didukung konteks.
+
+Klaim yang benar menurut referensi tetapi tidak ada di konteks tetap dihitung
+"tidak didukung konteks".
+
+### Langkah 6: `approach_match`
+
+Diisi jika `abstain = N`. Bandingkan **pendekatan** solusi kandidat dengan
+referensi:
+
+- `same`: pendekatan sama (perbaikan, API, atau teknik yang sama), walau
+  kata-kata atau rinciannya berbeda.
+- `different_valid`: pendekatan lain yang Anda yakin juga menyelesaikan masalah.
+- `different_unassessable`: pendekatan lain yang tidak bisa Anda nilai dengan
+  yakin.
+
+`approach_match` **tidak** memengaruhi `hallucinated`: pendekatan yang berbeda
+bukan kesalahan.
+
+### Langkah 7: `domain_familiarity` dan `uncertain`
+
+Selalu diisi, termasuk bila `abstain = Y`.
+
+- `domain_familiarity`: `familiar` jika Anda menguasai teknologi dalam
+  pertanyaan; `not_familiar` jika tidak. Ini dipakai untuk melaporkan
+  kesepakatan secara terpisah, bukan untuk menilai Anda.
+- `uncertain`: `Y` jika Anda ragu pada label baris ini (mis. buktinya tidak
+  tegas, atau keputusan referensi usang); tulis alasannya di `notes`. `N` jika
+  tidak ragu.
+
 ## 4. Ringkasan kombinasi yang sah
 
-| `abstain` | `hallucinated` | `severity` | Arti |
-|---|---|---|---|
-| `Y` | kosong | kosong | Tidak mencoba menjawab |
-| `N` | `N` | kosong | Menjawab, tanpa klaim yang salah |
-| `N` | `Y` | `PENUH` | Ada kesalahan pada solusi utama |
-| `N` | `Y` | `SEBAGIAN` | Kesalahan hanya pada detail sekunder |
+| `abstain` | `hallucinated` | `severity` | `wrong_claims` | Arti |
+|---|---|---|---|---|
+| `Y` | kosong | kosong | kosong | Tidak mencoba menjawab |
+| `N` | `N` | kosong | kosong | Menjawab, tanpa klaim yang salah |
+| `N` | `Y` | `PENUH` | ≥ 1 baris berbukti | Ada kesalahan pada solusi utama |
+| `N` | `Y` | `SEBAGIAN` | ≥ 1 baris berbukti | Kesalahan hanya pada detail sekunder |
 
-Kombinasi lain akan ditolak saat berkas diperiksa.
+Ditambah: `faithfulness_level` diisi hanya bila `context` tidak kosong dan
+`abstain = N`; `approach_match` diisi bila `abstain = N`; `domain_familiarity`
+dan `uncertain` selalu diisi. Kombinasi lain akan ditolak saat berkas diperiksa.
 
 ## 5. Contoh (buatan)
 
@@ -212,12 +283,12 @@ Referensi untuk L4: *Python tidak punya metode bawaan untuk ini. Periksa dengan
 
 ## 7. Hal praktis
 
-- Isi `abstain` untuk **semua** baris.
-- Gunakan pilihan pada sel (`Y`/`N`, `PENUH`/`SEBAGIAN`); jangan mengetik nilai
-  lain.
-- Jangan mengubah kolom `item_id`, `question`, `accepted_answer`, dan
-  `candidate_answer`. Perubahan pada kolom ini akan terdeteksi dan barisnya
-  ditolak.
+- Isi `abstain`, `domain_familiarity`, dan `uncertain` untuk **semua** baris.
+- Gunakan pilihan pada sel (`Y`/`N`, `PENUH`/`SEBAGIAN`, dan pilihan kolom
+  lain); jangan mengetik nilai lain.
+- Jangan mengubah kolom `item_id`, `question`, `accepted_answer`,
+  `candidate_answer`, dan `context`. Perubahan pada kolom ini akan terdeteksi
+  dan barisnya ditolak.
 - Pakai `notes` untuk hal yang perlu diketahui saat adjudikasi, misalnya klaim
   mana yang Anda anggap salah, atau keraguan Anda.
 - Simpan berkas dengan nama yang sama, dalam format `.xlsx`.
