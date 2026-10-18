@@ -1,8 +1,8 @@
 {
   "purpose": "calibration",
   "seed": 42,
-  "created_at_utc": "2026-10-13T13:56:15.280653+00:00",
-  "git_commit": "8e6f06ee0cb8e4857191a6aa4df96579f9a31a76",
+  "created_at_utc": "2026-10-18T19:32:06.897165+00:00",
+  "git_commit": "79b907c49db18458519677eb50b98e9f76c1dfc5",
   "n_items": 60,
   "n_items_annotator2": 30,
   "columns": [
@@ -10,24 +10,34 @@
     "question",
     "accepted_answer",
     "candidate_answer",
+    "context",
+    "annotator_id",
     "abstain",
     "hallucinated",
     "severity",
+    "wrong_claims",
+    "faithfulness_level",
+    "approach_match",
+    "domain_familiarity",
+    "uncertain",
     "notes"
   ],
   "key_file_name": "calibration_key_seed42.json",
-  "key_sha256": "802e59c941a3ab1e33a5a541cfdb48d72f3808981de86b46464193dfc8eaed09",
+  "key_sha256": "1eb982f1d7c5f33c0273ac0e96e9d79c265a8b399255b8437d2145f4493d6311",
   "key_location_note": "kept OUTSIDE the repository until adjudication is complete (Amendment 4 Addendum)",
   "blinding": {
+    "blinding_version": "blind-v3",
     "hidden": [
       "condition",
       "run_label",
       "run_id",
+      "model",
       "judge output"
     ],
     "citation_markers_stripped": true,
     "n_citation_markers_stripped": 47,
-    "citation_stripping": "judge_prompt_v1.blind_candidate (same as the judge input); text otherwise unchanged",
+    "candidate": "judge_prompt_v2_2.prepare_judge_input: blind-v3 (citation markers removed, RAG meta phrases normalised; judge_blinding.py), identical to the judge-v2.2 input",
+    "context": "[K1]..[K5] block as in the judge-v2.2 input (2500 chars per item); empty for condition A",
     "text_conversion": "html_to_text for question body and accepted answer; cut at 6000 chars, as the judge input"
   }
 }

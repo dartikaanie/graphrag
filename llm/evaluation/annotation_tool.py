@@ -16,10 +16,18 @@ Two purposes share one flow:
                   fixed 30-item subset (10 per condition, seed 42).
     confirmation  30 items stratified across the stage-2 run files given, seed 42; annotator 1 only.
 
-BLINDING. The XLSX files contain no condition, run label, or judge output. Annotators see exactly what
-the judge sees: question title + body, accepted answer, and the candidate answer with citation markers
-(e.g. [SO-12345]) stripped by judge_prompt_v1.blind_candidate (recorded in the export manifest); the
-text is otherwise unchanged (same HTML-to-text conversion and truncation as the judge's input).
+BLINDING (Amendment 11). The XLSX files contain no condition, run label, model or judge output.
+Annotators see exactly what judge-v2.2 sees, built by the same function (judge_prompt_v2_2.
+prepare_judge_input): question title + body, accepted answer, the candidate answer blinded with blind-v3
+(citation markers removed, RAG meta phrases normalised; judge_blinding.py), and the retrieval context as
+[K1]..[K5] (empty for condition A).
+
+SHEET (Amendment 11, single annotator + optional second one). Shown: item_id, question, accepted_answer,
+candidate_answer, context. Filled: annotator_id (prefilled with the sheet's annotator), abstain,
+hallucinated, severity, wrong_claims (one wrong claim per line: "<contradicted|fabricated> | <claim> |
+<evidence: a URL or a quoted passage>"), faithfulness_level (only when the context cell is not empty),
+approach_match, domain_familiarity, uncertain, notes. A row with hallucinated = Y and no wrong claim
+with evidence is rejected.
 
 KEY. item_id -> (question_id, run, condition, seed) is written OUTSIDE the repository (default
 ~/graphrag_annotation_keys/, see --key-dir / GRAPHRAG_ANNOTATION_KEY_DIR). Only its SHA-256 is stored in
@@ -47,6 +55,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from judge_blinding import BLINDING_VERSION  # noqa: E402
 from judge_binary import (  # noqa: E402
     CATEGORIES, CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED, CATEGORY_NOT_HALLUCINATED, agreement_report, category_of,
 )
@@ -67,11 +76,20 @@ PURPOSES = {
     "confirmation": {"prefix": "CONF", "n_per_stratum": None, "n_overlap_per_stratum": 0, "n_total": 30},
 }
 
-COLUMNS = ["item_id", "question", "accepted_answer", "candidate_answer", "abstain", "hallucinated", "severity", "notes"]
-TEXT_COLUMNS = ("question", "accepted_answer", "candidate_answer")
+SHOWN_COLUMNS = ["item_id", "question", "accepted_answer", "candidate_answer", "context"]
+FILL_COLUMNS = ["annotator_id", "abstain", "hallucinated", "severity", "wrong_claims", "faithfulness_level",
+                "approach_match", "domain_familiarity", "uncertain", "notes"]
+COLUMNS = SHOWN_COLUMNS + FILL_COLUMNS
+TEXT_COLUMNS = ("question", "accepted_answer", "candidate_answer", "context")
 LABEL_COLUMNS = ("abstain", "hallucinated", "severity")
 YES_NO = ("Y", "N")
 SEVERITIES = ("PENUH", "SEBAGIAN")
+WRONG_CLAIM_TYPES = ("contradicted", "fabricated")
+FAITHFULNESS_LEVELS = ("all_supported", "partly_supported", "not_supported")
+APPROACH_MATCH = ("same", "different_valid", "different_unassessable")
+FAMILIARITY = ("familiar", "not_familiar")
+_EVIDENCE_URL = re.compile(r"https?://\S+")
+_EVIDENCE_QUOTE = re.compile(r"[\"\u201c\u201d'].{5,}[\"\u201c\u201d']", re.DOTALL)
 MAX_CHARS_EACH = 6000  # same cut as judge_prompt_v2_1.build_messages
 _ILLEGAL_XLSX_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _CITATION_MARKER = re.compile(r"\[SO-[^\]]*\]")
@@ -94,18 +112,27 @@ def _xlsx_safe(s: str) -> str:
     return _ILLEGAL_XLSX_CHARS.sub("", s or "")
 
 
-def shown_texts(title: str, body_html: str, reference_html: str, candidate: str) -> dict:
-    """The three text cells. Same conversions as the judge input: html_to_text for the question body and
-    the accepted answer, blind_candidate (citation markers stripped) for the candidate, cut at 6000 chars."""
+def shown_texts(title: str, body_html: str, reference_html: str, candidate: str,
+                context_items: list | None = None, has_context: bool = False) -> dict:
+    """The text cells, identical to the judge-v2.2 input (judge_prompt_v2_2.prepare_judge_input):
+    html_to_text for the question body and the accepted answer, blind-v3 for the candidate, the [K1]..[K5]
+    context block (empty cell for condition A); cut at 6000 chars, context items at 2500 each."""
     from _judge_common import html_to_text
-    from judge_prompt_v1 import blind_candidate
+    from judge_prompt_v2_2 import prepare_judge_input
 
+    prepared = prepare_judge_input(candidate, context_items, has_context)
     body = html_to_text(body_html) if body_html else "[question body not found in parquet]"
     return {
         "question": _xlsx_safe(f"{title}\n\n{_cut(body)}"),
         "accepted_answer": _xlsx_safe(_cut(html_to_text(reference_html))),
-        "candidate_answer": _xlsx_safe(_cut(blind_candidate(candidate))),
+        "candidate_answer": _xlsx_safe(_cut(prepared["candidate_blind"])),
+        "context": _xlsx_safe(prepared["context_block"]) if has_context else "",
     }
+
+
+def _letter(column: str) -> str:
+    from openpyxl.utils import get_column_letter
+    return get_column_letter(COLUMNS.index(column) + 1)
 
 
 def text_sha256(text) -> str:
@@ -176,7 +203,7 @@ def annotator2_order(sampled: list[dict], purpose: str, seed: int = DEFAULT_SEED
 # XLSX writing / reading
 # ---------------------------------------------------------------------------
 
-def write_annotation_xlsx(path: Path, rows: list[dict]) -> None:
+def write_annotation_xlsx(path: Path, rows: list[dict], annotator_id: str = "annotator1") -> None:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.worksheet.datavalidation import DataValidation
@@ -186,21 +213,26 @@ def write_annotation_xlsx(path: Path, rows: list[dict]) -> None:
     ws.title = "anotasi"
     ws.append(COLUMNS)
     for r in rows:
-        ws.append([r["item_id"], r["question"], r["accepted_answer"], r["candidate_answer"], None, None, None, None])
+        ws.append([r[c] for c in SHOWN_COLUMNS] + [annotator_id] + [None] * (len(FILL_COLUMNS) - 1))
 
     for cell in ws[1]:
         cell.font = Font(bold=True)
         cell.fill = PatternFill("solid", fgColor="DDDDDD")
         cell.alignment = Alignment(wrap_text=True, vertical="top")
     ws.freeze_panes = "B2"
-    for col, width in zip("ABCDEFGH", (11, 60, 60, 60, 10, 13, 12, 32)):
-        ws.column_dimensions[col].width = width
+    widths = {"item_id": 11, "question": 55, "accepted_answer": 55, "candidate_answer": 55, "context": 55,
+              "annotator_id": 13, "wrong_claims": 50, "notes": 32}
+    for name in COLUMNS:
+        ws.column_dimensions[_letter(name)].width = widths.get(name, 16)
     for row in ws.iter_rows(min_row=2, max_row=len(rows) + 1):
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical="top")
 
     last = len(rows) + 1
-    for col, values in (("E", YES_NO), ("F", YES_NO), ("G", SEVERITIES)):
+    for name, values in (("abstain", YES_NO), ("hallucinated", YES_NO), ("severity", SEVERITIES),
+                         ("faithfulness_level", FAITHFULNESS_LEVELS), ("approach_match", APPROACH_MATCH),
+                         ("domain_familiarity", FAMILIARITY), ("uncertain", YES_NO)):
+        col = _letter(name)
         dv = DataValidation(type="list", formula1='"' + ",".join(values) + '"', allow_blank=True, showErrorMessage=True)
         dv.error, dv.errorTitle = f"Isi dengan salah satu: {', '.join(values)}", "Nilai tidak valid"
         ws.add_data_validation(dv)
@@ -209,13 +241,23 @@ def write_annotation_xlsx(path: Path, rows: list[dict]) -> None:
     info = wb.create_sheet("petunjuk")
     for line in (
         "Baca docs/ANNOTATION_GUIDELINE.md sebelum mulai.",
+        "Panduan singkat: docs/ANNOTATION_QUICKSTART.md.",
+        "annotator_id: sudah terisi; jangan diubah kecuali Anda annotator lain.",
         "abstain: Y jika jawaban kandidat tidak mencoba menjawab; N jika mencoba menjawab.",
         "hallucinated: isi HANYA jika abstain = N. Y jika ada >= 1 klaim yang bertentangan dengan referensi "
         "atau fakta mapan, atau yang dikarang (API/fungsi/opsi tidak ada). N jika tidak ada.",
         "severity: isi HANYA jika hallucinated = Y. PENUH jika kesalahan mengenai solusi utama; SEBAGIAN jika "
         "hanya detail sekunder.",
+        "wrong_claims: WAJIB jika hallucinated = Y, kosong jika tidak. Satu klaim salah per baris (Alt+Enter): "
+        "jenis | klaim | bukti. jenis = contradicted atau fabricated. bukti = URL dokumentasi, atau kutipan "
+        "dalam tanda petik dari thread/konteks (mis. \"[K2] ... teks ...\").",
+        "faithfulness_level: isi HANYA jika kolom context tidak kosong dan abstain = N: all_supported / "
+        "partly_supported / not_supported (klaim jawaban didukung konteks?).",
+        "approach_match: isi jika abstain = N: same / different_valid / different_unassessable.",
+        "domain_familiarity: selalu isi: familiar / not_familiar (keakraban Anda dengan topiknya).",
+        "uncertain: selalu isi: Y jika Anda ragu pada label baris ini, N jika tidak.",
         "notes: catatan bebas. Tulis 'referensi usang' bila memakai aturan referensi usang.",
-        "Jangan mengubah kolom item_id, question, accepted_answer, candidate_answer.",
+        "Jangan mengubah kolom item_id, question, accepted_answer, candidate_answer, context.",
     ):
         info.append([line])
     info.column_dimensions["A"].width = 120
@@ -230,11 +272,46 @@ def _norm_label(value) -> str | None:
     return v or None
 
 
+def _norm_choice(value) -> str | None:
+    if value is None:
+        return None
+    v = str(value).strip().lower()
+    return v or None
+
+
+def parse_wrong_claims(cell) -> tuple[list[dict], list[str]]:
+    """One wrong claim per non-empty line: "<contradicted|fabricated> | <claim> | <evidence>". Evidence is a
+    URL or a quoted passage (thread or context). Returns (claims, problems)."""
+    claims, problems = [], []
+    for n, line in enumerate(str(cell or "").splitlines(), start=1):
+        if not line.strip():
+            continue
+        parts = [x.strip() for x in line.split("|", 2)]
+        if len(parts) != 3:
+            problems.append(f"line {n}: expected 'type | claim | evidence', got {line.strip()[:60]!r}")
+            continue
+        kind, claim, evidence = parts[0].lower(), parts[1], parts[2]
+        if kind not in WRONG_CLAIM_TYPES:
+            problems.append(f"line {n}: type is {parts[0]!r}, must be contradicted or fabricated")
+        if not claim:
+            problems.append(f"line {n}: the claim is empty")
+        if not (_EVIDENCE_URL.search(evidence) or _EVIDENCE_QUOTE.search(evidence)):
+            problems.append(f"line {n}: evidence must be a URL or a quoted passage, got {evidence[:60]!r}")
+        claims.append({"type": kind, "claim": claim, "evidence": evidence})
+    return claims, problems
+
+
 def read_annotation_xlsx(path: Path) -> tuple[list[dict], list[str]]:
     """Reads a filled annotation sheet. Returns (rows, problems); every problem names its cell. Rules:
-      abstain      required, Y/N
-      hallucinated required iff abstain == N, Y/N; must be empty when abstain == Y
-      severity     required iff hallucinated == Y, PENUH/SEBAGIAN; must be empty otherwise
+      annotator_id        required
+      abstain             required, Y/N
+      hallucinated        required iff abstain == N, Y/N; empty when abstain == Y
+      severity            required iff hallucinated == Y, PENUH/SEBAGIAN; empty otherwise
+      wrong_claims        required iff hallucinated == Y: >= 1 line "type | claim | evidence" with evidence
+                          (URL or quoted passage); empty otherwise
+      faithfulness_level  required iff abstain == N and the context cell is not empty; empty otherwise
+      approach_match      required iff abstain == N; empty when abstain == Y
+      domain_familiarity  required; uncertain required (Y/N)
     A row with any problem has category None."""
     from openpyxl import load_workbook
 
@@ -242,12 +319,13 @@ def read_annotation_xlsx(path: Path) -> tuple[list[dict], list[str]]:
     header = [str(c.value).strip() if c.value is not None else "" for c in ws[1]]
     problems: list[str] = []
     if header[:len(COLUMNS)] != COLUMNS:
-        return [], [f"{path.name}: header row is {header}, expected {COLUMNS}"]
+        return [], [f"{path.name}: header row is {header}, expected {COLUMNS} (a sheet from an older export "
+                    f"cannot be read; re-export with the current format)"]
     col = {name: i for i, name in enumerate(COLUMNS)}
-    letter = {name: "ABCDEFGH"[i] for name, i in col.items()}
 
     rows, seen = [], set()
     for n, cells in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        cells = list(cells) + [None] * (len(COLUMNS) - len(cells))
         if all(v is None or str(v).strip() == "" for v in cells[:len(COLUMNS)]):
             continue
         item_id = str(cells[col["item_id"]] or "").strip()
@@ -258,27 +336,59 @@ def read_annotation_xlsx(path: Path) -> tuple[list[dict], list[str]]:
             problems.append(f"{path.name}!A{n}: duplicate item_id {item_id}")
         seen.add(item_id)
 
-        abstain, hall, sev = (_norm_label(cells[col[c]]) for c in LABEL_COLUMNS)
-        row_problems = []
+        def cell(name):
+            return cells[col[name]]
+
+        def bad(name, msg):
+            row_problems.append(f"{path.name}!{_letter(name)}{n} ({item_id}): {msg}")
+
+        row_problems: list[str] = []
+        annotator_id = str(cell("annotator_id") or "").strip()
+        abstain, hall, sev = (_norm_label(cell(c)) for c in LABEL_COLUMNS)
+        faith, approach, familiarity = (_norm_choice(cell(c)) for c in ("faithfulness_level", "approach_match",
+                                                                          "domain_familiarity"))
+        uncertain = _norm_label(cell("uncertain"))
+        has_context = bool(str(cell("context") or "").strip())
+        wrong_claims, wc_problems = parse_wrong_claims(cell("wrong_claims"))
+
+        if not annotator_id:
+            bad("annotator_id", "annotator_id is empty")
         if abstain not in YES_NO:
-            row_problems.append(f"{path.name}!{letter['abstain']}{n} ({item_id}): abstain is {abstain!r}, must be Y or N")
+            bad("abstain", f"abstain is {abstain!r}, must be Y or N")
         elif abstain == "Y":
-            if hall is not None:
-                row_problems.append(f"{path.name}!{letter['hallucinated']}{n} ({item_id}): hallucinated must be "
-                                    f"empty when abstain = Y (is {hall!r})")
-            if sev is not None:
-                row_problems.append(f"{path.name}!{letter['severity']}{n} ({item_id}): severity must be empty "
-                                    f"when abstain = Y (is {sev!r})")
+            for name, value in (("hallucinated", hall), ("severity", sev), ("faithfulness_level", faith),
+                                ("approach_match", approach)):
+                if value is not None:
+                    bad(name, f"{name} must be empty when abstain = Y (is {value!r})")
+            if wrong_claims:
+                bad("wrong_claims", "wrong_claims must be empty when abstain = Y")
         else:
             if hall not in YES_NO:
-                row_problems.append(f"{path.name}!{letter['hallucinated']}{n} ({item_id}): hallucinated is "
-                                    f"{hall!r}, must be Y or N when abstain = N")
-            elif hall == "Y" and sev not in SEVERITIES:
-                row_problems.append(f"{path.name}!{letter['severity']}{n} ({item_id}): severity is {sev!r}, must "
-                                    f"be PENUH or SEBAGIAN when hallucinated = Y")
-            elif hall == "N" and sev is not None:
-                row_problems.append(f"{path.name}!{letter['severity']}{n} ({item_id}): severity must be empty "
-                                    f"when hallucinated = N (is {sev!r})")
+                bad("hallucinated", f"hallucinated is {hall!r}, must be Y or N when abstain = N")
+            elif hall == "Y":
+                if sev not in SEVERITIES:
+                    bad("severity", f"severity is {sev!r}, must be PENUH or SEBAGIAN when hallucinated = Y")
+                if not wrong_claims:
+                    bad("wrong_claims", "hallucinated = Y needs at least one wrong claim with evidence "
+                                        "('type | claim | evidence')")
+                for wp in wc_problems:
+                    bad("wrong_claims", wp)
+            else:
+                if sev is not None:
+                    bad("severity", f"severity must be empty when hallucinated = N (is {sev!r})")
+                if wrong_claims:
+                    bad("wrong_claims", "wrong_claims must be empty when hallucinated = N")
+            if has_context and faith not in FAITHFULNESS_LEVELS:
+                bad("faithfulness_level", f"faithfulness_level is {faith!r}, must be one of {FAITHFULNESS_LEVELS} "
+                                          f"(the context cell is not empty)")
+            if not has_context and faith is not None:
+                bad("faithfulness_level", "faithfulness_level must be empty when the context cell is empty")
+            if approach not in APPROACH_MATCH:
+                bad("approach_match", f"approach_match is {approach!r}, must be one of {APPROACH_MATCH}")
+        if familiarity not in FAMILIARITY:
+            bad("domain_familiarity", f"domain_familiarity is {familiarity!r}, must be one of {FAMILIARITY}")
+        if uncertain not in YES_NO:
+            bad("uncertain", f"uncertain is {uncertain!r}, must be Y or N")
         problems += row_problems
 
         category = None
@@ -286,9 +396,11 @@ def read_annotation_xlsx(path: Path) -> tuple[list[dict], list[str]]:
             category = (CATEGORY_ABSTAIN if abstain == "Y"
                         else CATEGORY_HALLUCINATED if hall == "Y" else CATEGORY_NOT_HALLUCINATED)
         rows.append({
-            "item_id": item_id, "row": n, "abstain": abstain, "hallucinated": hall, "severity": sev,
-            "notes": str(cells[col["notes"]] or "").strip(), "category": category,
-            "text_sha256": {c: text_sha256(cells[col[c]]) for c in TEXT_COLUMNS},
+            "item_id": item_id, "row": n, "annotator_id": annotator_id, "abstain": abstain, "hallucinated": hall,
+            "severity": sev, "wrong_claims": wrong_claims, "faithfulness_level": faith, "approach_match": approach,
+            "domain_familiarity": familiarity, "uncertain": uncertain, "has_context": has_context,
+            "notes": str(cell("notes") or "").strip(), "category": category,
+            "text_sha256": {c: text_sha256(cell(c)) for c in TEXT_COLUMNS},
         })
     return rows, problems
 
@@ -369,6 +481,8 @@ def load_run_items(run_files: list[str]) -> list[dict]:
                 "question_id": rec["question_id"], "title": rec.get("title", "") or "",
                 "ground_truth_answer_html": rec.get("ground_truth_answer", "") or "",
                 "candidate": rec.get("llm_answer", "") or "",
+                "retrieved_context": rec.get("retrieved_context") or [],
+                "has_context": str(meta["condition"]).upper() != "A",
             })
     return items
 
@@ -379,8 +493,9 @@ def build_export(items: list[dict], bodies_html: dict, purpose: str, seed: int =
     sampled = sample_items(items, purpose, seed, **sample_kw)
     rows_by_id, key_items, n_markers = {}, [], 0
     for it in sampled:
+        has_context = it.get("has_context", str(it.get("condition", "")).upper() != "A")
         texts = shown_texts(it["title"], bodies_html.get(it["question_id"], ""), it["ground_truth_answer_html"],
-                            it["candidate"])
+                            it["candidate"], it.get("retrieved_context"), has_context)
         markers = len(_CITATION_MARKER.findall(it["candidate"]))
         n_markers += markers
         rows_by_id[it["item_id"]] = {"item_id": it["item_id"], **texts}
@@ -388,7 +503,7 @@ def build_export(items: list[dict], bodies_html: dict, purpose: str, seed: int =
             "item_id": it["item_id"], "question_id": it["question_id"], "run_id": it["run_id"],
             "run_label": it["run_label"], "condition": it["condition"], "config_hash": it["config_hash"],
             "source_file": Path(it["source_file"]).name, "in_annotator2_subset": it["in_annotator2_subset"],
-            "citation_markers_stripped": markers,
+            "citation_markers_stripped": markers, "has_context": has_context,
             "text_sha256": {c: text_sha256(texts[c]) for c in TEXT_COLUMNS},
         })
     return {
@@ -439,10 +554,10 @@ def cmd_export(args) -> int:
     key_path.write_text(json.dumps(key, indent=2) + "\n")
 
     files = {"annotator1": out_dir / "annotator1.xlsx"}
-    write_annotation_xlsx(files["annotator1"], export["annotator1"])
+    write_annotation_xlsx(files["annotator1"], export["annotator1"], "annotator1")
     if export["annotator2"]:
         files["annotator2"] = out_dir / "annotator2.xlsx"
-        write_annotation_xlsx(files["annotator2"], export["annotator2"])
+        write_annotation_xlsx(files["annotator2"], export["annotator2"], "annotator2")
 
     manifest_path.write_text(json.dumps({
         "purpose": purpose, "seed": args.seed, "created_at_utc": key["created_at_utc"],
@@ -452,9 +567,12 @@ def cmd_export(args) -> int:
         "key_file_name": key_name, "key_sha256": file_sha256(key_path),
         "key_location_note": "kept OUTSIDE the repository until adjudication is complete (Amendment 4 Addendum)",
         "blinding": {
-            "hidden": ["condition", "run_label", "run_id", "judge output"],
+            "blinding_version": BLINDING_VERSION,
+            "hidden": ["condition", "run_label", "run_id", "model", "judge output"],
             "citation_markers_stripped": True, "n_citation_markers_stripped": export["n_markers_stripped"],
-            "citation_stripping": "judge_prompt_v1.blind_candidate (same as the judge input); text otherwise unchanged",
+            "candidate": "judge_prompt_v2_2.prepare_judge_input: blind-v3 (citation markers removed, RAG meta "
+                         "phrases normalised; judge_blinding.py), identical to the judge-v2.2 input",
+            "context": "[K1]..[K5] block as in the judge-v2.2 input (2500 chars per item); empty for condition A",
             "text_conversion": "html_to_text for question body and accepted answer; cut at 6000 chars, as the judge input",
         },
     }, indent=2) + "\n")
