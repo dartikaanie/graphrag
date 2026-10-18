@@ -68,6 +68,11 @@ Catatan memori (M2 8GB): sama seperti stage1_sweep.py -- tutup Finder pada
 folder logs/results selama run. Semua embedding kandidat memakai
 EmbeddingCache yang sama dgn stage1_sweep.py (kunci: answer_id + teks,
 tidak bergantung alpha/varian), jadi run berikutnya akan lebih cepat.
+
+DELIBERATELY ON THE PREVIOUS EXPANSION (Amendment 9): retrieve_candidates()
+calls cg.semantic_expansion() with its default require_answer=False and the
+thread-level leakage exclusion, so this check keeps reproducing Amendment 5
+exactly. Do not switch it to EXPANSION_REQUIRE_ANSWER.
 """
 
 import argparse
@@ -96,6 +101,7 @@ import numpy as np  # noqa: E402
 
 import c_graphrag as cg  # noqa: E402
 from llm.common.leakage import build_exclusion  # noqa: E402
+from llm.common.question_index import query_vector  # noqa: E402
 from llm.common.text import build_query_text  # noqa: E402
 
 ALPHAS = (0.0, 0.25, 0.5, 0.75, 1.0)
@@ -259,7 +265,7 @@ def retrieve_candidates(row, faiss_index, faiss_ids, faiss_embeddings, id_to_row
     exclude_q = set(exclusion.question_ids)
     exclude_a = set(exclusion.answer_ids)
     if qid in id_to_row:
-        query_emb = np.ascontiguousarray(faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1])
+        query_emb = query_vector(faiss_embeddings, id_to_row[qid])
     else:
         query_emb = cg.embed_query(build_query_text(row["Title"], row["Body"]), embed_model)
 

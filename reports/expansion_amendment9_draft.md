@@ -2,7 +2,7 @@
 
 > Versi bahasa Indonesia dari Amendment 9. Versi bahasa Inggris untuk `docs/DECISION_C_SCORING.md` ada di `reports/expansion_amendment9_draft_en.md`.
 
-**Status: dikonfirmasi penulis. Ditulis sebelum perubahan ini dijalankan sama sekali** (belum ada retrieval, penilaian judge, maupun cek ulang stage-1 dengan perubahan ini). Ditulis setelah stage 1 dan sebelum stage 2 maupun evaluasi resmi pada test sample (n = 384). Keputusan diambil sebelum stage 2 dan sebelum run resmi n = 384 apa pun. Rincian teknis ada di `reports/expansion_answered.md`.
+**Status: dikonfirmasi penulis. Ditulis sebelum perubahan ini dijalankan sama sekali** (belum ada retrieval, penilaian judge, maupun cek ulang stage-1 dengan perubahan ini). Hanya bagian Hasil yang diisi sesudahnya, dari cek ulang. Ditulis setelah stage 1 dan sebelum stage 2 maupun evaluasi resmi pada test sample (n = 384). Keputusan diambil sebelum stage 2 dan sebelum run resmi n = 384 apa pun. Rincian teknis ada di `reports/expansion_answered.md`.
 
 ### Temuan
 - Di Kondisi C, tahap 3 (Semantic Expansion) memilih, untuk setiap seed, `n_semantic_expansion` (= 3) Question yang paling mirip dengan seed, lalu mengambil jawabannya. Banyak dari Question itu tidak punya Answer sama sekali di KG: KG memuat 2.685.814 Question tetapi hanya 725.795 Answer (602.900 Question dengan minimal satu Answer).
@@ -20,7 +20,27 @@
 Karena perubahan ini mengubah retrieval C, stage 1 dicek ulang dengan **protokol yang sama persis**: dev set yang sama (posisi 385–434, n = 50), grid α yang sama {0; 0,25; 0,5; 0,75; 1}, judge context-relevance primary yang sama (ctxrel-v2, temperature 0), metrik yang sama, dan aturan pemilihan yang sama (`select_stage1_candidates`). Label judge dipakai ulang hanya bila question_id, answer_id, text_hash, model judge, dan versi prompt semuanya identik; item lain dinilai ulang. **Hasilnya diterima apa pun itu, termasuk bila α terpilih berubah.**
 
 ### Hasil
-[diisi setelah cek ulang: proporsi slot expansion kosong sebelum/sesudah, item konteks dari expansion, jumlah pertanyaan yang retrieval-nya berubah pada α = 0,5 dan 0,25, latency C p95, tabel stage-1 dan α terpilih (lama vs baru), tanggal]
+Cek ulang dijalankan pada 2026-10-18 (laporan `llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.md`).
+- **Reproduksi:** dengan switch off, top-5 identik dengan hasil stage-1 Amendment 6 (50 × 5), metrik yang dihitung ulang sama dengan yang tercatat, dan top_two tetap [0,5; 0,25].
+- **Expansion:** slot expansion kosong turun dari 64,1% menjadi 0% (432 Question expansion pada 50 pertanyaan dev, di semua α). Item konteks dari expansion di top-5 kira-kira dua kali lipat (α = 0,5: 36 → 82; α = 0,25: 37 → 88). Pertanyaan dengan konteks kurang dari 5 item turun dari 5 menjadi 2. Anchor dan kandidat traversal tidak berubah di semua pertanyaan.
+- **Pertanyaan yang top-5-nya berubah:** 38 / 50 pada α = 0,5 dan 34 / 50 pada α = 0,25.
+- **Latency:** p95 retrieval-only C berubah sekitar +0,01–0,02 detik, misalnya α = 0,5 dari 0,091 menjadi 0,106 detik.
+- **Judge:** 405 label cache dipakai ulang sesuai aturan identitas, dan 119 item baru dinilai (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`, temperature 0; 0 gagal). Label baru ada di `results/expansion_check/ctxrel_v2_expansion_primary.jsonl`. Biayanya $0,0137.
+
+| α | % q ≥1 RELEVANT (lama → baru) | skor rata-rata (lama → baru) | % accepted (lama → baru) |
+|---|---|---|---|
+| 0 | 48,0 → 50,0 | 0,3263 → 0,3525 | 37,29 → 38,52 |
+| 0,25 | 48,0 → 48,0 | 0,3305 → 0,3504 | 41,95 → 47,13 |
+| 0,5 | 48,0 → 48,0 | 0,3157 → 0,3299 | 53,39 → 61,89 |
+| 0,75 | 46,0 → 44,0 | 0,2818 → 0,2848 | 66,95 → 76,23 |
+| 1 | 34,0 → 28,0 | 0,2225 → 0,2029 | 72,88 → 85,66 |
+
+- **Peringkat** dengan aturan yang sama: 0,25; 0,0; 0,5; 0,75; 1,0.
+  - α = 0, 0,25, dan 0,5 seri pada kriteria utama (selisih ≤ 2 pp).
+  - Skor rata-rata α = 0,5 lebih dari 0,02 di bawah α = 0.
+  - α = 0,25 dan α = 0 seri pada kedua kriteria, sehingga α yang lebih besar ditempatkan pertama.
+- **top_two = [0,25; 0,0]** (sebelumnya [0,5; 0,25]). keep_current = False.
+- Sesuai pra-registrasi, hasil ini diterima. **Kandidat stage-2 resmi: α = 0,25 dan α = 0.** Pada α = 0, `final_score` hanya memakai similarity.
 
 ### Justifikasi
 Ini koreksi struktural (slot expansion harus bisa menyumbang konteks), diputuskan berdasarkan struktur KG, bukan pada hasil hallucination. Keputusan diambil sebelum stage 2 dan sebelum evaluasi resmi pada test sample.

@@ -1,6 +1,6 @@
 ## Amendment 9 (2026-10-18): semantic expansion selects only answerable Questions
 
-**Status: confirmed by the author. Written before any run of the change** (no retrieval, no judging and no stage-1 recheck had been run with it). Written after stage 1 and before stage 2 and the official evaluation on the test sample (n = 384). The decision was made before stage 2 and before any official n = 384 run. Technical details are in `reports/expansion_answered.md`.
+**Status: confirmed by the author. Written before any run of the change** (no retrieval, no judging and no stage-1 recheck had been run with it). Only the Outcome section was filled in afterwards, from the recheck. Written after stage 1 and before stage 2 and the official evaluation on the test sample (n = 384). The decision was made before stage 2 and before any official n = 384 run. Technical details are in `reports/expansion_answered.md`.
 
 ### Finding
 - In Condition C, stage 3 (Semantic Expansion) picks, per seed question, the `n_semantic_expansion` (= 3) Questions most similar to the seed, then fetches their answers. Many of those Questions have no Answer in the KG at all: the KG holds 2,685,814 Questions but only 725,795 Answers (602,900 Questions with at least one Answer).
@@ -18,7 +18,27 @@
 Because the change alters C's retrieval, stage 1 is checked again with **exactly the same protocol**: the same dev set (positions 385–434, n = 50), the same α grid {0, 0.25, 0.5, 0.75, 1}, the same primary context-relevance judge (ctxrel-v2, temperature 0), the same metrics and the same selection rule (`select_stage1_candidates`). Judge labels are reused only when question_id, answer_id, text_hash, judge model and prompt version are all identical; every other item is judged anew. **The result is accepted whatever it is, including if the selected α changes.**
 
 ### Outcome
-[to be filled in after the recheck: share of empty expansion slots before/after, context items from expansion, number of questions whose retrieval changed at α = 0.5 and 0.25, C latency p95, stage-1 table and selected α (old vs new), date]
+Recheck run on 2026-10-18 (report `llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.md`).
+- **Reproduction:** with the switch off, the top-5 is identical to the Amendment 6 stage-1 result of record (50 × 5), the recomputed metrics equal the recorded ones, and top_two stays [0.5, 0.25].
+- **Expansion:** empty expansion slots fall from 64.1% to 0% (432 expansion Questions on 50 dev questions, every α). Context items from expansion in the top-5 roughly double (α = 0.5: 36 → 82; α = 0.25: 37 → 88). Questions with fewer than 5 context items fall from 5 to 2. Anchors and traversal candidates are unchanged for every question.
+- **Questions whose top-5 changed:** 38 / 50 at α = 0.5 and 34 / 50 at α = 0.25.
+- **Latency:** C retrieval-only p95 changes by about +0.01–0.02 s, for example α = 0.5 from 0.091 to 0.106 s.
+- **Judging:** 405 cached labels were reused under the identity rule, and 119 new items were judged (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`, temperature 0; 0 failures). The new labels are in `results/expansion_check/ctxrel_v2_expansion_primary.jsonl`. Cost was $0.0137.
+
+| α | % q ≥1 RELEVANT (old → new) | mean score (old → new) | % accepted (old → new) |
+|---|---|---|---|
+| 0 | 48.0 → 50.0 | 0.3263 → 0.3525 | 37.29 → 38.52 |
+| 0.25 | 48.0 → 48.0 | 0.3305 → 0.3504 | 41.95 → 47.13 |
+| 0.5 | 48.0 → 48.0 | 0.3157 → 0.3299 | 53.39 → 61.89 |
+| 0.75 | 46.0 → 44.0 | 0.2818 → 0.2848 | 66.95 → 76.23 |
+| 1 | 34.0 → 28.0 | 0.2225 → 0.2029 | 72.88 → 85.66 |
+
+- **Ranking** under the unchanged rule: 0.25, 0.0, 0.5, 0.75, 1.0.
+  - α = 0, 0.25 and 0.5 tie on the primary criterion (within 2 pp).
+  - α = 0.5 falls more than 0.02 below α = 0 on mean score.
+  - α = 0.25 and α = 0 tie on both criteria, so the larger α ranks first.
+- **top_two = [0.25, 0.0]** (previously [0.5, 0.25]). keep_current = False.
+- As pre-registered, this result is accepted. **Stage-2 candidates of record: α = 0.25 and α = 0.** At α = 0, `final_score` is similarity only.
 
 ### Justification
 This is a structural correction (an expansion slot must be able to contribute context), decided on the structure of the KG, not on hallucination results. It was decided before stage 2 and before the official evaluation on the test sample.

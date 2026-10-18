@@ -164,6 +164,7 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
+from llm.common.question_index import query_vector, read_question_index
 from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, add_leakage_arguments,  # noqa: F401
                                 assert_no_leakage, build_exclusion, config_leakage_key, leakage_mode_from_args)
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
@@ -318,9 +319,8 @@ def connect_neo4j(logger):
 def load_faiss_cache(kg_workspace_dir: Path, logger):
     """Reuse index & embedding cache Kondisi C (11_densify_embedding_similarity.py
     --stage edges). TIDAK membangun ulang di sini -- kalau cache tidak ada,
-    ABORT dengan pesan jelas."""
-    import faiss
-
+    ABORT dengan pesan jelas. Indeks dibaca penuh ke RAM dan nprobe-nya dicek
+    == 32 (llm/common/question_index.py)."""
     index_path = kg_workspace_dir / "question_embeddings_ivf.faiss"
     ids_path = kg_workspace_dir / "question_embeddings_ivf_ids.npy"
     emb_path = kg_workspace_dir / "question_embeddings.f32"
@@ -336,7 +336,7 @@ def load_faiss_cache(kg_workspace_dir: Path, logger):
     n_total = json.loads(ckpt_path.read_text())["next_row"]
     ids_arr = np.load(ids_path)
     embeddings = np.memmap(emb_path, dtype="float32", mode="r", shape=(n_total, EMBED_DIM))
-    index = faiss.read_index(str(index_path))
+    index = read_question_index(index_path)
     logger(f"[5/9] FAISS index & embedding cache dimuat: {index.ntotal:,} vektor "
            f"dari {kg_workspace_dir}")
 
@@ -608,8 +608,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 exclude_answer_ids = set(exclusion.answer_ids)
 
                 if qid in id_to_row:
-                    query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
-                    query_emb = np.ascontiguousarray(query_emb)
+                    # salinan float32 sendiri, bukan view memmap (llm/common/question_index.py)
+                    query_emb = query_vector(faiss_embeddings, id_to_row[qid])
                 else:
                     query_text = f"{row['Title']} {str(row['Body'])[:1000]}"
                     query_emb = embed_query(query_text, embed_model)
