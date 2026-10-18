@@ -168,7 +168,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.citations import compute_citation_report, extract_citations
 from llm.b_rag.kg_corpus import CORPUS_CHOICES, CORPUS_KG, CORPUS_LEGACY, KGAnswerIndex, corpus_dir_name, encode_query
 from llm.client_factory import get_llm_client
-from llm.common.leakage import LeakageError, assert_no_leakage, build_exclusion  # noqa: F401 -- LeakageError re-exported
+from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, LeakageError,  # noqa: F401 -- LeakageError re-exported
+                                add_leakage_arguments, assert_no_leakage, build_exclusion, config_leakage_key,
+                                leakage_mode_from_args)
 from llm.common.text import build_query_text
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_rag_messages
@@ -467,14 +469,14 @@ def retrieve_full_candidate_ids(embed_model, index, meta_df: pd.DataFrame, query
 
 
 def retrieve_context_kg(embed_model, kg: KGAnswerIndex, query_text: str, top_k: int, exclusion,
-                        query_emb: np.ndarray | None = None) -> list[dict]:
+                        query_emb: np.ndarray | None = None, stats: dict | None = None) -> list[dict]:
     """Korpus KG: top_k jawaban (cosine, exact search) SETELAH exclusion per
     query (kg.search over-fetch lalu filter), teks diambil dari
     kg_answers.parquet via DuckDB -- doc_text = teks yang di-encode saat
     build, identik dgn chunk_text C utk answer_id yang sama. Tanpa Neo4j."""
     if query_emb is None:
         query_emb = encode_query(embed_model, query_text)
-    hits = kg.search(query_emb, top_k, exclusion)
+    hits = kg.search(query_emb, top_k, exclusion, stats=stats)
     docs = kg.fetch_docs([int(kg.answer_ids[row]) for row, _ in hits])
     results = []
     for row, score in hits:
@@ -523,7 +525,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     top_k: int, model: str, output_path: Path, already_done: set | None = None,
                     on_progress=None, check_cancel=None, require_citation: bool = True,
                     require_grounding: bool = False, log_full_candidates: bool = False,
-                    config: dict | None = None, config_hash: str | None = None) -> list[dict]:
+                    config: dict | None = None, config_hash: str | None = None,
+                    leakage: LeakageContext | None = None) -> list[dict]:
     """Proses satu-per-satu sample_df: retrieval top-k + prompt RAG + hitung
     cosine similarity, tulis ke output_path (append, resumable). Diekstrak
     dari main() dengan pola SAMA PERSIS dengan process_sample() Kondisi A
@@ -552,6 +555,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     _run_metadata.py dan docs/GROUNDING_FACTOR_UI.md.
     """
     already_done = already_done or set()
+    # `leakage` (llm/common/leakage.py): mode + precomputed exclusion table (read
+    # from results/leakage/exclusion_sets.parquet -- never Neo4j). None = MODE_THREAD.
+    leakage = leakage or LEGACY_CONTEXT
     total = len(sample_df)
     results = []
     # `index` = KGAnswerIndex (korpus KG, default) ATAU index FAISS lama +
@@ -570,17 +576,25 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             if qid in already_done:
                 continue
 
-            exclusion = build_exclusion(qid, thread_answer_ids.get(qid, []), row["AcceptedAnswerId"])
+            exclusion = leakage.exclusion_for(qid, thread_answer_ids.get(qid, []), row["AcceptedAnswerId"])
+            leak_stats: dict = {"n_hits_filtered": 0}
             t_retrieval_start = time.time()
             if use_kg:
                 query_text = build_query_text(row["Title"], row["Body"])
                 query_emb = encode_query(embed_model, query_text)
-                retrieved = retrieve_context_kg(embed_model, index, query_text, top_k, exclusion, query_emb)
+                retrieved = retrieve_context_kg(embed_model, index, query_text, top_k, exclusion, query_emb,
+                                                stats=leak_stats)
             else:
                 query_text = f"{row['Title']}\n{row['Body']}"  # format pilot lama, reproduksi saja
                 retrieved = retrieve_context(embed_model, index, meta_df, query_text, top_k)
             retrieval_latency = time.time() - t_retrieval_start
-            assert_no_leakage(retrieved, exclusion)
+            if leakage.active:
+                assert_no_leakage(retrieved, exclusion)
+            leakage_log = leakage.query_log(exclusion, leak_stats["n_hits_filtered"], len(retrieved))
+            log(f"      [leakage] Id={qid} " + " ".join(f"{k}={v}" for k, v in leakage_log.items()))
+            if len(retrieved) < top_k:
+                leakage_log["final_k_lt_k"] = True
+                log(f"      [WARN] Id={qid} hanya {len(retrieved)} konteks (< top_k={top_k}) setelah exclusion.")
 
             all_candidate_question_ids = None
             if log_full_candidates:
@@ -631,6 +645,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 # (B's FAISS top-k retrieval already caps at top_k directly).
                 "n_context_items_used": len(retrieved),
                 "query_text": query_text,
+                "leakage": leakage_log,
                 "retrieval_latency_sec": round(retrieval_latency, 3),
                 "prompt_messages": messages,
                 "llm_answer": llm_answer,
@@ -685,7 +700,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
                   top_k: int, require_citation: bool, require_grounding: bool,
-                  sample_split: str = "test", corpus: str = CORPUS_KG, token_chunk_limit: int = 400) -> dict:
+                  sample_split: str = "test", corpus: str = CORPUS_KG, token_chunk_limit: int = 400,
+                  leakage_mode: str = MODE_THREAD) -> dict:
     """The full set of parameters that affect Condition B's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists (stored in every record/manifest AND hashed into
@@ -706,6 +722,7 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
         config["corpus"] = corpus_dir_name(token_chunk_limit)
     elif corpus != CORPUS_LEGACY:
         raise ValueError(f"Unknown corpus '{corpus}' -- must be one of {CORPUS_CHOICES}")
+    config.update(config_leakage_key(leakage_mode))  # absent for MODE_THREAD -> earlier hashes unchanged
     return add_split_to_config(config, sample_split)  # sample_split only present when not "test" -- existing hashes unchanged
 
 
@@ -713,7 +730,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        require_citation: bool = False, require_grounding: bool = False,
                        oversample_pool: int | None = None, top_k: int = 5,
                        sample_split: str = "test", corpus: str = CORPUS_KG,
-                       token_chunk_limit: int = 400) -> Path:
+                       token_chunk_limit: int = 400, leakage_mode: str = MODE_THREAD) -> Path:
     """Nama file JSONL otomatis dari provider+model+n_sample+seed -- identik
     pola Kondisi A, format:
     condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl.
@@ -741,7 +758,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     suffix = ("_grounded" if require_grounding else "_plain") if require_citation else ""
     config_hash = compute_config_hash(
         build_config(provider, model, n_sample, seed, oversample_pool, top_k, require_citation, require_grounding,
-                     sample_split, corpus, token_chunk_limit)
+                     sample_split, corpus, token_chunk_limit, leakage_mode)
     )
     from llm.sample_split import split_filename_tag
     return Path(output_dir) / f"{base}{suffix}{split_filename_tag(sample_split)}_{PROMPT_VERSION}_{config_hash}.jsonl"
@@ -817,7 +834,9 @@ def main():
                               "(versi saat ini belum menghitungnya). Default: nonaktif.")
     from llm.sample_split import add_split_arguments
     add_split_arguments(parser)
+    add_leakage_arguments(parser)
     args = parser.parse_args()
+    leakage_mode = leakage_mode_from_args(args)
     dev_tag = "" if args.sample_split == "test" else f" [{args.sample_split}]"
 
     global log
@@ -849,7 +868,7 @@ def main():
                                              require_grounding=args.require_grounding,
                                              oversample_pool=oversample_pool, top_k=args.top_k,
                                              sample_split=args.sample_split, corpus=args.corpus,
-                                             token_chunk_limit=args.token_chunk_limit))
+                                             token_chunk_limit=args.token_chunk_limit, leakage_mode=leakage_mode))
         log(f"[config] output auto-generated dari provider='{args.provider}' "
               f"model='{args.model}' -> '{args.output}'")
 
@@ -935,7 +954,9 @@ def main():
     from llm.manifest import compute_config_hash
     config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool,
                            args.top_k, args.require_citation, args.require_grounding, args.sample_split,
-                           args.corpus, args.token_chunk_limit)
+                           args.corpus, args.token_chunk_limit, leakage_mode)
+    leakage = LeakageContext.from_mode(leakage_mode)
+    log(f"[config] leakage mode = {leakage_mode} (llm/common/leakage.py)")
     config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -951,7 +972,7 @@ def main():
                     args.model, output_path, already_done, require_citation=args.require_citation,
                     require_grounding=args.require_grounding,
                     log_full_candidates=args.log_full_candidates,
-                    config=config, config_hash=config_hash)
+                    config=config, config_hash=config_hash, leakage=leakage)
 
     log("[8/8] Selesai memproses seluruh sample.")
 
@@ -976,6 +997,7 @@ def main():
             "log_full_candidates": args.log_full_candidates,
             "corpus": args.corpus,
             **corpus_meta,
+            "leakage_mode": leakage_mode,
             "index_pool": args.index_pool if args.corpus == CORPUS_LEGACY else None,
             "top_k": args.top_k,
             "config_hash": config_hash,
@@ -1013,6 +1035,7 @@ def main():
             "log_full_candidates": args.log_full_candidates,
             "corpus": args.corpus,
             **corpus_meta,
+            "leakage_mode": leakage_mode,
             "index_pool": args.index_pool if args.corpus == CORPUS_LEGACY else None,
             "top_k": args.top_k,
             "config_hash": config_hash,
@@ -1093,6 +1116,7 @@ def main():
         "log_full_candidates": args.log_full_candidates,
         "corpus": args.corpus,
         **corpus_meta,
+        "leakage_mode": leakage_mode,
         "index_pool": args.index_pool if args.corpus == CORPUS_LEGACY else None,
         "top_k": args.top_k,
         "token_chunk_limit": args.token_chunk_limit,

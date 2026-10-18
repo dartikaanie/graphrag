@@ -149,7 +149,8 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
-from llm.common.leakage import build_exclusion
+from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, add_leakage_arguments,  # noqa: F401
+                                assert_no_leakage, build_exclusion, config_leakage_key, leakage_mode_from_args)
 from llm.common.text import answer_doc_text, build_query_text
 from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F401 -- moved to llm/common/text.py; name kept for stage1_sweep.py
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
@@ -447,9 +448,11 @@ def embed_query(text: str, sbert_model) -> np.ndarray:
 # ---------------------------------------------------------------------
 
 def anchor_via_vector_search(query_emb: np.ndarray, index, ids_arr: np.ndarray,
-                              top_n: int, exclude_ids: set) -> list:
+                              top_n: int, exclude_ids: set, stats: dict | None = None) -> list:
     """Cari top_n Question id paling mirip via FAISS, EXCLUDE eval
-    question's own id (leakage prevention #1, lihat dokumentasi di atas)."""
+    question's own id (leakage prevention #1, lihat dokumentasi di atas).
+    `stats` (opsional): stats["n_hits_filtered"] += jumlah hit yang dibuang
+    karena exclusion -- hanya penghitung, tidak mengubah hasil."""
     search_n = top_n + len(exclude_ids) + 5  # buffer supaya tetap dapat top_n setelah exclude
     scores, indices = index.search(query_emb, search_n)
     results = []
@@ -458,6 +461,8 @@ def anchor_via_vector_search(query_emb: np.ndarray, index, ids_arr: np.ndarray,
             continue
         qid = int(ids_arr[idx])
         if qid in exclude_ids:
+            if stats is not None:
+                stats["n_hits_filtered"] = stats.get("n_hits_filtered", 0) + 1
             continue
         results.append((qid, float(score)))
         if len(results) >= top_n:
@@ -590,7 +595,7 @@ def fetch_trust_score_version(driver, database) -> str | None:
 def semantic_expansion(driver, database, traversal_candidates: list, index, ids_arr: np.ndarray,
                         sbert_model, n_expansion: int, already_seen_qids: set,
                         exclude_question_ids: set, exclude_answer_ids: set,
-                        edge_types: tuple | None = None) -> list:
+                        edge_types: tuple | None = None, stats: dict | None = None) -> list:
     """Ambil s.d. 3 via_question unik dari hasil traversal sbg query baru
     (F4: "simpul hasil Graph Traversal sebagai anchor pencarian vektor").
     Utk tiap query baru, cari n_expansion Question tetangga (vector search)
@@ -622,6 +627,7 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
         found = anchor_via_vector_search(
             q_emb, index, ids_arr, top_n=n_expansion,
             exclude_ids=already_seen_qids | exclude_question_ids | expansion_qids | {qid},
+            stats=stats,
         )
         expansion_qids.update(fid for fid, _ in found)
 
@@ -647,6 +653,12 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
         )
         candidates.extend(dict(record) for record in result)
 
+    if stats is not None:
+        # leakage audit: expansion Questions that contributed no answer
+        # (all their answers excluded, or none at all) -- counted, not acted on
+        contributed = {c["via_question_id"] for c in candidates}
+        stats["expansion_qids"] = sorted(expansion_qids)
+        stats["expansion_qids_empty"] = sorted(expansion_qids - contributed)
     return candidates
 
 
@@ -936,6 +948,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
                     accepted_only: bool = DEFAULT_ACCEPTED_ONLY,
                     embedding_cache=None, retrieval_only: bool = False,
+                    leakage: LeakageContext | None = None,
                     ) -> tuple[list[dict], dict]:
     """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
@@ -962,6 +975,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     Keduanya opsional & default-nya PERSIS perilaku lama.
     """
     already_done = already_done or set()
+    # `leakage` (llm/common/leakage.py): mode + precomputed exclusion table.
+    # None = MODE_THREAD, the exclusion every run before Amendment 8 used.
+    leakage = leakage or LEGACY_CONTEXT
     total = len(sample_df)
     results = []
     n_no_context = 0
@@ -986,7 +1002,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
                 # leakage exclusion set untuk pertanyaan evaluasi INI SAJA
                 # (llm/common/leakage.py -- satu definisi utk B, C, D)
-                exclusion = build_exclusion(qid, all_answer_ids_map.get(qid, []), row["AcceptedAnswerId"])
+                exclusion = leakage.exclusion_for(qid, all_answer_ids_map.get(qid, []), row["AcceptedAnswerId"])
+                leak_stats: dict = {"n_hits_filtered": 0}
                 exclude_question_ids = set(exclusion.question_ids)
                 exclude_answer_ids = set(exclusion.answer_ids)
 
@@ -1004,7 +1021,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
                 # --- a. Entity Anchoring ---
                 anchors = anchor_via_vector_search(
-                    query_emb, faiss_index, faiss_ids, n_anchor, exclude_question_ids,
+                    query_emb, faiss_index, faiss_ids, n_anchor, exclude_question_ids, stats=leak_stats,
                 )
                 anchor_ids = [qid_ for qid_, _ in anchors]
 
@@ -1022,7 +1039,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     expansion_candidates = semantic_expansion(
                         driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
                         n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
-                        edge_types=edge_types,
+                        edge_types=edge_types, stats=leak_stats,
                     )
                 else:
                     expansion_candidates = []
@@ -1052,6 +1069,14 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 retrieval_latency = time.time() - t_query_start
                 if not retrieved:
                     n_no_context += 1
+                if leakage.active:
+                    assert_no_leakage(retrieved, exclusion)
+                # n_hits_filtered = vector-search hits (anchor + expansion) dropped by
+                # the exclusion; Cypher-level filtering ($exclude_q/$exclude_a) is not counted
+                leakage_log = {**leakage.query_log(exclusion, leak_stats["n_hits_filtered"], len(retrieved)),
+                               "n_expansion_q": len(leak_stats.get("expansion_qids", [])),
+                               "n_expansion_q_empty": len(leak_stats.get("expansion_qids_empty", []))}
+                log(f"      [leakage] Id={qid} " + " ".join(f"{k}={v}" for k, v in leakage_log.items()))
 
                 if retrieval_only:
                     record = {
@@ -1059,9 +1084,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "accepted_answer_id": int(row["AcceptedAnswerId"]),
                         "retrieved_context": retrieved,
                         "candidate_pool_size": candidate_pool_size,
-                        "n_anchors": len(anchor_ids), "n_graph_candidates": len(graph_candidates),
+                        "n_anchors": len(anchor_ids), "anchor_question_ids": anchor_ids,
+                        "n_graph_candidates": len(graph_candidates),
                         "n_expansion_candidates": len(expansion_candidates),
                         "retrieval_latency_sec": round(retrieval_latency, 3),
+                        "leakage": leakage_log,
+                        "expansion_qids": leak_stats.get("expansion_qids", []),
+                        "expansion_qids_empty": leak_stats.get("expansion_qids_empty", []),
                         "config": config, "config_hash": config_hash,
                     }
                     results.append(record)
@@ -1122,6 +1151,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         {"question_id": int(aid), "similarity": round(float(score), 4)} for aid, score in anchors
                     ],
                     "prompt_messages": messages,
+                    "leakage": leakage_log,
                     "n_anchors": len(anchor_ids),
                     "n_graph_candidates": len(graph_candidates),
                     "n_expansion_candidates": len(expansion_candidates),
@@ -1228,7 +1258,7 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
                   alpha: float | None = None, sample_split: str = DEFAULT_SAMPLE_SPLIT,
                   max_hops: int = DEFAULT_MAX_HOPS, edge_types: tuple | None = None,
                   use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
-                  accepted_only: bool = DEFAULT_ACCEPTED_ONLY) -> dict:
+                  accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD) -> dict:
     """The full set of parameters that affect Condition C's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists. Includes c_retrieval_version since a retrieval
@@ -1266,6 +1296,9 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
         config["use_author_trust"] = use_author_trust
     if accepted_only != DEFAULT_ACCEPTED_ONLY:
         config["accepted_only"] = accepted_only
+    # "leakage": <mode> (llm/common/leakage.py), absent for MODE_THREAD -- the
+    # exclusion every earlier run used -- so their config_hash is unchanged
+    config.update(config_leakage_key(leakage_mode))
     return config
 
 
@@ -1280,7 +1313,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        c_retrieval_version: str = "v2", alpha: float | None = None,
                        sample_split: str = DEFAULT_SAMPLE_SPLIT, max_hops: int = DEFAULT_MAX_HOPS,
                        edge_types: tuple | None = None, use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
-                       accepted_only: bool = DEFAULT_ACCEPTED_ONLY) -> Path:
+                       accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD) -> Path:
     """Nama file menyertakan fusion mode/bobot supaya run ablasi (mis.
     --fusion-mode uniform vs --fusion-mode trust_weighted dgn bobot
     berbeda) tidak saling menimpa file .jsonl satu sama lain -- pola sama
@@ -1314,7 +1347,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
         fusion_mode, fusion_w_path_trust, fusion_w_intrinsic, semantic_expansion_trust_cap,
         require_grounding, enable_semantic_expansion, c_retrieval_version=c_retrieval_version,
         alpha=alpha, sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
-        use_author_trust=use_author_trust, accepted_only=accepted_only,
+        use_author_trust=use_author_trust, accepted_only=accepted_only, leakage_mode=leakage_mode,
     ))
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
@@ -1422,7 +1455,9 @@ def main():
     parser.add_argument("--embedding-cache-path", default=str(default_cache_path()),
         help="v3 only: SQLite cache path for candidate-text embeddings (shared across an alpha sweep). "
              "Default: C_EMBEDDING_CACHE_PATH, else a local non-synced cache dir (see embedding_cache.py).")
+    add_leakage_arguments(parser)
     args = parser.parse_args()
+    leakage_mode = leakage_mode_from_args(args)
 
     global log
     logger, log_path = setup_logging(args.provider, args.model)
@@ -1460,7 +1495,7 @@ def main():
                                              c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
                                              sample_split=args.sample_split, max_hops=args.max_hops,
                                              edge_types=args.edge_types, use_author_trust=args.use_author_trust,
-                                             accepted_only=args.accepted_only))
+                                             accepted_only=args.accepted_only, leakage_mode=leakage_mode))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -1528,9 +1563,11 @@ def main():
         args.fusion_w_intrinsic, args.semantic_expansion_trust_cap, args.require_grounding,
         args.enable_semantic_expansion, c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
         sample_split=args.sample_split, max_hops=args.max_hops, edge_types=args.edge_types,
-        use_author_trust=args.use_author_trust, accepted_only=args.accepted_only,
+        use_author_trust=args.use_author_trust, accepted_only=args.accepted_only, leakage_mode=leakage_mode,
     )
     config_hash = compute_config_hash(config)
+    leakage = LeakageContext.from_mode(leakage_mode)
+    log(f"[config] leakage mode = {leakage_mode} (llm/common/leakage.py)")
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     already_done = read_already_done(output_path, PROMPT_VERSION, config_hash)
@@ -1555,7 +1592,7 @@ def main():
         c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
         max_hops=args.max_hops, edge_types=args.edge_types,
         use_author_trust=args.use_author_trust, accepted_only=args.accepted_only,
-        embedding_cache=embedding_cache, retrieval_only=args.retrieval_only,
+        embedding_cache=embedding_cache, retrieval_only=args.retrieval_only, leakage=leakage,
     )
     interrupted = stats["interrupted"]
     if embedding_cache is not None:
@@ -1578,6 +1615,7 @@ def main():
             "alpha": args.alpha, "sample_split": args.sample_split,
             "max_hops": args.max_hops, "edge_types": list(args.edge_types) if args.edge_types else None,
             "use_author_trust": args.use_author_trust, "accepted_only": args.accepted_only,
+            "leakage_mode": leakage_mode,
             "run_started_at": run_started_at.isoformat(), "condition": "C", "status": "no_results",
             "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
             "seed": args.seed, "output_path": str(output_path), "log_path": str(log_path),
@@ -1651,6 +1689,7 @@ def main():
         "alpha": args.alpha, "sample_split": args.sample_split,
         "max_hops": args.max_hops, "edge_types": list(args.edge_types) if args.edge_types else None,
         "use_author_trust": args.use_author_trust, "accepted_only": args.accepted_only,
+        "leakage_mode": leakage_mode,
         "run_started_at": run_started_at.isoformat(), "condition": "C",
         "status": "interrupted" if interrupted else "success",
         "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,

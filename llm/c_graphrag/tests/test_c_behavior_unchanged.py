@@ -24,3 +24,19 @@ def test_c_retrieval_and_query_text_identical_to_pre_refactor_snapshot():
     for label in expected["configs"]:
         assert actual["configs"][label] == expected["configs"][label], label
 
+
+
+@pytest.mark.skipif(os.getenv("GRAPHRAG_INTEGRATION") != "1", reason="reads Neo4j; set GRAPHRAG_INTEGRATION=1")
+def test_default_leakage_mode_is_equivalent_for_questions_without_duplicates():
+    """Amendment 8 default mode (Duplicate + near-dup 0.95, Linked off): none of
+    the 12 snapshot questions has a Duplicate or near-duplicate, so C's
+    retrieval must equal the pre-refactor snapshot exactly."""
+    from llm.common.leakage import LeakageContext, default_mode
+
+    ctx = LeakageContext.from_mode(default_mode())
+    expected = json.loads(snapshot.FIXTURE.read_text())
+    assert all(ctx.table.counts(q)["n_dup"] == 0 and ctx.table.counts(q)["n_neardup"] == 0
+               for q in expected["dev_question_ids"])
+    actual = json.loads(json.dumps(snapshot.take_snapshot(leakage_mode=default_mode()), sort_keys=True))
+    for label in expected["configs"]:
+        assert actual["configs"][label] == expected["configs"][label], label

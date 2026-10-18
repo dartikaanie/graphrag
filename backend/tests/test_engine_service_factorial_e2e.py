@@ -168,6 +168,11 @@ def _write_stale_v2_file(path: Path) -> None:
 def common_patches(monkeypatch, tmp_path):
     monkeypatch.setattr(engine_service, "_embed_model", lambda: FakeEmbedModel())
     monkeypatch.setattr(engine_service, "_embed_model_cpu", lambda: FakeEmbedModel())
+    # fake question ids (101/102) have no precomputed exclusion set -- run with the
+    # thread-level exclusion (llm/common/leakage.py MODE_THREAD)
+    from llm.common.leakage import LEGACY_CONTEXT, MODE_THREAD
+    monkeypatch.setattr(engine_service, "_leakage_mode", lambda params: MODE_THREAD)
+    monkeypatch.setattr(engine_service, "_leakage_context", lambda mode: LEGACY_CONTEXT)
     monkeypatch.setattr(
         engine_service, "_faiss_cache",
         lambda kg_dir_str: (None, np.array([101, 102]), np.zeros((2, 3), dtype="float32"), {101: 0, 102: 1}),
@@ -246,9 +251,11 @@ def test_condition_c_pilot_configs_produce_records_history_and_manifest(
     monkeypatch.setattr(cond, "get_all_answer_ids_for_questions", lambda *a, **k: {})
     monkeypatch.setattr(cond, "connect_neo4j", lambda *a, **k: (FakeDriver(), "neo4j"))
     monkeypatch.setattr(cond, "fetch_trust_score_version", lambda *a, **k: "v3-logscore")
-    monkeypatch.setattr(cond, "anchor_via_vector_search", lambda *a, **k: [(101, 0.9)])
+    # a related question (201), not the evaluation question itself -- the per-query
+    # leakage assert (llm/common/leakage.py) rejects a context item from q's own thread
+    monkeypatch.setattr(cond, "anchor_via_vector_search", lambda *a, **k: [(201, 0.9)])
     monkeypatch.setattr(cond, "traverse_graph", lambda *a, **k: [{
-        "answer_id": 9101, "via_question_id": 101, "via_question_title": "How do I do X?",
+        "answer_id": 9201, "via_question_id": 201, "via_question_title": "How do I do X?",
         "answer_body": "Reference answer for X.", "edge_weight": 0.8, "answer_trust_score": 0.5,
         "hop": 1, "rel_type": "ANSWERED", "is_accepted": True,
     }])
@@ -280,9 +287,11 @@ def test_condition_d_pilot_configs_produce_records_history_and_manifest(
     _redirect_io(monkeypatch, tmp_path, cond, "d_logs")
     monkeypatch.setattr(cond, "get_all_answer_ids_for_questions", lambda *a, **k: {})
     monkeypatch.setattr(cond, "connect_neo4j", lambda *a, **k: (FakeDriver(), "neo4j"))
-    monkeypatch.setattr(cond, "anchor_via_vector_search", lambda *a, **k: [(101, 0.9)])
+    # a related question (201), not the evaluation question itself -- the per-query
+    # leakage assert (llm/common/leakage.py) rejects a context item from q's own thread
+    monkeypatch.setattr(cond, "anchor_via_vector_search", lambda *a, **k: [(201, 0.9)])
     monkeypatch.setattr(cond, "retrieve_low_level", lambda *a, **k: [{
-        "answer_id": 9101, "via_question_id": 101, "via_question_title": "How do I do X?",
+        "answer_id": 9201, "via_question_id": 201, "via_question_title": "How do I do X?",
         "answer_body": "Reference answer for X.", "relevance_score": 0.9, "hop": 1, "rel_type": "ANSWERED",
     }])
     monkeypatch.setattr(cond, "retrieve_high_level", lambda *a, **k: [])

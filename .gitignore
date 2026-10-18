@@ -58,3 +58,6 @@ llm/b_rag/index_cache/kg_answers_*/
 llm/b_rag/index_cache/**/*.parquet
 llm/b_rag/index_cache/**/*.f32
 llm/b_rag/index_cache/**/*.i64
+
+# Leakage audit retrieval dumps (llm/leakage/audit.py) -- large, regenerable; summary.json is kept
+results/leakage/audit/*.jsonl
