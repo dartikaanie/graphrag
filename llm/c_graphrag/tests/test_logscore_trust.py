@@ -351,9 +351,14 @@ QIDS = list(range(1000, 1050))
 APPLIED = "2026-10-14T09:00:00+07:00"  # == 2026-10-14T02:00:00+00:00
 
 
+@pytest.fixture
+def _stage1_dev_ids_stub(monkeypatch):
+    monkeypatch.setattr(s2, "stage1_dev_ids", lambda: QIDS)
+
+
 def _run(tmp, alpha, grounded, started, **manifest_extra) -> Path:
     cfg = {"condition": "C", "c_retrieval_version": "v3", "sample_split": "dev", "alpha": alpha,
-           "require_grounding": grounded}
+           "require_grounding": grounded, "expansion_require_answer": True, "leakage": "dup+neardup0.95"}
     path = tmp / f"run_a{alpha}_{'g' if grounded else 'p'}.jsonl"
     path.write_text("".join(json.dumps({"question_id": q, "config": cfg}) + "\n" for q in QIDS))
     manifest = {"started_at_utc": started, "graph": {"trustScoreVersion": "v3-logscore"}, **manifest_extra}
@@ -371,6 +376,7 @@ def _four_runs(tmp, started, special=None, **manifest_extra):
             for a in (0.5, 0.25) for g in (True, False)]
 
 
+@pytest.mark.usefixtures("_stage1_dev_ids_stub")
 def test_stage2_placeholder_fails_closed(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(s2, "TRUST_V3_APPLIED_AT", None)  # explicit: not masked by any fixture or a filled-in value
     runs = _four_runs(tmp_path, "2026-12-01T00:00:00+00:00")
@@ -383,18 +389,21 @@ def test_stage2_placeholder_fails_closed(tmp_path, monkeypatch, capsys):
     assert "[STOP]" in capsys.readouterr().out and not (tmp_path / "out").exists()
 
 
+@pytest.mark.usefixtures("_stage1_dev_ids_stub")
 @pytest.mark.parametrize("bad, msg", [("2026-10-14T09:00:00", "no UTC offset"), ("yesterday", "not an ISO 8601")])
 def test_stage2_rejects_unusable_cutoff(tmp_path, bad, msg):
     with pytest.raises(s2.Stage2Error, match=msg):
         s2.load_runs(_four_runs(tmp_path, "2026-12-01T00:00:00+00:00"), applied_at=bad, alphas=STAGE2_TEST_ALPHAS)
 
 
+@pytest.mark.usefixtures("_stage1_dev_ids_stub")
 def test_stage2_run_before_apply_excluded(tmp_path):
     runs = _four_runs(tmp_path, "2026-10-14T02:00:01+00:00", special="2026-10-14T01:59:59+00:00")
     with pytest.raises(s2.Stage2Error, match="Amendment 6"):
         s2.load_runs(runs, applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)
 
 
+@pytest.mark.usefixtures("_stage1_dev_ids_stub")
 def test_stage2_run_after_apply_included(tmp_path, monkeypatch):
     runs = _four_runs(tmp_path, "2026-10-14T02:00:01+00:00")
     assert len(s2.load_runs(runs, applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)) == 4
@@ -402,6 +411,7 @@ def test_stage2_run_after_apply_included(tmp_path, monkeypatch):
     assert len(s2.load_runs(runs, alphas=STAGE2_TEST_ALPHAS)) == 4
 
 
+@pytest.mark.usefixtures("_stage1_dev_ids_stub")
 def test_stage2_same_instant_in_two_timezones(tmp_path):
     # 03:00 UTC is 10:00 in Jakarta: after 09:00+07:00 although "03:00" < "09:00" as text.
     assert len(s2.load_runs(_four_runs(tmp_path, "2026-10-14T03:00:00+00:00"), applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)) == 4
@@ -416,6 +426,7 @@ def test_stage2_same_instant_in_two_timezones(tmp_path):
                      applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)
 
 
+@pytest.mark.usefixtures("_stage1_dev_ids_stub")
 def test_stage2_trust_version_mismatch_or_missing_excluded(tmp_path):
     after = "2026-10-14T03:00:00+00:00"
     assert len(s2.load_runs(_four_runs(tmp_path, after), applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)) == 4
@@ -449,6 +460,7 @@ class _VersionDriver:
         return _VersionSession(self.rows)
 
 
+@pytest.mark.usefixtures("_stage1_dev_ids_stub")
 def test_run_manifest_records_graph_trust_version(tmp_path):
     import c_graphrag as cg
     from llm.manifest import write_manifest

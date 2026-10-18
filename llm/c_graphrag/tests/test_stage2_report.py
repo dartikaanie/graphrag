@@ -19,11 +19,13 @@ def _graph_update_applied(monkeypatch):
     """TRUST_V3_APPLIED_AT is None until Amendment 6 is applied (the report then fails closed,
     see test_fails_closed_without_applied_at); the other tests need a filled-in value."""
     monkeypatch.setattr(s2, "TRUST_V3_APPLIED_AT", "2026-10-13T13:04:20+00:00")
+    monkeypatch.setattr(s2, "stage1_dev_ids", lambda: QIDS)  # synthetic ids stand in for the frozen dev list
 
 
 def _cfg(alpha, grounded, **over):
     return {"condition": "C", "c_retrieval_version": "v3", "sample_split": "dev", "alpha": alpha,
-            "require_grounding": grounded, **over}
+            "require_grounding": grounded, "expansion_require_answer": True, "expansion_overfetch": 20,
+            "leakage": "dup+neardup0.95", **over}
 
 
 def _run(tmp: Path, alpha, grounded, started=AFTER, qids=QIDS, **over) -> Path:
@@ -143,3 +145,30 @@ def test_draft_ablation_is_the_other_candidate():
 def test_stage2_alphas_are_the_amendment9_top_two():
     """Amendment 9 stage-1 recheck: top_two = [0.25, 0.0]."""
     assert s2.STAGE2_ALPHAS == (0.25, 0.0)
+
+
+@pytest.mark.parametrize("over, msg", [({"expansion_require_answer": None}, "expansion_require_answer"),
+                                       ({"expansion_require_answer": False}, "expansion_require_answer"),
+                                       ({"leakage": None}, "leakage mode"),
+                                       ({"leakage": "thread"}, "leakage mode")])
+def test_rejects_run_without_amendment8_9_settings(tmp_path, over, msg):
+    runs = [_run(tmp_path, a, g, **(over if (a, g) == (0.5, True) else {})) for a in ALPHAS for g in (True, False)]
+    with pytest.raises(s2.Stage2Error, match=msg):
+        s2.load_runs(runs, alphas=ALPHAS)
+
+
+def test_rejects_runs_not_on_the_stage1_dev_questions(tmp_path):
+    """Same 50 questions in all 4 runs, but not the stage-1 dev list -> rejected."""
+    other = list(range(2000, 2050))
+    runs = [_run(tmp_path, a, g, qids=other) for a in ALPHAS for g in (True, False)]
+    with pytest.raises(s2.Stage2Error, match="stage-1 dev list"):
+        s2.load_runs(runs, alphas=ALPHAS)
+
+
+def test_frozen_dev_list_is_the_stage1_dev_set(monkeypatch):
+    """The frozen list stage 2 is checked against is exactly the question list the Amendment 9 stage-1
+    recheck ran on (positions 385-434), in the same order."""
+    monkeypatch.undo()  # the real stage1_dev_ids, not the autouse stand-in
+    recheck = Path(s2.__file__).resolve().parent / "results" / "expansion_check" / "stage1_expansion_new_alpha0-25.jsonl"
+    ids = [json.loads(line)["question_id"] for line in recheck.read_text().splitlines()]
+    assert s2.stage1_dev_ids() == ids and len(ids) == 50

@@ -242,6 +242,7 @@ def write_manifest(
     run_id: str | None = None,
     record_schema_version: str | None = None,
     provenance: dict | None = None,
+    official_role: str | None = None,
 ) -> Path:
     """Writes "<output_path>.manifest.json". Returns the manifest path.
 
@@ -272,6 +273,10 @@ def write_manifest(
     `provenance`: inputs the run read that are not part of config --
     leakage exclusion-set hash, FAISS index fingerprints, frozen sample-ID
     list hashes, ... (see llm/common/provenance.py). Written only when given.
+    `official_role`: "c_primary" / "c_ablation" for a test-sample Condition C
+    run (Amendment 10), derived from its alpha and official_params.json
+    (llm/c_graphrag/official_params.py). Not part of config/config_hash.
+    Written only when given.
     """
     output_path = Path(output_path)
     all_files = [output_path] + [Path(p) for p in (extra_output_files or [])]
@@ -305,6 +310,8 @@ def write_manifest(
         manifest["run_ids_in_output"] = _run_ids_in(output_path)
     if provenance is not None:
         manifest["provenance"] = provenance
+    if official_role is not None:
+        manifest["official_role"] = official_role
 
     manifest_path = output_path.with_name(output_path.name + ".manifest.json")
     manifest_path.parent.mkdir(parents=True, exist_ok=True)

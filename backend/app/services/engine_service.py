@@ -1143,6 +1143,12 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         run_label = derive_run_label("C", {
             "fusion_mode": fusion_mode, "grounding": "on" if require_grounding else "off",
         })["run_label"]
+        # Amendment 10: role of a test-sample run, from its alpha (POST /api/runs
+        # already refused any test-sample C run that is not C-primary/C-ablation)
+        official_role = None
+        if sample_split == "test" and params["mode"] == "batch":
+            from llm.c_graphrag.official_params import load_official_params, role_for_alpha
+            official_role = role_for_alpha(load_official_params(), alpha)
         _write_manifest(
             output_path, run_id=run_id, provenance=provenance, run_label=run_label, status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
@@ -1150,7 +1156,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
                          "failed": params.get("n_sample", 1) - len(results)},
             prompt_version=cond.PROMPT_VERSION, total_tokens=_sum_usage_tokens(results),
-            graph=graph_state,
+            graph=graph_state, official_role=official_role,
         )
         run_registry.update_run(
             run_id, status="cancelled" if cancelled else "completed",

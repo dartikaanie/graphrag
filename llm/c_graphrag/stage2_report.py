@@ -24,8 +24,13 @@ CHECKS (the script stops on any failure -- a stage-2 result is only valid
 if every check passes)
 ------------------------------------------------------------
   - Each run: condition C, c_retrieval_version v3, sample_split dev,
-    alpha in the candidates, exactly one run per (alpha, grounding), and
-    the same 50 dev question_ids in every run.
+    alpha in the candidates, exactly one run per (alpha, grounding).
+  - Each run's config pins the answerable-only expansion
+    (expansion_require_answer = true, Amendment 9) and the official leakage
+    mode (llm/official_run_matrix.LEAKAGE_MODE, Amendment 8).
+  - Each run covers exactly the stage-1 dev questions: the frozen dev list
+    (llm/sample_ids/dev_ids_v1.json, positions 385-434), not merely the
+    same questions across the 4 runs.
   - Each run's manifest started after the Amendment 6 graph update
     (TRUST_V3_APPLIED_AT), so every run used trustScore "v3-logscore".
     Timestamps are compared timezone-aware. While TRUST_V3_APPLIED_AT is
@@ -72,11 +77,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "evaluation"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "01_data_cleaning"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ctxrel_sweep import select_stage2_winner  # noqa: E402
 from judge_binary import (CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED,  # noqa: E402
                           CATEGORY_NOT_HALLUCINATED, category_of, is_unusable, severity_of)
 from trust_formulas import TRUST_SCORE_VERSION  # noqa: E402
+
+from llm.official_run_matrix import LEAKAGE_MODE as OFFICIAL_LEAKAGE_MODE  # noqa: E402
+from llm.sample_split import load_frozen_ids  # noqa: E402
 
 # Stage-2 candidates. Amendment 9: the stage-1 recheck with answerable-only
 # semantic expansion gave top_two = [0.25, 0.0] (report results/expansion_check/
@@ -158,10 +167,16 @@ def _recorded_trust_version(manifest: dict) -> str | None:
     return None
 
 
+def stage1_dev_ids() -> list[int]:
+    """The stage-1 dev questions (positions 385-434), from the frozen list."""
+    return [int(q) for q in load_frozen_ids("dev")["ids"]]
+
+
 def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str | None = None) -> dict:
     """{(alpha, grounding): {"path", "question_ids", "started_at"}} after all run checks."""
     runs, qid_sets = {}, []
     cutoff = trust_cutoff(applied_at)
+    dev_ids = set(stage1_dev_ids())
     for path in run_files:
         path = Path(path)
         recs = _read_jsonl(path)
@@ -175,6 +190,12 @@ def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str | Non
                     if cfg.get(k) != want]
         if problems:
             raise Stage2Error(f"{path.name}: wrong {problems} (config {cfg})")
+        if cfg.get("expansion_require_answer") is not True:
+            raise Stage2Error(f"{path.name}: expansion_require_answer is {cfg.get('expansion_require_answer')!r}, "
+                              "not true (Amendment 9)")
+        if cfg.get("leakage") != OFFICIAL_LEAKAGE_MODE:
+            raise Stage2Error(f"{path.name}: leakage mode {cfg.get('leakage')!r}, not the official "
+                              f"{OFFICIAL_LEAKAGE_MODE!r} (Amendment 8)")
         alpha = cfg.get("alpha")
         if alpha not in alphas:
             raise Stage2Error(f"{path.name}: alpha {alpha} is not a stage-2 candidate {list(alphas)}")
@@ -184,6 +205,9 @@ def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str | Non
         qids = [int(r["question_id"]) for r in recs]
         if len(qids) != N_DEV or len(set(qids)) != N_DEV:
             raise Stage2Error(f"{path.name}: expected {N_DEV} distinct questions, got {len(set(qids))} of {len(qids)}")
+        if set(qids) != dev_ids:
+            raise Stage2Error(f"{path.name}: questions differ from the stage-1 dev list (positions 385-434): "
+                              f"{len(set(qids) - dev_ids)} extra, {len(dev_ids - set(qids))} missing")
         manifest = path.with_name(path.name + ".manifest.json")
         if not manifest.exists():
             raise Stage2Error(f"{path.name}: manifest missing ({manifest.name})")

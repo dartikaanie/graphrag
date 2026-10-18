@@ -1794,7 +1794,7 @@ def main():
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
-            prompt_version=PROMPT_VERSION, graph=graph_state,
+            prompt_version=PROMPT_VERSION, graph=graph_state, official_role=official_role,
         )
         log(f"[logging] Manifest (gagal) ditulis -> {manifest_path}")
         return
@@ -1897,6 +1897,7 @@ def main():
         prompt_version=PROMPT_VERSION,
         total_tokens=sum_usage_tokens(results_df.to_dict("records")),
         graph=graph_state,
+        official_role=official_role,
     )
     log(f"[logging] Manifest ditulis -> {manifest_path}")
 

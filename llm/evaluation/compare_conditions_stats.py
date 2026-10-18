@@ -277,6 +277,11 @@ def main():
     parser.add_argument("--b-path", default=None, help="File hasil Kondisi B")
     parser.add_argument("--c-path", default=None, help="File hasil Kondisi C")
     parser.add_argument("--d-path", default=None, help="File hasil Kondisi D (opsional)")
+    parser.add_argument("--c-ablation-path", default=None,
+                        help="File hasil C-ablation (Amendment 10). --c-path = C-primary. C-ablation masuk "
+                             "ringkasan per kondisi saja, TIDAK ke uji berpasangan/Holm (analisis utama tetap "
+                             "C-primary vs A/B/D); tabel berpasangan C-primary vs C-ablation ada di "
+                             "trust_ablation_report.py.")
     args = parser.parse_args()
 
     given = {"A": args.a_path, "B": args.b_path, "C": args.c_path, "D": args.d_path}
@@ -298,6 +303,14 @@ def main():
 
     summary = per_condition_summary(condition_data)
     comparisons = paired_comparisons(condition_data)
+    if args.c_ablation_path:
+        ablation_path = Path(args.c_ablation_path)
+        if not ablation_path.exists():
+            print(f"[ERROR] --c-ablation-path tidak ditemukan: {ablation_path}")
+            sys.exit(1)
+        ablation = {"C-ablation": load_condition_metrics("C-ablation", ablation_path)}
+        print(f"[ok] C-ablation: {ablation_path.name} -> {len(ablation['C-ablation'])} pertanyaan dimuat")
+        summary.update(per_condition_summary(ablation))  # descriptive row only, outside the Holm family
 
     ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -311,7 +324,9 @@ def main():
 
     md_path = ANALYSIS_DIR / f"compare_conditions_stats_{ts}.md"
     lines = ["# Compare Conditions Stats", "", f"Generated: {datetime.now(timezone.utc).isoformat()}",
-              f"Kondisi dibandingkan: {', '.join(sorted(given))}", "",
+              f"Kondisi dibandingkan: {', '.join(sorted(given))}"
+              + (" (C = C-primary; C-ablation hanya di ringkasan, lihat trust_ablation_report.py)"
+                 if args.c_ablation_path else ""), "",
               "## Ringkasan per kondisi (mean/median, n)", "", "```",
               json.dumps(summary, indent=2, default=str), "```", "",
               "## Perbandingan berpasangan (Wilcoxon + Cliff's delta, Holm-corrected per metrik)", "",
