@@ -285,7 +285,9 @@ def test_blind_export_has_no_condition_or_judge_fields_and_no_citation_markers(t
         ws = wb["anotasi"]
         assert [c.value for c in ws[1]] == at.COLUMNS and ws.max_row == n + 1 and ws.freeze_panes == "B2"
         assert ws["B2"].alignment.wrap_text is True
-        assert sorted(dv.formula1 for dv in ws.data_validations.dataValidation) == ['"PENUH,SEBAGIAN"', '"Y,N"', '"Y,N"']
+        assert sorted(dv.formula1 for dv in ws.data_validations.dataValidation) == sorted([
+            '"Y,N"', '"Y,N"', '"PENUH,SEBAGIAN"', '"all_supported,partly_supported,not_supported"',
+            '"same,different_valid,different_unassessable"', '"familiar,not_familiar"', '"Y,N"'])
         blob = "\n".join(str(c) for row in ws.iter_rows(values_only=True) for c in row if c is not None)
         blob += "\n".join(str(c) for row in wb["petunjuk"].iter_rows(values_only=True) for c in row if c)
         assert "[SO-" not in blob
@@ -294,7 +296,7 @@ def test_blind_export_has_no_condition_or_judge_fields_and_no_citation_markers(t
             assert forbidden not in blob, forbidden
         assert "Answer for" in blob and "Body of" in blob and "Reference" in blob
     row = export["annotator1"][0]
-    assert set(row) == {"item_id", "question", "accepted_answer", "candidate_answer"}
+    assert set(row) == {"item_id", "question", "accepted_answer", "candidate_answer", "context"}
     assert row["candidate_answer"].startswith("Answer for") and "per the docs" in row["candidate_answer"]
 
 
@@ -309,14 +311,24 @@ def test_key_is_verified_against_the_manifest_hash(tmp_path, monkeypatch):
 
 
 def _fill(path, labels, edit=None):
-    """labels: {item_id: (abstain, hallucinated, severity)}; rows not listed get ("N", "N", None)."""
+    """labels: {item_id: (abstain, hallucinated, severity)}; rows not listed get ("N", "N", None). The other
+    Amendment 11 columns are filled validly from those three labels (evidence for a hallucinated row,
+    faithfulness only when the row shows context, approach only when not ABSTAIN)."""
     from openpyxl import load_workbook
 
     wb = load_workbook(path)
     ws = wb["anotasi"]
+    c = {name: i for i, name in enumerate(at.COLUMNS)}
     for row in ws.iter_rows(min_row=2):
         a, h, s = labels.get(row[0].value, ("N", "N", None))
-        row[4].value, row[5].value, row[6].value = a, h, s
+        row[c["abstain"]].value, row[c["hallucinated"]].value, row[c["severity"]].value = a, h, s
+        if (h or "").upper() == "Y":
+            row[c["wrong_claims"]].value = "fabricated | foo() exists | https://docs.example.org/api"
+        if (a or "").upper() == "N":
+            row[c["approach_match"]].value = "same"
+            if row[c["context"]].value:
+                row[c["faithfulness_level"]].value = "all_supported"
+        row[c["domain_familiarity"]].value, row[c["uncertain"]].value = "familiar", "N"
         if edit and row[0].value == edit:
             row[3].value = str(row[3].value) + " (edited)"
     wb.save(path)
@@ -339,7 +351,7 @@ def test_import_validation_reports_invalid_cells_and_edits(tmp_path, monkeypatch
                    "(CAL-009): column 'candidate_answer' was edited"):
         assert needle in text, needle
     assert len(problems) == 7 and all(rows[i]["category"] is None for i in ("CAL-003", "CAL-006", "CAL-008"))
-    assert "annotator1.xlsx!E" in text                       # problems name the cell
+    assert "annotator1.xlsx!G" in text                       # problems name the cell (abstain is column G)
 
 
 def test_human_kappa_reference_and_judge_join(tmp_path, monkeypatch):
