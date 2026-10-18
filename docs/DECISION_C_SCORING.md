@@ -584,6 +584,88 @@ This decision adds a measurement; it does not change any selection. It was made 
 
 ---
 
+## Amendment 11 (2026-10-19): judge-v2.2 with retrieval context, single-annotator validation, 63-item confirmation set
+
+**Status: confirmed by the author.** Written after Amendment 10 and before any calibration annotation, any judge-v2.x run on human-labelled data, stage 2, and the official evaluation on the test sample (n = 384). No judge-v2.1 or judge-v2.2 output exists. The calibration sheets exported on 2026-10-13 are still empty (0 of 60 and 0 of 30 rows filled), so their format can be replaced. Technical details are in `reports/p1_judge_annotation.md`.
+
+### Motivation
+- judge-v2.1 sees only the question, the accepted answer and the candidate answer. Faithfulness to the retrieved context (B–D), citation support and the match of the solution approach cannot be measured with it (`reports/evaluation_implementation_audit.md`, P1-1).
+- `blind_candidate` leaves phrases such as "the retrieved sources do not cover …" in the candidate. They tell the judge and the annotator that an answer comes from a RAG condition (P1-5).
+- Only one human annotator (the researcher) is available. Amendment 4's human-human κ and adjudication cannot be the main reliability evidence.
+
+### Change 1: judge-v2.2, one instrument (replaces judge-v2.1 as the instrument to calibrate)
+1. **Input:** the question (title, tags, body), the accepted answer as the reference, the blinded candidate answer, and a **retrieval context block**.
+   - For B, C and D, each context item is shown under a neutral marker `[K1]` … `[K5]`, in retrieval order, never with its Stack Overflow id.
+   - Each item is cut at 2,500 characters. On the existing dev runs, no item is longer than 2,366 characters (median 981).
+   - For A, the block states explicitly that there is no context.
+2. **Output per claim:** the verdict of judge-v2.1 (SUPPORTED / CONTRADICTED / FABRICATED / UNVERIFIABLE) and its severity, plus:
+   - `supported_by_context`: yes / no, or n/a for A;
+   - `cited_item_supports`: yes / no, only for a claim that carries a citation in the original answer.
+3. **Output per answer:** `answer_attempted` (ABSTAIN), and `approach_match`: same / different_valid / different_unassessable.
+4. **Fixed rules in code, never the judge's own label:**
+   - HALU = ≥ 1 claim CONTRADICTED or FABRICATED (unchanged from Amendment 4).
+   - Faithfulness (B–D) = claims with `supported_by_context` = yes ÷ all claims. It is null for A and for an answer without claims.
+   - Citation support = cited claims with `cited_item_supports` = yes ÷ all cited claims. It is null when the answer has no cited claim.
+   - `approach_match` never changes HALU. The rule "a different approach is not a hallucination" stays in the prompt.
+5. **Citations:** before blinding, each `[SO-<id>]` in the answer is mapped to the `[Kn]` of the same context item. The judge sees `[Kn]` only in the claim list it is asked to check, never the Stack Overflow id.
+6. `PROMPT_VERSION = "judge-v2.2"`, temperature 0, recorded on every record and in the manifest. judge-v2.1 stays in the repository unchanged.
+
+### Change 2: blind-v3
+`BLINDING_VERSION = "blind-v3"`.
+- Citation markers are removed as in blind-v2.
+- In addition, meta phrases that reveal a RAG answer ("the retrieved sources do not cover …", "based on the provided context …", "according to the sources …") are replaced by the neutral marker `[catatan: informasi tidak tersedia]` or removed, following a documented pattern list taken from the existing dev outputs.
+- The judge and the annotation sheets use the same blinding.
+
+### Change 3: judge-v2.2 is the base version; revision limit
+- judge-v2.2 is the **base version before calibration**. It is not counted as a revision.
+- The limit of 3 prompt revisions (Amendment 4) starts at the first run of judge-v2.2 against the human labels. At most three revisions (v2.3, v2.4, v2.5) may follow; a fourth version after v2.2 is refused by the calibration runner.
+- Every version is committed before it is run and is logged in `docs/JUDGE_REVISION_LOG.md` (date, commit, reason, κ before and after).
+- The runners accept only the versions on an explicit list in the code, one list for calibration and one for official runs.
+
+### Change 4: annotation by one person, and its mitigations
+- **Annotator:** the researcher labels the calibration set (60 items: A, B-plain, B-grounded, 20 each, the same items, seed and hidden key as the 2026-10-13 export).
+- **Blind annotation:** condition, run, model and judge output stay hidden. The annotator sees the question, the accepted answer, the blind-v3 candidate and the `[K1]` … `[K5]` context (empty for A).
+- **Evidence per label:** a row with hallucinated = yes must list at least one wrong claim with its type (contradicted / fabricated) and evidence (a documentation URL or a quote from the thread or the context). Rows without it are rejected.
+- **Further columns:** `faithfulness_level` (B–D: all_supported / partly_supported / not_supported), `approach_match`, `domain_familiarity` (familiar / not_familiar), `uncertain` and `notes`, and an `annotator_id` per row.
+- **Intra-annotator reliability:** 20% of the calibration items are re-annotated with new ids and a new order, at least 14 days after the first sheet is completed. Any override of the 14 days is recorded in the manifest. κ between the two passes is reported.
+- **Reported agreement**, each as unweighted κ (3 categories: ABSTAIN / not hallucinated / hallucinated, and binary on items both raters label non-ABSTAIN) with a bootstrap 95% CI (2,000 resamples, fixed seed) and a confusion matrix:
+  - primary judge vs researcher (this decides acceptance, target κ ≥ 0.6, as in Amendment 4);
+  - secondary judge vs researcher;
+  - primary vs secondary judge;
+  - researcher first pass vs re-annotation;
+  - a second annotator vs the researcher, if one becomes available (the code supports it without change; adjudication as in Amendment 4 then applies).
+- Agreement on faithfulness (judge ratio mapped to all / partly / not vs `faithfulness_level`) and separate results for familiar and not-familiar items are reported descriptively.
+
+### Change 5: confirmation set
+- The confirmation set becomes **63 items = 7 per run × the 9 official test runs (R1–R9)**, drawn with seed 42 from the frozen test sample.
+- It is exported only after the judge version is frozen (the Record below is filled in) and all nine official runs exist.
+- It is annotated blind by the researcher with the same sheet format, before the judge labels of these items are viewed.
+- It replaces Amendment 4's 30 items from the stage-2 runs.
+
+### Change 6: judge bias probes (dev only, descriptive)
+1. **Authority:** 40 B/C/D dev answers judged twice, once blind-v3 and once with the `[Kn]` citation labels left in; the flip rate of HALU is reported.
+2. **Length:** point-biserial correlation of answer length (tokens) with HALU, per condition.
+3. **Order:** 40 B/C/D dev answers judged with the `[K1]` … `[K5]` order shuffled (fixed seed); the flip rate is reported.
+
+### Unchanged
+The binary HALU rule and the metrics of Amendment 4; the acceptance target κ ≥ 0.6 for the primary judge; the judges and their models (primary Llama-3.3-70B, secondary gpt-4o-mini, temperature 0); retrieval, generators and generation prompts; stage 1, the stage-2 selection rule and Amendment 10.
+
+### Justification
+These are measurement-validity corrections, decided on the design of the instrument and on the availability of annotators, before any human label or judge-v2.x label exists. They cannot depend on agreement or hallucination results.
+
+### Record (fill in)
+- Judge version frozen: [ ]  commit: [ ]
+- Revisions after v2.2 (see docs/JUDGE_REVISION_LOG.md): [ ]
+- κ primary judge vs researcher, calibration (60), per version, with 95% CI: [ ]
+- κ secondary judge vs researcher, calibration (60), with 95% CI: [ ]
+- κ primary vs secondary judge, calibration (60), with 95% CI: [ ]
+- κ intra-annotator (20% re-annotation), with 95% CI, and days between passes: [ ]
+- κ second annotator vs researcher, if any: [ ]
+- κ primary judge vs researcher, confirmation (63), with 95% CI: [ ]
+- Date frozen: [YYYY-MM-DD]
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 
