@@ -361,17 +361,21 @@ def _run(tmp, alpha, grounded, started, **manifest_extra) -> Path:
     return path
 
 
+# fixed stage-2 candidates for these checks, independent of the STAGE2_ALPHAS decision
+STAGE2_TEST_ALPHAS = (0.5, 0.25)
+
+
 def _four_runs(tmp, started, special=None, **manifest_extra):
-    """4 stage-2 runs; `special` overrides the start of the (0.25, grounded) run."""
-    return [_run(tmp, a, g, special if (special and (a, g) == (0.25, True)) else started, **manifest_extra)
-            for a in (0.25, 0.0) for g in (True, False)]
+    """4 stage-2 runs; `special` overrides the start of the (0.5, grounded) run."""
+    return [_run(tmp, a, g, special if (special and (a, g) == (0.5, True)) else started, **manifest_extra)
+            for a in (0.5, 0.25) for g in (True, False)]
 
 
 def test_stage2_placeholder_fails_closed(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(s2, "TRUST_V3_APPLIED_AT", None)  # explicit: not masked by any fixture or a filled-in value
     runs = _four_runs(tmp_path, "2026-12-01T00:00:00+00:00")
     with pytest.raises(s2.Stage2Error, match="TRUST_V3_APPLIED_AT is not set"):
-        s2.load_runs(runs)
+        s2.load_runs(runs, alphas=STAGE2_TEST_ALPHAS)
     monkeypatch.setattr(s2, "OUT_DIR", tmp_path / "out")
     monkeypatch.setattr(sys, "argv", ["stage2_report.py", "--run-files", *map(str, runs),
                                       "--judge-files", "none.jsonl", "--judge-version", "judge-v2.1"])
@@ -382,44 +386,44 @@ def test_stage2_placeholder_fails_closed(tmp_path, monkeypatch, capsys):
 @pytest.mark.parametrize("bad, msg", [("2026-10-14T09:00:00", "no UTC offset"), ("yesterday", "not an ISO 8601")])
 def test_stage2_rejects_unusable_cutoff(tmp_path, bad, msg):
     with pytest.raises(s2.Stage2Error, match=msg):
-        s2.load_runs(_four_runs(tmp_path, "2026-12-01T00:00:00+00:00"), applied_at=bad)
+        s2.load_runs(_four_runs(tmp_path, "2026-12-01T00:00:00+00:00"), applied_at=bad, alphas=STAGE2_TEST_ALPHAS)
 
 
 def test_stage2_run_before_apply_excluded(tmp_path):
     runs = _four_runs(tmp_path, "2026-10-14T02:00:01+00:00", special="2026-10-14T01:59:59+00:00")
     with pytest.raises(s2.Stage2Error, match="Amendment 6"):
-        s2.load_runs(runs, applied_at=APPLIED)
+        s2.load_runs(runs, applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)
 
 
 def test_stage2_run_after_apply_included(tmp_path, monkeypatch):
     runs = _four_runs(tmp_path, "2026-10-14T02:00:01+00:00")
-    assert len(s2.load_runs(runs, applied_at=APPLIED)) == 4
+    assert len(s2.load_runs(runs, applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)) == 4
     monkeypatch.setattr(s2, "TRUST_V3_APPLIED_AT", APPLIED)  # the constant is read at call time
-    assert len(s2.load_runs(runs)) == 4
+    assert len(s2.load_runs(runs, alphas=STAGE2_TEST_ALPHAS)) == 4
 
 
 def test_stage2_same_instant_in_two_timezones(tmp_path):
     # 03:00 UTC is 10:00 in Jakarta: after 09:00+07:00 although "03:00" < "09:00" as text.
-    assert len(s2.load_runs(_four_runs(tmp_path, "2026-10-14T03:00:00+00:00"), applied_at=APPLIED)) == 4
+    assert len(s2.load_runs(_four_runs(tmp_path, "2026-10-14T03:00:00+00:00"), applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)) == 4
     # The same instant written two ways is not "after".
     for same in ("2026-10-14T02:00:00+00:00", "2026-10-14T09:00:00+07:00", "2026-10-14T02:00:00Z"):
         with pytest.raises(s2.Stage2Error, match="Amendment 6"):
-            s2.load_runs(_four_runs(tmp_path, "2026-10-14T03:00:00+00:00", special=same), applied_at=APPLIED)
+            s2.load_runs(_four_runs(tmp_path, "2026-10-14T03:00:00+00:00", special=same), applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)
     # 09:30 written with the Jakarta offset is after; a start without an offset is read as UTC.
-    assert len(s2.load_runs(_four_runs(tmp_path, "2026-10-14T09:30:00+07:00"), applied_at=APPLIED)) == 4
+    assert len(s2.load_runs(_four_runs(tmp_path, "2026-10-14T09:30:00+07:00"), applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)) == 4
     with pytest.raises(s2.Stage2Error, match="Amendment 6"):
         s2.load_runs(_four_runs(tmp_path, "2026-10-14T03:00:00+00:00", special="2026-10-14T01:30:00"),
-                     applied_at=APPLIED)
+                     applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)
 
 
 def test_stage2_trust_version_mismatch_or_missing_excluded(tmp_path):
     after = "2026-10-14T03:00:00+00:00"
-    assert len(s2.load_runs(_four_runs(tmp_path, after), applied_at=APPLIED)) == 4
+    assert len(s2.load_runs(_four_runs(tmp_path, after), applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)) == 4
     for bad in ("v2-reputation", "mixed(v2-reputation=5, v3-logscore=7)", None):
         with pytest.raises(s2.Stage2Error, match="manifest records trustScoreVersion"):
-            s2.load_runs(_four_runs(tmp_path, after, graph={"trustScoreVersion": bad}), applied_at=APPLIED)
+            s2.load_runs(_four_runs(tmp_path, after, graph={"trustScoreVersion": bad}), applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)
     with pytest.raises(s2.Stage2Error, match="trustScoreVersion None"):
-        s2.load_runs(_four_runs(tmp_path, after, graph=None), applied_at=APPLIED)  # manifest without the field
+        s2.load_runs(_four_runs(tmp_path, after, graph=None), applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)  # manifest without the field
 
 
 class _VersionSession:
@@ -458,17 +462,17 @@ def test_run_manifest_records_graph_trust_version(tmp_path):
     assert mixed == "mixed(v2-reputation=5, v3-logscore=7)"
 
     # What c_graphrag.py / the dashboard write at the end of a run, then what stage 2 reads back.
-    for (alpha, grounded), ver in zip([(a, g) for a in (0.25, 0.0) for g in (True, False)],
+    for (alpha, grounded), ver in zip([(a, g) for a in (0.5, 0.25) for g in (True, False)],
                                       ["v3-logscore", "v3-logscore", "v3-logscore", mixed]):
         path = _run(tmp_path, alpha, grounded, "unused")
         write_manifest(path, run_label=None, config={}, started_at_utc="2026-10-14T03:00:00+00:00",
                        finished_at_utc="2026-10-14T03:10:00+00:00", item_counts={},
                        graph={"trustScoreVersion": ver})
-    manifest = json.loads((tmp_path / "run_a0.25_g.jsonl.manifest.json").read_text())
+    manifest = json.loads((tmp_path / "run_a0.5_g.jsonl.manifest.json").read_text())
     assert manifest["graph"] == {"trustScoreVersion": "v3-logscore"}
-    runs = [tmp_path / f"run_a{a}_{g}.jsonl" for a in (0.25, 0.0) for g in ("g", "p")]
-    with pytest.raises(s2.Stage2Error, match="run_a0.0_p.jsonl: manifest records trustScoreVersion 'mixed"):
-        s2.load_runs(runs, applied_at=APPLIED)
+    runs = [tmp_path / f"run_a{a}_{g}.jsonl" for a in (0.5, 0.25) for g in ("g", "p")]
+    with pytest.raises(s2.Stage2Error, match="run_a0.25_p.jsonl: manifest records trustScoreVersion 'mixed"):
+        s2.load_runs(runs, applied_at=APPLIED, alphas=STAGE2_TEST_ALPHAS)
     # A manifest written without `graph` (other conditions) has no such key.
     other = tmp_path / "other.jsonl"
     other.write_text("")
