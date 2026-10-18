@@ -49,6 +49,17 @@ def official_alphas(official: dict) -> dict:
     return {ROLE_PRIMARY: official["alpha_primary"], ROLE_ABLATION: official["alpha_ablation"]}
 
 
+def role_for_alpha(official: dict | None, alpha) -> str | None:
+    """"c_primary" / "c_ablation" for this alpha under the selected official
+    params, else None. Pure lookup -- check_c_test_run() is the launch rule."""
+    if alpha is None:
+        return None
+    for role, value in official_alphas(official).items():
+        if value is not None and float(value) == float(alpha):
+            return role
+    return None
+
+
 def _norm(key, value):
     if key == "edge_types" and value is not None:
         return sorted(value)
