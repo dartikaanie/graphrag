@@ -204,18 +204,20 @@ MENU = [
         "confirm_cost": True,
     },
     {
-        "label": "Jalankan LLM-as-Judge halusinasi (judge-v2.1)",
-        "desc": "Nilai file JSONL hasil Kondisi A/B/C/D yang SUDAH ADA dengan judge-v2.1 (Amendment 4): "
-                "klaim per jawaban, label biner hallucinated diturunkan oleh kode, judge primary "
-                "(Llama-3.3-70B, DeepInfra) dan/atau secondary (gpt-4o-mini), temperature 0 -- "
-                "TANPA re-run kondisi aslinya.",
-        "script": "llm_judge_hallucination_v2_1.py",
+        "label": "Jalankan LLM-as-Judge halusinasi (judge-v2.2)",
+        "desc": "Nilai file JSONL hasil Kondisi A/B/C/D yang SUDAH ADA dengan judge-v2.2 (Amendment 11): "
+                "klaim per jawaban + konteks retrieval [K1]..[K5] (B-D), label biner hallucinated, "
+                "faithfulness dan citation support diturunkan oleh kode, judge primary (Llama-3.3-70B, "
+                "DeepInfra) dan/atau secondary (gpt-4o-mini), temperature 0 -- TANPA re-run kondisi aslinya.",
+        "script": "llm_judge_hallucination_v2_2.py",
         "cwd": "llm/evaluation",
         "default_args": [],
         "note": "--run-files dan --out WAJIB diisi manual (pilih 'tidak' pakai argumen default), "
                 "contoh: --run-files ../c_graphrag/results/condition_c_....jsonl --judge both "
-                "--out results/jv2_1_<nama>.jsonl. Run kalibrasi ditolak sebelum referensi manusia ada. "
-                "Judge lama (llm_judge_hallucination.py) tidak lagi ada di menu.",
+                "--out results/jv2_2_<nama>.jsonl. Run kalibrasi ditolak sebelum referensi manusia ada; "
+                "versi judge dijaga oleh llm/evaluation/judge_versions.py + docs/JUDGE_REVISION_LOG.md "
+                "(run test resmi hanya dengan versi yang sudah dibekukan). judge-v2.1 tetap ada sebagai "
+                "skrip, tidak lagi di menu.",
         "confirm_cost": True,
     },
     {
