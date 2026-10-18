@@ -50,11 +50,21 @@ Logika `semantic_expansion()` tidak diubah.
 
 `exclusion_sets.parquet`: sha256 `d2eeb0a0…7a3d`. Dibangun ulang dengan hasil byte-identik (test). Waktu build 315 detik, puncak RSS 1,44 GB.
 
+**Kenapa pool berisi 1.471 pertanyaan, bukan 384 × 4 = 1.536.** Pool dibentuk oleh sampler bersama semua kondisi:
+
+1. `get_candidate_questions()` mengambil **1.536** pertanyaan unik (reservoir sample, seed 42) dari pertanyaan yang punya accepted answer di parquet jawaban.
+2. `filter_by_token_limit()` lalu membuang **65** pertanyaan yang Title + Body + Tags-nya melebihi 2.048 token cl100k_base (minimum 2.069, median 2.826, maksimum 8.685 token).
+
+Ini kriteria eksklusi pertanyaan evaluasi yang sama sejak Kondisi A, dan sampel uji (posisi 1–384) maupun dev set selalu diambil dari 1.471 pertanyaan yang lolos filter. Tidak ada yang berubah karena tugas ini:
+
+- Urutan 1.536 pertanyaan mentah, sampel uji 384, dan dev 50 identik pada DuckDB dengan thread default, `threads=2`, maupun `threads=1`.
+- Hash pool dan dev sama persis dengan sidik jari yang tercatat saat batch kalibrasi (`llm/evaluation/calibration/calibration_runs.json`: `n_pool_after_token_filter` = 1.471, `pool_question_ids_sha256` dan `dev_question_ids_sha256` cocok).
+
 ## 4. Audit retrieval-only, filter off vs on (dev 385–434, n = 50, tanpa LLM)
 
 C memakai v3 α = 0,5, sedangkan D dan B memakai konfigurasi default. Self-retrieval tingkat ID diukur sebagai persentase pertanyaan yang konteksnya memuat id dalam exclusion set. Hasilnya sama terhadap definisi `thread`, `default`, maupun `+linked`.
 
-| Kondisi / mode retrieval | ID self-retrieval | Text: substring ≥ 50¹ | Text: cosine ≥ 0,95 | max-cos rata-rata | final_k < 5 / = 0 | latency rata-rata / p95 (detik) |
+| Kondisi / mode retrieval | ID self-retrieval | (substring ≥ 50, ditinggalkan¹) | Text: cosine ≥ 0,95 | max-cos rata-rata | final_k < 5 / = 0 | latency rata-rata / p95 (detik) |
 |---|---|---|---|---|---|---|
 | B off | **84,0%** (42/50; 31/35) | 45 | 10 | 0,845 | 0 / 0 | 0,10 / 0,11 |
 | B thread / dup / default / +linked | **0%** | 10 | 0 | 0,597 | 0 / 0 | 0,08–0,11 / 0,12–0,29 |
@@ -64,7 +74,9 @@ C memakai v3 α = 0,5, sedangkan D dan B memakai konfigurasi default. Self-retri
 | D off | **100%** (50/50; 35/35) | 50 | 12 | 0,895 | 16 / 0 | 0,33 / 0,58 |
 | D thread / dup / default / +linked | **0%** | 7 | 0 | 0,506–0,508 | 30 / 1 | 0,02–0,05 / 0,03–0,04 |
 
-¹ **Substring ≥ 50 karakter pada HTML mentah didominasi boilerplate.** Saya periksa seluruh 26 kecocokan pada mode default (B 10, C 9, D 7). Semuanya berupa atribut XML Android (`android:layout_width="match_parent"`), URL dokumentasi (`<a href="https://learn.microsoft.com/en-us/dotnet/`), baris dependensi Gradle, atau impor standar. Tidak ada satu pun yang merupakan isi jawaban q. Metrik ini tetap dilaporkan sesuai spesifikasi, tetapi pada filter aktif ia mengukur kemiripan bahasa kode, bukan kebocoran. Cosine ≥ 0,95 adalah sinyal teks yang lebih bermakna, dan nilainya **0** pada semua mode filter.
+**Metrik resmi:** ID-level self-retrieval rate, dan cosine ≥ 0,95 antara konteks dan accepted answer. Cosine ini hanya alat ukur, tidak pernah dipakai sebagai filter.
+
+¹ **Metrik substring ≥ 50 karakter dicoba lalu ditinggalkan** (keputusan penulis, 2026-10-18). Pada HTML mentah metrik ini didominasi boilerplate. Seluruh 26 kecocokan pada mode default (B 10, C 9, D 7) yang diperiksa satu per satu berupa atribut XML Android (`android:layout_width="match_parent"`), URL dokumentasi (`<a href="https://learn.microsoft.com/en-us/dotnet/`), baris dependensi Gradle, atau impor standar; tidak satu pun berupa isi jawaban q. Jadi metrik ini mengukur kemiripan bahasa kode, bukan kebocoran. Angkanya tetap ditampilkan dalam kurung hanya sebagai catatan.
 
 **Pembanding (4b):** tanpa exclusion, pertanyaan yang mengambil thread-nya sendiri adalah 31/35 untuk B (sama dengan tugas paritas), **35/35 untuk C**, dan **35/35 untuk D**. Angka C dan D 100% karena keduanya ber-anchor pada embedding pertanyaan; pertanyaan itu sendiri selalu menjadi anchor teratas bila tidak dikecualikan.
 
@@ -106,7 +118,7 @@ Ini konsisten dengan keputusan tidak mengubah `semantic_expansion()`. Sekitar du
 
 B memakai B-plain dengan korpus KG; C memakai v3 α = 0,5 grounded; D grounded. "Thread" berarti exclusion lama. Untuk B, pembandingnya adalah run tugas paritas.
 
-| Run | ID self-retrieval | substring ≥ 50¹ | cosine ≥ 0,95 | Cosine rata-rata / median | NF2 (% kutipan valid) | final_k < 5 / = 0 | latency rata-rata / p95 (detik) |
+| Run | ID self-retrieval | (substring ≥ 50, ditinggalkan¹) | cosine ≥ 0,95 | Cosine rata-rata / median | NF2 (% kutipan valid) | final_k < 5 / = 0 | latency rata-rata / p95 (detik) |
 |---|---|---|---|---|---|---|---|
 | B thread (tugas paritas) | 0/35 | 7 | 0 | 0,591 / 0,602 | 74,3 | 0 / 0 | 0,37 / 0,54 |
 | **B default** | **0/35** | 7 | 0 | 0,587 / 0,611 | 71,4 | 0 / 0 | 1,11 / 3,39² |
@@ -134,14 +146,16 @@ Puncak RSS dev run: B 2,35 GB, C 1,71 GB, D 2,21 GB.
   - Snapshot C pra-refactor tetap identik.
 - Satu fixture test lama (`test_engine_service_factorial_e2e.py`) ternyata **bocor**: retrieval tiruan mengembalikan pertanyaan 101 untuk pertanyaan 101 itu sendiri. Assert baru menangkapnya, dan yang diperbaiki adalah data tiruannya (anchor 201), bukan assert-nya.
 
-## 10. Keputusan terbuka
+## 10. Keputusan (penulis, 2026-10-18)
 
-1. **Linked:** data mendukung tetap `False` (§7). Mode `+linked` tersedia untuk analisis sensitivitas, dan akan mengubah 6/50 exclusion set dev.
-2. **Ambang near-dup:** 0,95 hanya menangkap 3 pertanyaan pool (7 tetangga), tanpa satu pun di dev. Kasus Linked 0,9468 menunjukkan bahwa ambang di bawah ±0,95 mulai menangkap jawaban setopik yang sah. Usul: tetap 0,95.
-3. **Re-run stage-1 α:** tidak perlu pada mode default (§5).
-4. **Slot expansion kosong (64%)** berasal dari Question tanpa jawaban, bukan dari exclusion. Fix buffer 6× tetap keputusan terpisah dan akan mengubah retrieval C.
-5. **Metrik substring ≥ 50 pada HTML mentah** didominasi boilerplate. Bila tetap ingin dipakai, pertimbangkan versi yang menghapus tag, URL, dan blok kode, atau ambang yang lebih panjang. Itu perubahan metrik, jadi perlu keputusan penulis.
+1. **Linked tetap mati** (`LEAKAGE_EXCLUDE_LINKED=False`), didukung data di §7. Mode `+linked` tetap tersedia untuk analisis sensitivitas, dan akan mengubah 6/50 exclusion set dev.
+2. **Ambang near-dup tetap 0,95.** Ambang ini hanya menangkap 3 pertanyaan pool (7 tetangga), tanpa satu pun di dev. Kasus Linked 0,9468 menunjukkan bahwa ambang di bawah ±0,95 mulai menangkap jawaban setopik yang sah.
+3. **Stage-1 α tidak diulang** karena mode default tidak mengubah retrieval dev (§5).
+4. **Slot expansion kosong (64%)** berasal dari Question tanpa jawaban, bukan dari exclusion. Diperbaiki terpisah (Amendment 9, branch `fix/expansion-answered`).
+5. **Metrik substring ≥ 50 ditinggalkan.** Metrik resmi adalah ID-level self-retrieval rate dan cosine ≥ 0,95 (§4, catatan ¹).
 
 ## 11. Draf paragraf Bab III
 
-> **Pencegahan kebocoran data pada retrieval.** Korpus retrieval ketiga kondisi berbasis retrieval (B, C, dan D) memuat juga pertanyaan evaluasi beserta jawabannya, karena knowledge graph dibangun dari seluruh populasi Stack Overflow. Oleh karena itu, pengecualian (exclusion) dilakukan per query: untuk setiap pertanyaan evaluasi *q*, retrieval tidak boleh mengembalikan *q*, seluruh jawaban dalam thread *q* (termasuk accepted answer yang menjadi ground truth), pertanyaan yang ditandai sebagai *Duplicate* dari *q* oleh komunitas Stack Overflow (relasi dua arah) beserta jawabannya, maupun pertanyaan yang hampir identik dengan *q* (kemiripan kosinus embedding judul dan isi pertanyaan ≥ 0,95) beserta jawabannya. Pengecualian ditentukan semata-mata berdasarkan identitas dan kemiripan pertanyaan, tidak berdasarkan isi accepted answer, agar prosedur ini tidak memakai informasi ground truth. Prinsip yang dijaga sejalan dengan temuan Wu dkk. [lengkapi rujukan] bahwa ground truth yang ikut masuk ke dalam prompt menggelembungkan hasil evaluasi; temuan tersebut dipakai di sini sebagai analogi prinsip, bukan sebagai klaim bahwa Wu dkk. meneliti sistem RAG. Efektivitas prosedur diukur dengan *self-retrieval rate*, yaitu persentase pertanyaan evaluasi yang konteks hasil retrieval-nya memuat salah satu item dalam exclusion set *q*. Pada set pengembangan (n = 50), tanpa pengecualian angka ini mencapai 84% untuk Kondisi B dan 100% untuk Kondisi C dan D; dengan pengecualian, angkanya 0% pada ketiga kondisi. Satu keterbatasan tidak dapat diatasi oleh prosedur ini: model bahasa yang digunakan kemungkinan telah melihat data Stack Overflow, termasuk sebagian pertanyaan dan jawaban evaluasi, saat pretraining. Kebocoran semacam itu berada di dalam parameter model dan tidak dapat dihilangkan dengan menyaring konteks retrieval. Dampaknya berlaku sama untuk semua kondisi, termasuk Kondisi A tanpa retrieval, sehingga perbandingan antarkondisi tetap sah, tetapi angka absolut perlu ditafsirkan dengan mempertimbangkan kemungkinan tersebut.
+> **Pencegahan kebocoran data pada retrieval.** Korpus retrieval ketiga kondisi berbasis retrieval (B, C, dan D) memuat juga pertanyaan evaluasi beserta jawabannya, karena knowledge graph dibangun dari seluruh populasi Stack Overflow. Oleh karena itu, pengecualian (exclusion) dilakukan per query: untuk setiap pertanyaan evaluasi *q*, retrieval tidak boleh mengembalikan *q*, seluruh jawaban dalam thread *q* (termasuk accepted answer yang menjadi ground truth), pertanyaan yang ditandai sebagai *Duplicate* dari *q* oleh komunitas Stack Overflow (relasi dua arah) beserta jawabannya, maupun pertanyaan yang hampir identik dengan *q* (kemiripan kosinus embedding judul dan isi pertanyaan ≥ 0,95) beserta jawabannya. Pengecualian ditentukan semata-mata berdasarkan identitas dan kemiripan pertanyaan, tidak berdasarkan isi accepted answer, agar prosedur ini tidak memakai informasi ground truth. Prinsip yang dijaga sejalan dengan yang ditekankan Wu dkk. (2027) dalam konteks penemuan kausal dengan LLM: informasi ground truth yang ikut masuk ke dalam prompt menggelembungkan hasil evaluasi. Penelitian tersebut dirujuk di sini sebagai analogi prinsip, bukan sebagai klaim bahwa Wu dkk. meneliti sistem RAG. Efektivitas prosedur diukur dengan *self-retrieval rate*, yaitu persentase pertanyaan evaluasi yang konteks hasil retrieval-nya memuat salah satu item dalam exclusion set *q*. Sebagai pelengkap, diukur pula kemiripan kosinus antara setiap item konteks dan accepted answer *q* (≥ 0,95 dianggap indikasi kebocoran teks); ukuran ini tidak pernah dipakai sebagai filter. Pada set pengembangan (n = 50), tanpa pengecualian *self-retrieval rate* mencapai 84% untuk Kondisi B dan 100% untuk Kondisi C dan D; dengan pengecualian, angkanya 0% pada ketiga kondisi. Satu keterbatasan tidak dapat diatasi oleh prosedur ini: model bahasa yang digunakan kemungkinan telah melihat data Stack Overflow, termasuk sebagian pertanyaan dan jawaban evaluasi, saat pretraining. Kebocoran semacam itu berada di dalam parameter model dan tidak dapat dihilangkan dengan menyaring konteks retrieval. Dampaknya berlaku sama untuk semua kondisi, termasuk Kondisi A tanpa retrieval, sehingga perbandingan antarkondisi tetap sah, tetapi angka absolut perlu ditafsirkan dengan mempertimbangkan kemungkinan tersebut.
+
+Rujukan (biblatex, `reports/references.bib`, kunci `wu2027reassessing`): Wu, X., Yu, K., Wu, J., & Tan, K. C. (2027). Reassessing the role of LLMs in causal discovery: Critical analysis, benchmark evaluation, and exploratory framework. *Pattern Recognition*, 182, 114825. https://doi.org/10.1016/j.patcog.2026.114825 (online 31 Agustus 2026).
