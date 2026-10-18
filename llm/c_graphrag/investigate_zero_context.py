@@ -17,6 +17,10 @@ Yang di-print:
      mengecek apakah node-nya BENERAN terisolasi di KG, atau exclusion
      leakage-prevention yang (secara tidak sengaja) menghabiskan semua
      kandidat.
+
+DELIBERATELY ON THE PREVIOUS EXPANSION (Amendment 9): semantic_expansion()
+is called with its default require_answer=False, so this diagnostic keeps
+reproducing the behaviour it was written to investigate (and Amendment 5).
 """
 import argparse
 import os
@@ -151,8 +155,9 @@ def main():
             exclude_answer_ids.add(int(row["AcceptedAnswerId"]))
 
         if qid in id_to_row:
-            query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
-            query_emb = np.ascontiguousarray(query_emb)
+            from llm.common.question_index import query_vector
+
+            query_emb = query_vector(faiss_embeddings, id_to_row[qid])
             print(f"[info] embedding diambil dari FAISS cache (qid ada di index)")
         else:
             query_text = f"{row['Title']} {str(row['Body'])[:1000]}"

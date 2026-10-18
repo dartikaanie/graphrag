@@ -199,7 +199,8 @@ def compute_run_config_hash(condition: str, params: dict[str, Any]) -> str:
         config = cond.build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_anchor,
                                     n_semantic_expansion, fusion_mode, fusion_w_path_trust, fusion_w_intrinsic,
                                     semantic_expansion_trust_cap, require_grounding, enable_semantic_expansion,
-                                    leakage_mode=_leakage_mode(params))
+                                    leakage_mode=_leakage_mode(params),
+                                    expansion_require_answer=_expansion_require_answer(params))
     elif condition == "D":
         cond = _condition_d_module()
         top_k = int(params.get("top_k") or 5)
@@ -310,6 +311,14 @@ def _leakage_mode(params: dict[str, Any]) -> str:
     from llm.common.leakage import LeakageSettings
 
     return params.get("leakage_mode") or LeakageSettings().mode
+
+
+def _expansion_require_answer(params: dict[str, Any]) -> bool:
+    """Amendment 9 switch for Condition C: params["expansion_require_answer"]
+    if given, else EXPANSION_REQUIRE_ANSWER (default True)."""
+    if params.get("expansion_require_answer") is not None:
+        return bool(params["expansion_require_answer"])
+    return _condition_c_module().expansion_require_answer_default()
 
 
 @lru_cache
@@ -935,6 +944,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     require_grounding = params.get("require_grounding")
     require_grounding = True if require_grounding is None else bool(require_grounding)
     leakage_mode = _leakage_mode(params)
+    expansion_require_answer = _expansion_require_answer(params)
     enable_semantic_expansion = params.get("enable_semantic_expansion")
     enable_semantic_expansion = True if enable_semantic_expansion is None else bool(enable_semantic_expansion)
     log_full_candidates = bool(params.get("log_full_candidates"))
@@ -968,7 +978,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
                                         c_retrieval_version=c_retrieval_version, alpha=alpha,
                                         sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
                                         use_author_trust=use_author_trust, accepted_only=accepted_only,
-                                        leakage_mode=leakage_mode)
+                                        leakage_mode=leakage_mode,
+                                        expansion_require_answer=expansion_require_answer)
         else:
             n_sample = int(params["n_sample"])
             seed = int(params["seed"])
@@ -992,7 +1003,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
                                         c_retrieval_version=c_retrieval_version, alpha=alpha,
                                         sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
                                         use_author_trust=use_author_trust, accepted_only=accepted_only,
-                                        leakage_mode=leakage_mode)
+                                        leakage_mode=leakage_mode,
+                                        expansion_require_answer=expansion_require_answer)
             output_path = cond.build_output_path(
                 "results", provider, model, n_sample, seed,
                 fusion_mode=fusion_mode, fusion_w_path_trust=fusion_w_path_trust, fusion_w_intrinsic=fusion_w_intrinsic,
@@ -1002,7 +1014,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
                 semantic_expansion_trust_cap=semantic_expansion_trust_cap,
                 c_retrieval_version=c_retrieval_version, alpha=alpha, sample_split=sample_split,
                 max_hops=max_hops, edge_types=edge_types, use_author_trust=use_author_trust,
-                accepted_only=accepted_only,
+                accepted_only=accepted_only, leakage_mode=leakage_mode,
+                expansion_require_answer=expansion_require_answer,
             )
 
         config_hash = _compute_config_hash(config)
@@ -1034,7 +1047,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             config=config, config_hash=config_hash,
             c_retrieval_version=c_retrieval_version, alpha=alpha, max_hops=max_hops, edge_types=edge_types,
             use_author_trust=use_author_trust, accepted_only=accepted_only,
-            leakage=_leakage_context(leakage_mode),
+            leakage=_leakage_context(leakage_mode), expansion_require_answer=expansion_require_answer,
         )
 
         cancelled = run_registry.is_cancelled(run_id) or stats["interrupted"]
@@ -1067,6 +1080,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "max_hops": max_hops,
             "edge_types": list(edge_types) if edge_types else None,
             "use_author_trust": use_author_trust, "leakage_mode": leakage_mode,
+            "expansion_require_answer": expansion_require_answer,
             "accepted_only": accepted_only,
             "run_started_at": run_started_at.isoformat(),
             "condition": "C",

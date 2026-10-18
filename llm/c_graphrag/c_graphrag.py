@@ -151,6 +151,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
 from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, add_leakage_arguments,  # noqa: F401
                                 assert_no_leakage, build_exclusion, config_leakage_key, leakage_mode_from_args)
+from llm.common.question_index import query_vector, read_question_index
 from llm.common.text import answer_doc_text, build_query_text
 from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F401 -- moved to llm/common/text.py; name kept for stage1_sweep.py
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
@@ -197,6 +198,26 @@ C_RETRIEVAL_VERSION = "v2"
 # (trust "terendah" di antara 3 sumber densifikasi, lihat
 # 11_densify_embedding_similarity.py), diskalakan oleh cosine score-nya.
 DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP = 0.4
+
+# Amendment 9 (docs/DECISION_C_SCORING.md): semantic expansion selects only
+# Questions that still have >= 1 non-excluded Answer. Over-fetch factor chosen
+# from the distribution of Answer existence in the KG on dev-50 (6x -> 83%,
+# 12x -> 97%, 20x -> 100% of seeds filled), not from hallucination/relevance.
+EXPANSION_OVERFETCH = 20
+
+
+def expansion_require_answer_default() -> bool:
+    """EXPANSION_REQUIRE_ANSWER (Pydantic Settings: env / repo-root .env),
+    default True. False reproduces the expansion of every run before
+    Amendment 9 -- audit only."""
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+
+    class _ExpansionSettings(BaseSettings):
+        model_config = SettingsConfigDict(env_file=str(Path(__file__).resolve().parents[2] / ".env"),
+                                          env_file_encoding="utf-8", extra="ignore")
+        expansion_require_answer: bool = True
+
+    return _ExpansionSettings().expansion_require_answer
 
 # C retrieval v3 (docs/DECISION_C_SCORING.md) -- defaults for every v3-
 # only / exploratory parameter, used BOTH as the actual default behavior
@@ -410,9 +431,8 @@ def connect_neo4j(logger):
 def load_faiss_cache(kg_workspace_dir: Path, logger):
     """Reuse index & embedding yang di-cache oleh
     11_densify_embedding_similarity.py --stage edges. TIDAK membangun ulang
-    di sini -- kalau cache tidak ada, ABORT dengan pesan jelas."""
-    import faiss
-
+    di sini -- kalau cache tidak ada, ABORT dengan pesan jelas. Indeks dibaca
+    penuh ke RAM dan nprobe-nya dicek == 32 (llm/common/question_index.py)."""
     index_path = kg_workspace_dir / "question_embeddings_ivf.faiss"
     ids_path = kg_workspace_dir / "question_embeddings_ivf_ids.npy"
     emb_path = kg_workspace_dir / "question_embeddings.f32"
@@ -428,7 +448,7 @@ def load_faiss_cache(kg_workspace_dir: Path, logger):
     n_total = json.loads(ckpt_path.read_text())["next_row"]
     ids_arr = np.load(ids_path)
     embeddings = np.memmap(emb_path, dtype="float32", mode="r", shape=(n_total, EMBED_DIM))
-    index = faiss.read_index(str(index_path))
+    index = read_question_index(index_path)
     logger(f"[5/9] FAISS index & embedding cache dimuat: {index.ntotal:,} vektor "
            f"dari {kg_workspace_dir}")
 
@@ -592,10 +612,68 @@ def fetch_trust_score_version(driver, database) -> str | None:
 # TAHAP c. SEMANTIC EXPANSION -- simpul hasil traversal jadi anchor baru
 # ---------------------------------------------------------------------
 
+def _select_answerable_expansion(driver, database, seed_questions: dict, index, ids_arr: np.ndarray,
+                                 sbert_model, n_expansion: int, base_exclude: set, exclude_answer_ids: set,
+                                 fetch_types: list, overfetch: int, stats: dict | None) -> set:
+    """Amendment 9 selection (see semantic_expansion's docstring)."""
+    per_seed = []
+    for i, (seed, title) in enumerate(seed_questions.items()):
+        excluded = base_exclude | {seed}
+        # + n_expansion * i: room for the Questions earlier seeds may take
+        search_n = overfetch * n_expansion + len(excluded) + n_expansion * i
+        scores, idxs = index.search(embed_query(title, sbert_model), search_n)
+        cands = []
+        for score, idx in zip(scores[0], idxs[0]):
+            if idx == -1:
+                continue
+            cid = int(ids_arr[idx])
+            if cid in excluded:
+                if stats is not None:
+                    stats["n_hits_filtered"] = stats.get("n_hits_filtered", 0) + 1
+                continue
+            cands.append((cid, float(score)))
+        cands.sort(key=lambda t: (-t[1], t[0]))
+        per_seed.append(cands)
+
+    all_ids = sorted({cid for cands in per_seed for cid, _ in cands})
+    answerable = set()
+    if all_ids:
+        exclude_a = list(exclude_answer_ids) or [-1]
+        with driver.session(database=database) as session:
+            result = session.run(
+                f"""
+                UNWIND $qids AS qid
+                MATCH (q:Question {{id: qid}})
+                WHERE EXISTS {{
+                    MATCH (q)-[:{"|".join(fetch_types)}]->(a:Answer)
+                    WHERE NOT a.id IN $exclude_a
+                }}
+                RETURN qid
+                """,
+                qids=all_ids, exclude_a=exclude_a,
+            )
+            answerable = {int(r["qid"]) for r in result}
+
+    chosen: set = set()
+    for cands in per_seed:
+        taken = 0
+        for cid, _ in cands:
+            if taken >= n_expansion:
+                break
+            if cid in answerable and cid not in chosen:
+                chosen.add(cid)
+                taken += 1
+    if stats is not None:
+        stats["n_expansion_requested"] = stats.get("n_expansion_requested", 0) + n_expansion * len(per_seed)
+        stats["n_expansion_answerable"] = stats.get("n_expansion_answerable", 0) + len(chosen)
+    return chosen
+
+
 def semantic_expansion(driver, database, traversal_candidates: list, index, ids_arr: np.ndarray,
                         sbert_model, n_expansion: int, already_seen_qids: set,
                         exclude_question_ids: set, exclude_answer_ids: set,
-                        edge_types: tuple | None = None, stats: dict | None = None) -> list:
+                        edge_types: tuple | None = None, stats: dict | None = None,
+                        require_answer: bool = False, overfetch: int = EXPANSION_OVERFETCH) -> list:
     """Ambil s.d. 3 via_question unik dari hasil traversal sbg query baru
     (F4: "simpul hasil Graph Traversal sebagai anchor pencarian vektor").
     Utk tiap query baru, cari n_expansion Question tetangga (vector search)
@@ -607,7 +685,14 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
     the 1-hop fetch types the same way traverse_graph() does. Default
     (every type) reproduces the query exactly as it always ran. If
     neither HAS_ACCEPTED_ANSWER nor HAS_ANSWER survives the filter,
-    expansion can fetch nothing and returns [] immediately."""
+    expansion can fetch nothing and returns [] immediately.
+
+    `require_answer` (Amendment 9; default False = the expansion every run
+    before it used, unchanged): per seed, fetch overfetch*n_expansion +
+    |excluded| FAISS candidates, keep only Questions with >= 1 Answer not in
+    exclude_answer_ids (ONE Cypher EXISTS round-trip for all seeds), and take
+    the first n_expansion of them by (similarity desc, id asc) not taken by an
+    earlier seed. stats gets n_expansion_requested / n_expansion_answerable."""
     edge_types = set(edge_types) if edge_types is not None else set(DEFAULT_EDGE_TYPES)
     fetch_types = [t for t in ("HAS_ACCEPTED_ANSWER", "HAS_ANSWER") if t in edge_types]
     if not traversal_candidates or not fetch_types:
@@ -622,14 +707,19 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
             break
 
     expansion_qids = set()
-    for qid, title in seed_questions.items():
-        q_emb = embed_query(title, sbert_model)
-        found = anchor_via_vector_search(
-            q_emb, index, ids_arr, top_n=n_expansion,
-            exclude_ids=already_seen_qids | exclude_question_ids | expansion_qids | {qid},
-            stats=stats,
-        )
-        expansion_qids.update(fid for fid, _ in found)
+    if require_answer:
+        expansion_qids = _select_answerable_expansion(
+            driver, database, seed_questions, index, ids_arr, sbert_model, n_expansion,
+            already_seen_qids | exclude_question_ids, exclude_answer_ids, fetch_types, overfetch, stats)
+    else:
+        for qid, title in seed_questions.items():
+            q_emb = embed_query(title, sbert_model)
+            found = anchor_via_vector_search(
+                q_emb, index, ids_arr, top_n=n_expansion,
+                exclude_ids=already_seen_qids | exclude_question_ids | expansion_qids | {qid},
+                stats=stats,
+            )
+            expansion_qids.update(fid for fid, _ in found)
 
     if not expansion_qids:
         return []
@@ -948,7 +1038,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
                     accepted_only: bool = DEFAULT_ACCEPTED_ONLY,
                     embedding_cache=None, retrieval_only: bool = False,
-                    leakage: LeakageContext | None = None,
+                    leakage: LeakageContext | None = None, expansion_require_answer: bool = False,
                     ) -> tuple[list[dict], dict]:
     """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
@@ -1013,8 +1103,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 # re-encode kalau belum ada di cache (mis. KG dibuild sebelum
                 # pertanyaan ini masuk parquet, jarang terjadi).
                 if qid in id_to_row:
-                    query_emb = faiss_embeddings[id_to_row[qid]:id_to_row[qid] + 1]
-                    query_emb = np.ascontiguousarray(query_emb)
+                    # salinan float32 sendiri, bukan view memmap (llm/common/question_index.py)
+                    query_emb = query_vector(faiss_embeddings, id_to_row[qid])
                 else:
                     query_text = build_query_text(row['Title'], row['Body'])
                     query_emb = embed_query(query_text, embed_model)
@@ -1039,7 +1129,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     expansion_candidates = semantic_expansion(
                         driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
                         n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
-                        edge_types=edge_types, stats=leak_stats,
+                        edge_types=edge_types, stats=leak_stats, require_answer=expansion_require_answer,
                     )
                 else:
                     expansion_candidates = []
@@ -1077,6 +1167,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                                "n_expansion_q": len(leak_stats.get("expansion_qids", [])),
                                "n_expansion_q_empty": len(leak_stats.get("expansion_qids_empty", []))}
                 log(f"      [leakage] Id={qid} " + " ".join(f"{k}={v}" for k, v in leakage_log.items()))
+                expansion_log = {}
+                if expansion_require_answer and enable_semantic_expansion:
+                    expansion_log = {"n_expansion_requested": leak_stats.get("n_expansion_requested", 0),
+                                     "n_expansion_answerable": leak_stats.get("n_expansion_answerable", 0)}
+                    if expansion_log["n_expansion_answerable"] < expansion_log["n_expansion_requested"]:
+                        log(f"      [expansion] Id={qid} hanya {expansion_log['n_expansion_answerable']}/"
+                            f"{expansion_log['n_expansion_requested']} Question expansion ber-answer.")
 
                 if retrieval_only:
                     record = {
@@ -1085,12 +1182,14 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "retrieved_context": retrieved,
                         "candidate_pool_size": candidate_pool_size,
                         "n_anchors": len(anchor_ids), "anchor_question_ids": anchor_ids,
+                        "graph_candidate_answer_ids": sorted({int(c["answer_id"]) for c in graph_candidates}),
                         "n_graph_candidates": len(graph_candidates),
                         "n_expansion_candidates": len(expansion_candidates),
                         "retrieval_latency_sec": round(retrieval_latency, 3),
                         "leakage": leakage_log,
                         "expansion_qids": leak_stats.get("expansion_qids", []),
                         "expansion_qids_empty": leak_stats.get("expansion_qids_empty", []),
+                        **expansion_log,
                         "config": config, "config_hash": config_hash,
                     }
                     results.append(record)
@@ -1152,6 +1251,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     ],
                     "prompt_messages": messages,
                     "leakage": leakage_log,
+                    **expansion_log,
                     "n_anchors": len(anchor_ids),
                     "n_graph_candidates": len(graph_candidates),
                     "n_expansion_candidates": len(expansion_candidates),
@@ -1258,7 +1358,8 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
                   alpha: float | None = None, sample_split: str = DEFAULT_SAMPLE_SPLIT,
                   max_hops: int = DEFAULT_MAX_HOPS, edge_types: tuple | None = None,
                   use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
-                  accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD) -> dict:
+                  accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD,
+                  expansion_require_answer: bool = False) -> dict:
     """The full set of parameters that affect Condition C's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists. Includes c_retrieval_version since a retrieval
@@ -1299,6 +1400,10 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
     # "leakage": <mode> (llm/common/leakage.py), absent for MODE_THREAD -- the
     # exclusion every earlier run used -- so their config_hash is unchanged
     config.update(config_leakage_key(leakage_mode))
+    # Amendment 9: absent when False (the expansion of every earlier run)
+    if expansion_require_answer:
+        config["expansion_require_answer"] = True
+        config["expansion_overfetch"] = EXPANSION_OVERFETCH
     return config
 
 
@@ -1313,7 +1418,8 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        c_retrieval_version: str = "v2", alpha: float | None = None,
                        sample_split: str = DEFAULT_SAMPLE_SPLIT, max_hops: int = DEFAULT_MAX_HOPS,
                        edge_types: tuple | None = None, use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
-                       accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD) -> Path:
+                       accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD,
+                       expansion_require_answer: bool = False) -> Path:
     """Nama file menyertakan fusion mode/bobot supaya run ablasi (mis.
     --fusion-mode uniform vs --fusion-mode trust_weighted dgn bobot
     berbeda) tidak saling menimpa file .jsonl satu sama lain -- pola sama
@@ -1348,6 +1454,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
         require_grounding, enable_semantic_expansion, c_retrieval_version=c_retrieval_version,
         alpha=alpha, sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
         use_author_trust=use_author_trust, accepted_only=accepted_only, leakage_mode=leakage_mode,
+        expansion_require_answer=expansion_require_answer,
     ))
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
@@ -1456,6 +1563,10 @@ def main():
         help="v3 only: SQLite cache path for candidate-text embeddings (shared across an alpha sweep). "
              "Default: C_EMBEDDING_CACHE_PATH, else a local non-synced cache dir (see embedding_cache.py).")
     add_leakage_arguments(parser)
+    parser.add_argument("--expansion-require-answer", action=argparse.BooleanOptionalAction,
+                        default=expansion_require_answer_default(),
+                        help="Amendment 9: semantic expansion picks only Questions with >= 1 non-excluded Answer "
+                             "(default from EXPANSION_REQUIRE_ANSWER, True). --no-... = previous expansion (audit).")
     args = parser.parse_args()
     leakage_mode = leakage_mode_from_args(args)
 
@@ -1495,7 +1606,8 @@ def main():
                                              c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
                                              sample_split=args.sample_split, max_hops=args.max_hops,
                                              edge_types=args.edge_types, use_author_trust=args.use_author_trust,
-                                             accepted_only=args.accepted_only, leakage_mode=leakage_mode))
+                                             accepted_only=args.accepted_only, leakage_mode=leakage_mode,
+                                             expansion_require_answer=args.expansion_require_answer))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -1564,6 +1676,7 @@ def main():
         args.enable_semantic_expansion, c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
         sample_split=args.sample_split, max_hops=args.max_hops, edge_types=args.edge_types,
         use_author_trust=args.use_author_trust, accepted_only=args.accepted_only, leakage_mode=leakage_mode,
+        expansion_require_answer=args.expansion_require_answer,
     )
     config_hash = compute_config_hash(config)
     leakage = LeakageContext.from_mode(leakage_mode)
@@ -1593,6 +1706,7 @@ def main():
         max_hops=args.max_hops, edge_types=args.edge_types,
         use_author_trust=args.use_author_trust, accepted_only=args.accepted_only,
         embedding_cache=embedding_cache, retrieval_only=args.retrieval_only, leakage=leakage,
+        expansion_require_answer=args.expansion_require_answer,
     )
     interrupted = stats["interrupted"]
     if embedding_cache is not None:
@@ -1615,7 +1729,7 @@ def main():
             "alpha": args.alpha, "sample_split": args.sample_split,
             "max_hops": args.max_hops, "edge_types": list(args.edge_types) if args.edge_types else None,
             "use_author_trust": args.use_author_trust, "accepted_only": args.accepted_only,
-            "leakage_mode": leakage_mode,
+            "leakage_mode": leakage_mode, "expansion_require_answer": args.expansion_require_answer,
             "run_started_at": run_started_at.isoformat(), "condition": "C", "status": "no_results",
             "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
             "seed": args.seed, "output_path": str(output_path), "log_path": str(log_path),
@@ -1689,7 +1803,7 @@ def main():
         "alpha": args.alpha, "sample_split": args.sample_split,
         "max_hops": args.max_hops, "edge_types": list(args.edge_types) if args.edge_types else None,
         "use_author_trust": args.use_author_trust, "accepted_only": args.accepted_only,
-        "leakage_mode": leakage_mode,
+        "leakage_mode": leakage_mode, "expansion_require_answer": args.expansion_require_answer,
         "run_started_at": run_started_at.isoformat(), "condition": "C",
         "status": "interrupted" if interrupted else "success",
         "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,

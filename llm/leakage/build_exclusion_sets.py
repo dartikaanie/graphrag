@@ -44,6 +44,7 @@ import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
+from llm.common.question_index import query_vector, read_question_index  # noqa: E402
 from llm.common.leakage import (DEFAULT_EXCLUSION_SETS_PATH, DEFAULT_NEAR_DUP_COSINE, MODE_THREAD,  # noqa: E402
                                 leakage_mode)
 
@@ -191,14 +192,14 @@ def find_near_dups(question_ids, kg_workspace_dir: Path, threshold: float, top_n
     n_total = json.loads((kg_workspace_dir / "embed_checkpoint.json").read_text())["next_row"]
     ids_arr = np.load(kg_workspace_dir / "question_embeddings_ivf_ids.npy")
     emb = np.memmap(kg_workspace_dir / "question_embeddings.f32", dtype="float32", mode="r", shape=(n_total, EMBED_DIM))
-    index = faiss.read_index(str(kg_workspace_dir / "question_embeddings_ivf.faiss"))
+    index = read_question_index(kg_workspace_dir / "question_embeddings_ivf.faiss")  # STOPs unless nprobe == 32
     faiss.extract_index_ivf(index).nprobe = nprobe
     id_to_row = {int(q): i for i, q in enumerate(ids_arr)}
     model = None
     out = {}
     for q in sorted(int(x) for x in question_ids):
         if q in id_to_row:
-            qv = np.ascontiguousarray(emb[id_to_row[q]:id_to_row[q] + 1])
+            qv = query_vector(emb, id_to_row[q])
         else:
             if model is None:
                 from sentence_transformers import SentenceTransformer

@@ -16,9 +16,9 @@ import c_retrieval_snapshot as snapshot
 
 
 @pytest.mark.skipif(os.getenv("GRAPHRAG_INTEGRATION") != "1", reason="reads Neo4j; set GRAPHRAG_INTEGRATION=1")
-def test_c_retrieval_and_query_text_identical_to_pre_refactor_snapshot():
+def test_c_retrieval_and_query_text_identical_to_pre_refactor_snapshot(question_faiss):
     expected = json.loads(snapshot.FIXTURE.read_text())
-    actual = json.loads(json.dumps(snapshot.take_snapshot(), sort_keys=True))
+    actual = json.loads(json.dumps(snapshot.take_snapshot(faiss_cache=question_faiss), sort_keys=True))
     assert len(expected["dev_question_ids"]) >= 10
     assert actual["dev_question_ids"] == expected["dev_question_ids"]
     for label in expected["configs"]:
@@ -27,7 +27,7 @@ def test_c_retrieval_and_query_text_identical_to_pre_refactor_snapshot():
 
 
 @pytest.mark.skipif(os.getenv("GRAPHRAG_INTEGRATION") != "1", reason="reads Neo4j; set GRAPHRAG_INTEGRATION=1")
-def test_default_leakage_mode_is_equivalent_for_questions_without_duplicates():
+def test_default_leakage_mode_is_equivalent_for_questions_without_duplicates(question_faiss):
     """Amendment 8 default mode (Duplicate + near-dup 0.95, Linked off): none of
     the 12 snapshot questions has a Duplicate or near-duplicate, so C's
     retrieval must equal the pre-refactor snapshot exactly."""
@@ -37,6 +37,6 @@ def test_default_leakage_mode_is_equivalent_for_questions_without_duplicates():
     expected = json.loads(snapshot.FIXTURE.read_text())
     assert all(ctx.table.counts(q)["n_dup"] == 0 and ctx.table.counts(q)["n_neardup"] == 0
                for q in expected["dev_question_ids"])
-    actual = json.loads(json.dumps(snapshot.take_snapshot(leakage_mode=default_mode()), sort_keys=True))
+    actual = json.loads(json.dumps(snapshot.take_snapshot(leakage_mode=default_mode(), faiss_cache=question_faiss), sort_keys=True))
     for label in expected["configs"]:
         assert actual["configs"][label] == expected["configs"][label], label

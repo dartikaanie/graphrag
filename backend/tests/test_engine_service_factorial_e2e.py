@@ -133,6 +133,12 @@ def _run_and_collect(params: dict, run_fn, cond, run_label: str, stale_path: Pat
     assert len(hashes) == 1 and None not in hashes, (
         f"{run_label}: expected exactly 1 non-null config_hash across the new file's records, got {hashes}"
     )
+    # the filename's hash must be the records' config_hash -- otherwise two configs that
+    # differ only in a key build_output_path() was not given (e.g. leakage mode,
+    # expansion_require_answer) share one file and resume into each other
+    assert output_path.name.endswith(f"_{next(iter(hashes))}.jsonl"), (
+        f"{run_label}: filename {output_path.name} does not carry the records' config_hash {hashes}"
+    )
 
     if stale_path is not None:
         assert output_path != stale_path, (

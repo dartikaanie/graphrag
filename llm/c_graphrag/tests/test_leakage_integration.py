@@ -23,7 +23,7 @@ N_DEV_TEST = 20
 
 
 @pytest.fixture(scope="module")
-def env():
+def env(question_faiss):
     import duckdb
     from dotenv import load_dotenv
     from sentence_transformers import SentenceTransformer
@@ -41,7 +41,7 @@ def env():
     dev = perm.iloc[384:384 + N_DEV_TEST].reset_index(drop=True)
     non_test = perm.iloc[384:].reset_index(drop=True)
     driver, database = cg.connect_neo4j(lambda *a, **k: None)
-    faiss = cg.load_faiss_cache(Path(os.environ["KG_WORKSPACE_DIR"]), lambda *a, **k: None)
+    faiss = question_faiss  # one copy per pytest process (conftest.py)
     model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
     yield {"cg": cg, "con": con, "ap": ap, "dev": dev, "non_test": non_test, "driver": driver,
            "database": database, "faiss": faiss, "model": model}

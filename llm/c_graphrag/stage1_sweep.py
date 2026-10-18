@@ -160,6 +160,7 @@ def run_retrieval_only_for_alpha(
     output_dir: str, seed: int, n_sample: int, provider: str = "openai", model: str = "gpt-4o-mini",
     top_k: int = 5, n_anchor: int = 3, n_semantic_expansion: int = 3, token_chunk_limit: int = 400,
     oversample_pool: int = 1536, ctxrel_version: str | None = None, git_commit: str | None = None,
+    expansion_require_answer: bool | None = None,
 ) -> dict:
     """Runs C retrieval-only v3 for one alpha on the dev split, writes a
     config-hashed output file + manifest + run_history entry (so
@@ -180,17 +181,22 @@ def run_retrieval_only_for_alpha(
     from llm.manifest import compute_config_hash, write_manifest
 
     fusion_mode = "uniform" if alpha == 0 else "trust_weighted"
+    # Amendment 9: None = EXPANSION_REQUIRE_ANSWER setting (default True); a
+    # different value gets its own config_hash / output file
+    if expansion_require_answer is None:
+        expansion_require_answer = cg.expansion_require_answer_default()
     output_path = cg.build_output_path(
         output_dir, provider, model, n_sample, seed, fusion_mode,
         oversample_pool=oversample_pool, top_k=top_k, n_anchor=n_anchor,
         n_semantic_expansion=n_semantic_expansion, c_retrieval_version="v3", alpha=alpha,
-        sample_split="dev",
+        sample_split="dev", expansion_require_answer=expansion_require_answer,
     )
     config = cg.build_config(
         provider, model, n_sample, seed, oversample_pool, top_k, n_anchor, n_semantic_expansion,
         fusion_mode, cg.DEFAULT_FUSION_W_PATH_TRUST, cg.DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST,
         cg.DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP, True, True,
         c_retrieval_version="v3", alpha=alpha, sample_split="dev",
+        expansion_require_answer=expansion_require_answer,
     )
     config_hash = compute_config_hash(config)
     sample_qids = [int(q) for q in sample_df["Id"]]
@@ -203,7 +209,7 @@ def run_retrieval_only_for_alpha(
         top_k, n_anchor, n_semantic_expansion, token_chunk_limit, model, output_path,
         already_done=already_done,
         c_retrieval_version="v3", alpha=alpha, embedding_cache=embedding_cache, retrieval_only=True,
-        config=config, config_hash=config_hash,
+        config=config, config_hash=config_hash, expansion_require_answer=expansion_require_answer,
     )
     finished_at = datetime.now(timezone.utc)
     n_complete = verify_retrieval_output_complete(output_path, sample_qids, config_hash)
