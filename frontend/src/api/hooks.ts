@@ -760,15 +760,16 @@ export function useSettings() {
 }
 
 export interface OfficialCParams {
-  /** "pending_selection" (the C retrieval v3 decision isn't made yet --
-   * the Official preset refuses to launch ANY run while this holds,
-   * regardless of c_retrieval_version) or "locked" (the Outcome section
-   * of docs/DECISION_C_SCORING.md has been filled in). */
-  status: 'pending_selection' | 'locked'
-  /** null while status is "pending_selection" -- the selection
-   * procedure hasn't run yet, so there is no known winning version. */
+  /** "pending_selection" (stage 2 not done -- the Official preset and every
+   * test-sample C run are refused) or "selected" (the Outcome section and
+   * the Amendment 10 Record of docs/DECISION_C_SCORING.md are filled in). */
+  status: 'pending_selection' | 'selected'
+  /** "v3" (Amendment 10: both stage-2 candidates are v3 values). */
   c_retrieval_version: string | null
-  alpha: number | null
+  /** C-primary (alpha*) and C-ablation alphas; null until "selected". */
+  alpha_primary: number | null
+  alpha_ablation: number | null
+  selection_record: { path: string; commit: string | null }
   sample_split: string
   max_hops: number
   edge_types: string[]

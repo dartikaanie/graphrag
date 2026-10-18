@@ -455,7 +455,7 @@ PARAMETERS: tuple[Param, ...] = (
     # ---------------------------------------------------------------- 9 official
     P("off.status", "Official parameters status", "official", Src("json_field", OFFICIAL, path=("status",)), "",
       (OFFICIAL, "backend/app/routers/config.py"),
-      spec=Quote(DEC, "While `status` is `pending_selection`, the dashboard refuses"), status="pending"),
+      spec=Quote(DEC, "While `status` is not `selected`, the dashboard refuses"), status="pending"),
     P("off.n", "Official n", "official", Src("const", ENGINE, "MAX_PLANNED_N_SAMPLE"), "questions", (ENGINE,),
       rationale=Quote(README, "- **Condition A**: sample 384 questions"),
       spec=Quote(DEC, "Run the official test sample (n = 384) once."), set_by="decision"),

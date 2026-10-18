@@ -67,6 +67,20 @@ def create_run(body: RunCreateRequest):
     if body.fusion_mode not in ("trust_weighted", "uniform"):
         raise HTTPException(status_code=400, detail="fusion_mode must be 'trust_weighted' or 'uniform'")
 
+    if condition == "C" and body.mode == "batch" and body.sample_split == "test":
+        # Amendment 10: a test-sample C run must be C-primary or C-ablation
+        # (same rule as the CLI, llm/c_graphrag/official_params.py).
+        from llm.c_graphrag.c_graphrag import DEFAULT_EDGE_TYPES
+        from llm.c_graphrag.official_params import OfficialParamsError, check_c_test_run, load_official_params
+
+        try:
+            check_c_test_run(
+                load_official_params(), c_retrieval_version=body.c_retrieval_version, alpha=body.alpha,
+                max_hops=body.max_hops, edge_types=tuple(body.edge_types) if body.edge_types else DEFAULT_EDGE_TYPES,
+                use_author_trust=body.use_author_trust, accepted_only=body.accepted_only)
+        except OfficialParamsError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     params = body.model_dump()
     run_id = run_registry.create_run(condition, body.mode, params)
 

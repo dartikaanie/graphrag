@@ -156,6 +156,7 @@ from llm.common.text import answer_doc_text, build_query_text
 from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F401 -- moved to llm/common/text.py; name kept for stage1_sweep.py
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
+from llm.c_graphrag.official_params import OfficialParamsError, check_c_test_run, load_official_params  # noqa: E402
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B
 EMBED_DIM = 384  # all-MiniLM-L6-v2, HARUS sama dgn 11_densify_embedding_similarity.py
@@ -1459,6 +1460,20 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
 
+def official_role_for_args(args, official: dict | None = None) -> str | None:
+    """None for a dev run; else the official role ("c_primary" /
+    "c_ablation") of this test-sample run, or OfficialParamsError. Reads
+    official_params.json unless `official` is given (tests)."""
+    if args.sample_split != "test":
+        return None
+    if official is None:
+        official = load_official_params()
+    return check_c_test_run(
+        official, c_retrieval_version=args.c_retrieval_version, alpha=args.alpha, max_hops=args.max_hops,
+        edge_types=tuple(args.edge_types) if args.edge_types else DEFAULT_EDGE_TYPES,
+        use_author_trust=args.use_author_trust, accepted_only=args.accepted_only)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--questions-parquet", default=os.getenv("QUESTIONS_PARQUET"))
@@ -1580,6 +1595,16 @@ def main():
         args.alpha = 1.0
         log("[config] --c-retrieval-version v3 without --alpha -- defaulting to alpha=1.0 "
             "(matches v2 trust_weighted's own ranking).")
+
+    # Amendment 10: a test-sample run must be one of the two official C runs
+    # (llm/c_graphrag/official_params.py); dev runs are not checked.
+    try:
+        official_role = official_role_for_args(args)
+    except OfficialParamsError as e:
+        log(f"[ERROR] {e}")
+        sys.exit(2)
+    if official_role:
+        log(f"[config] official C run: {official_role} (alpha={args.alpha}, official_params.json)")
 
     # PENTING utk NESTED SAMPLING -- IDENTIK Kondisi A/B, lihat komentar
     # lengkap di a_baseline_replication.py. Pool FIXED thd MAX_PLANNED_N_SAMPLE,

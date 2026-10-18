@@ -58,7 +58,8 @@ interface CParams {
   semanticExpansionTrustCap: number
   enableSemanticExpansion: boolean
   cRetrievalVersion: string
-  alpha: number
+  alphaPrimary: number
+  alphaAblation: number
   sampleSplit: string
   maxHops: number
   edgeTypes: string[]
@@ -72,9 +73,15 @@ interface DParams {
 }
 
 /**
- * The factorial design: retrieval method (A / B-FAISS / C-uniform /
- * C-trust_weighted / D-LightRAG) x grounding (on/off), minus A (which has
- * no grounding axis) -- 1 + 2 + 2 + 2 + 2 = 9 runs. Same shared params
+ * The factorial design: retrieval method x grounding (on/off), minus A
+ * (which has no grounding axis) -- 1 + 2 + 2 + 2 + 2 = 9 runs. The two C
+ * methods depend on c_retrieval_version:
+ *   - v3 (the official matrix, docs/OFFICIAL_RUN_MATRIX.md, Amendment 10):
+ *     C-primary at alphaPrimary and C-ablation at alphaAblation, both with
+ *     fusion_mode "trust_weighted" (v3 ignores fusion_mode for ranking, so
+ *     alpha is the only C factor; same config_hash as the CLI commands in
+ *     llm/official_run_matrix.py).
+ *   - v2 (pilot/exploration only): C-uniform vs C-trust_weighted, as before. Same shared params
  * (provider/model/seed/n_sample/oversample_pool/top_k/...) across every
  * one of the 9, and the same condition-specific params (C: fusion weights/
  * n_anchor/n_semantic_expansion; D: n_low_level/n_high_level) across every
@@ -101,7 +108,6 @@ function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DPa
     semantic_expansion_trust_cap: cParams.semanticExpansionTrustCap,
     enable_semantic_expansion: cParams.enableSemanticExpansion,
     c_retrieval_version: cParams.cRetrievalVersion,
-    alpha: cParams.cRetrievalVersion === 'v3' ? cParams.alpha : undefined,
     sample_split: cParams.sampleSplit,
     max_hops: cParams.maxHops,
     edge_types: cParams.edgeTypes,
@@ -115,6 +121,24 @@ function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DPa
     n_high_level: dParams.nHighLevel,
   }
 
+  const cCell = (runLabel: string, fusionMode: 'trust_weighted' | 'uniform', grounding: boolean, alpha?: number): FactorialRunConfig => ({
+    runLabel, condition: 'C', fusionMode, grounding, retrievalVersion: versions.c_retrieval_version,
+    params: { condition: 'C', ...base, ...cShared, fusion_mode: fusionMode, alpha, require_grounding: grounding },
+  })
+  const cRuns: FactorialRunConfig[] = cParams.cRetrievalVersion === 'v3'
+    ? [
+        cCell('C-primary-plain', 'trust_weighted', false, cParams.alphaPrimary),
+        cCell('C-primary-grounded', 'trust_weighted', true, cParams.alphaPrimary),
+        cCell('C-ablation-plain', 'trust_weighted', false, cParams.alphaAblation),
+        cCell('C-ablation-grounded', 'trust_weighted', true, cParams.alphaAblation),
+      ]
+    : [
+        cCell('C-uniform-plain', 'uniform', false),
+        cCell('C-uniform-grounded', 'uniform', true),
+        cCell('C-trust-plain', 'trust_weighted', false),
+        cCell('C-trust-grounded', 'trust_weighted', true),
+      ]
+
   return [
     { runLabel: 'A', condition: 'A', params: { condition: 'A', ...base } },
     {
@@ -125,26 +149,7 @@ function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DPa
       runLabel: 'B-grounded', condition: 'B', grounding: true, requireCitation: true,
       params: { condition: 'B', ...base, top_k: shared.topK, require_citation: true, require_grounding: true },
     },
-    {
-      runLabel: 'C-uniform-plain', condition: 'C', fusionMode: 'uniform', grounding: false,
-      retrievalVersion: versions.c_retrieval_version,
-      params: { condition: 'C', ...base, ...cShared, fusion_mode: 'uniform', require_grounding: false },
-    },
-    {
-      runLabel: 'C-uniform-grounded', condition: 'C', fusionMode: 'uniform', grounding: true,
-      retrievalVersion: versions.c_retrieval_version,
-      params: { condition: 'C', ...base, ...cShared, fusion_mode: 'uniform', require_grounding: true },
-    },
-    {
-      runLabel: 'C-trust-plain', condition: 'C', fusionMode: 'trust_weighted', grounding: false,
-      retrievalVersion: versions.c_retrieval_version,
-      params: { condition: 'C', ...base, ...cShared, fusion_mode: 'trust_weighted', require_grounding: false },
-    },
-    {
-      runLabel: 'C-trust-grounded', condition: 'C', fusionMode: 'trust_weighted', grounding: true,
-      retrievalVersion: versions.c_retrieval_version,
-      params: { condition: 'C', ...base, ...cShared, fusion_mode: 'trust_weighted', require_grounding: true },
-    },
+    ...cRuns,
     {
       runLabel: 'D-plain', condition: 'D', grounding: false, retrievalVersion: versions.d_retrieval_version,
       params: { condition: 'D', ...base, ...dShared, require_grounding: false },
@@ -186,7 +191,10 @@ export function FactorialBatchPage() {
   // the default so an unchanged page keeps launching exactly what it
   // always did.
   const [cRetrievalVersion, setCRetrievalVersion] = useState<'v2' | 'v3'>('v2')
-  const [alpha, setAlpha] = useState(1.0)
+  // Amendment 10: C-primary / C-ablation alphas (the stage-2 candidates
+  // until official_params.json is "selected", then the official values).
+  const [alphaPrimary, setAlphaPrimary] = useState(0.25)
+  const [alphaAblation, setAlphaAblation] = useState(0.0)
   const [sampleSplit, setSampleSplit] = useState<'test' | 'dev'>('test')
 
   // Exploratory switches -- collapsed "Advanced (exploratory)" section,
@@ -208,9 +216,10 @@ export function FactorialBatchPage() {
   const [error, setError] = useState<string | null>(null)
 
   const applyOfficialLock = (officialParams: OfficialCParams | null | undefined) => {
-    if (!officialParams || officialParams.status === 'pending_selection' || !officialParams.c_retrieval_version) return
+    if (!officialParams || officialParams.status !== 'selected') return
     setCRetrievalVersion(officialParams.c_retrieval_version as 'v2' | 'v3')
-    if (officialParams.alpha !== null) setAlpha(officialParams.alpha)
+    if (officialParams.alpha_primary !== null) setAlphaPrimary(officialParams.alpha_primary)
+    if (officialParams.alpha_ablation !== null) setAlphaAblation(officialParams.alpha_ablation)
     setSampleSplit(officialParams.sample_split as 'test' | 'dev')
     setMaxHops(officialParams.max_hops)
     setEdgeTypes(officialParams.edge_types)
@@ -244,20 +253,23 @@ export function FactorialBatchPage() {
   const officialLockResult = useMemo((): { allowed: boolean; message: string | null; mismatchedKeys: string[] } => {
     if (preset !== 'official' || !defaults?.official_c_params) return { allowed: true, message: null, mismatchedKeys: [] }
     const o = defaults.official_c_params
-    if (o.status === 'pending_selection') {
+    if (o.status !== 'selected') {
       return {
         allowed: false,
-        message: "Official preset is locked pending the C retrieval v3 decision — see docs/DECISION_C_SCORING.md's Outcome section.",
+        message: "Official preset is locked until stage 2 selects alpha_primary/alpha_ablation — see docs/DECISION_C_SCORING.md's Outcome section and Amendment 10 Record.",
         mismatchedKeys: [],
       }
     }
     const current = {
-      c_retrieval_version: cRetrievalVersion, alpha: cRetrievalVersion === 'v3' ? alpha : null,
+      c_retrieval_version: cRetrievalVersion,
+      alpha_primary: cRetrievalVersion === 'v3' ? alphaPrimary : null,
+      alpha_ablation: cRetrievalVersion === 'v3' ? alphaAblation : null,
       sample_split: sampleSplit, max_hops: maxHops,
       edge_types: [...edgeTypes].sort(), use_author_trust: useAuthorTrust, accepted_only: acceptedOnly,
     }
     const officialNormalized = {
-      c_retrieval_version: o.c_retrieval_version, alpha: o.alpha, sample_split: o.sample_split,
+      c_retrieval_version: o.c_retrieval_version, alpha_primary: o.alpha_primary, alpha_ablation: o.alpha_ablation,
+      sample_split: o.sample_split,
       max_hops: o.max_hops, edge_types: [...o.edge_types].sort(),
       use_author_trust: o.use_author_trust, accepted_only: o.accepted_only,
     }
@@ -270,7 +282,7 @@ export function FactorialBatchPage() {
       message: `Official preset parameters differ from docs/DECISION_C_SCORING.md on: ${diffs.join(', ')}.`,
       mismatchedKeys: diffs,
     }
-  }, [preset, defaults, cRetrievalVersion, alpha, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly])
+  }, [preset, defaults, cRetrievalVersion, alphaPrimary, alphaAblation, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly])
   const officialMismatch = officialLockResult.allowed ? null : officialLockResult.mismatchedKeys
 
   const effectiveOversamplePool = oversamplePool ? Number(oversamplePool) : defaultOversamplePool
@@ -281,7 +293,7 @@ export function FactorialBatchPage() {
         { provider, model, nSample, seed, oversamplePool: effectiveOversamplePool, topK },
         {
           nAnchor, nSemanticExpansion, fusionWPathTrust, fusionWIntrinsic, semanticExpansionTrustCap, enableSemanticExpansion,
-          cRetrievalVersion, alpha, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly,
+          cRetrievalVersion, alphaPrimary, alphaAblation, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly,
         },
         { nLowLevel, nHighLevel },
         { c_retrieval_version: cRetrievalVersion === 'v3' ? 'v3' : defaults?.c_retrieval_version, d_retrieval_version: defaults?.d_retrieval_version },
@@ -289,7 +301,7 @@ export function FactorialBatchPage() {
     [
       provider, model, nSample, seed, effectiveOversamplePool, topK,
       nAnchor, nSemanticExpansion, fusionWPathTrust, fusionWIntrinsic, semanticExpansionTrustCap, enableSemanticExpansion,
-      cRetrievalVersion, alpha, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly,
+      cRetrievalVersion, alphaPrimary, alphaAblation, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly,
       nLowLevel, nHighLevel, defaults,
     ],
   )
@@ -461,10 +473,16 @@ export function FactorialBatchPage() {
               <option value="v3">v3 (relevance-aware, docs/DECISION_C_SCORING.md)</option>
             </select>
           </Field>
-          <Field label="alpha">
+          <Field label="alpha (C-primary)">
             <input
               type="number" step="0.25" min="0" max="1" disabled={cRetrievalVersion !== 'v3'} className={inputClass}
-              value={alpha} onChange={(e) => { setAlpha(Number(e.target.value)); setPreset('custom') }}
+              value={alphaPrimary} onChange={(e) => { setAlphaPrimary(Number(e.target.value)); setPreset('custom') }}
+            />
+          </Field>
+          <Field label="alpha (C-ablation)">
+            <input
+              type="number" step="0.25" min="0" max="1" disabled={cRetrievalVersion !== 'v3'} className={inputClass}
+              value={alphaAblation} onChange={(e) => { setAlphaAblation(Number(e.target.value)); setPreset('custom') }}
             />
           </Field>
           <Field label="sample_split">

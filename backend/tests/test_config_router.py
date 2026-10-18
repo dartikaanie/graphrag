@@ -53,56 +53,69 @@ def test_defaults_endpoint_returns_none_when_file_missing(monkeypatch):
 
 from app.routers.config import check_official_c_params_lock  # noqa: E402
 
+_EDGES = ["EMBED_SIM", "HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR"]
 _PENDING = {
-    "status": "pending_selection", "c_retrieval_version": None, "alpha": None,
-    "sample_split": "test", "max_hops": 2,
-    "edge_types": ["EMBED_SIM", "HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR"],
+    "status": "pending_selection", "c_retrieval_version": "v3", "alpha_primary": None, "alpha_ablation": None,
+    "selection_record": {"path": "docs/DECISION_C_SCORING.md", "commit": None},
+    "sample_split": "test", "max_hops": 2, "edge_types": _EDGES,
     "use_author_trust": False, "accepted_only": False,
 }
 
-_LOCKED_RESOLVED_V3 = {
-    "status": "locked", "c_retrieval_version": "v3", "alpha": 0.5,
-    "sample_split": "test", "max_hops": 2,
-    "edge_types": ["EMBED_SIM", "HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR"],
-    "use_author_trust": False, "accepted_only": False,
+_SELECTED = {
+    **_PENDING, "status": "selected", "alpha_primary": 0.25, "alpha_ablation": 0.0,
+    "selection_record": {"path": "docs/DECISION_C_SCORING.md", "commit": "abc1234"},
 }
 
 
-def test_lock_refuses_v2_request_while_pending_selection():
+def _preset_request(official):
+    return {k: v for k, v in official.items() if k not in ("status", "selection_record")}
+
+
+def test_lock_refuses_request_while_pending_selection():
     """Even a request matching the pending defaults exactly is refused
-    while status is "pending_selection" -- the Official preset as a
-    whole is locked, not just the v3 knobs."""
-    requested = {k: v for k, v in _PENDING.items() if k != "status"}
-    requested["c_retrieval_version"] = "v2"
-    result = check_official_c_params_lock(_PENDING, requested)
+    while status is not "selected" -- the Official preset as a whole is
+    locked, not just the alpha knobs."""
+    result = check_official_c_params_lock(_PENDING, _preset_request(_PENDING))
     assert result["allowed"] is False
     assert "DECISION_C_SCORING.md" in result["message"]
 
 
-def test_lock_allows_exact_match_once_resolved():
-    requested = {k: v for k, v in _LOCKED_RESOLVED_V3.items() if k != "status"}
-    result = check_official_c_params_lock(_LOCKED_RESOLVED_V3, requested)
+def test_lock_allows_exact_match_once_selected():
+    result = check_official_c_params_lock(_SELECTED, _preset_request(_SELECTED))
     assert result["allowed"] is True
     assert result["message"] is None
 
 
-def test_lock_refuses_mismatched_alpha_once_resolved():
-    requested = {k: v for k, v in _LOCKED_RESOLVED_V3.items() if k != "status"}
-    requested["alpha"] = 0.75
-    result = check_official_c_params_lock(_LOCKED_RESOLVED_V3, requested)
+def test_lock_refuses_mismatched_alpha_once_selected():
+    requested = _preset_request(_SELECTED)
+    requested["alpha_ablation"] = 0.5
+    result = check_official_c_params_lock(_SELECTED, requested)
     assert result["allowed"] is False
-    assert "alpha" in result["mismatched_keys"]
+    assert result["mismatched_keys"] == ["alpha_ablation"]
+
+
+def test_lock_single_alpha_must_be_one_of_the_two():
+    base = {"c_retrieval_version": "v3", "sample_split": "test"}
+    assert check_official_c_params_lock(_SELECTED, {**base, "alpha": 0.0})["allowed"] is True
+    assert check_official_c_params_lock(_SELECTED, {**base, "alpha": 0.25})["allowed"] is True
+    result = check_official_c_params_lock(_SELECTED, {**base, "alpha": 0.5})
+    assert result["allowed"] is False and result["mismatched_keys"] == ["alpha"]
+
+
+def test_lock_refuses_v2_once_selected():
+    result = check_official_c_params_lock(_SELECTED, {**_preset_request(_SELECTED), "c_retrieval_version": "v2"})
+    assert result["mismatched_keys"] == ["c_retrieval_version"]
 
 
 def test_lock_edge_types_order_insensitive():
-    requested = {k: v for k, v in _LOCKED_RESOLVED_V3.items() if k != "status"}
+    requested = _preset_request(_SELECTED)
     requested["edge_types"] = list(reversed(requested["edge_types"]))
-    result = check_official_c_params_lock(_LOCKED_RESOLVED_V3, requested)
+    result = check_official_c_params_lock(_SELECTED, requested)
     assert result["allowed"] is True
 
 
 def test_lock_allows_when_official_params_missing():
-    result = check_official_c_params_lock(None, {"c_retrieval_version": "v3", "alpha": 0.9})
+    result = check_official_c_params_lock(None, {"c_retrieval_version": "v3", "alpha_primary": 0.9})
     assert result["allowed"] is True
 
 
@@ -113,3 +126,68 @@ def test_check_official_c_lock_endpoint_pending_selection(monkeypatch):
     resp = client.post("/api/config/check-official-c-lock", json={"c_retrieval_version": "v2"})
     assert resp.status_code == 200
     assert resp.json()["allowed"] is False
+
+
+import tempfile  # noqa: E402
+
+_RUNS_TMP = Path(tempfile.mkdtemp(prefix="graphrag_runs_test_"))  # never the real backend/.runs
+
+# ---------------------------------------------------------------------
+# Official run matrix (llm/official_run_matrix.py) via /api/config/defaults,
+# and the per-run launch rule in POST /api/runs (Amendment 10).
+# ---------------------------------------------------------------------
+
+def test_defaults_endpoint_returns_nine_run_matrix_with_two_c_alphas(monkeypatch):
+    import app.routers.config as config_router
+
+    monkeypatch.setattr(config_router, "_official_c_params", lambda: _SELECTED)
+    matrix = client.get("/api/config/defaults").json()["official_run_matrix"]
+    assert [r["run"] for r in matrix] == [f"R{i}" for i in range(1, 10)]
+    c = {r["run"]: r for r in matrix if r["condition"] == "C"}
+    assert {k: (v["alpha"], v["grounding"]) for k, v in c.items()} == {
+        "R4": (0.25, False), "R5": (0.25, True), "R6": (0.0, False), "R7": (0.0, True)}
+    assert all(r["dashboard"]["c_retrieval_version"] == "v3" for r in c.values())
+    assert len({r["dashboard"]["alpha"] for r in c.values()}) == 2
+
+
+def test_defaults_endpoint_matrix_alphas_null_while_pending(monkeypatch):
+    import app.routers.config as config_router
+
+    monkeypatch.setattr(config_router, "_official_c_params", lambda: _PENDING)
+    matrix = client.get("/api/config/defaults").json()["official_run_matrix"]
+    assert [r["alpha"] for r in matrix if r["condition"] == "C"] == [None] * 4
+
+
+def _c_test_run(monkeypatch, official, tmp_path=None, **overrides):
+    import llm.c_graphrag.official_params as op
+    from app.services import run_registry
+
+    monkeypatch.setattr(run_registry, "RUNS_DIR", _RUNS_TMP)
+
+    monkeypatch.setattr(op, "load_official_params", lambda *a, **k: official)
+    started = []
+    import app.routers.runs as runs_router
+
+    monkeypatch.setattr(runs_router.threading, "Thread", lambda **kw: type("T", (), {"start": lambda self: started.append(kw)})())
+    body = {"condition": "C", "mode": "batch", "n_sample": 384, "seed": 42, "sample_split": "test",
+            "c_retrieval_version": "v3", "alpha": 0.25, **overrides}
+    return client.post("/api/runs", json=body), started
+
+
+def test_create_run_refuses_c_test_run_while_pending(monkeypatch):
+    resp, started = _c_test_run(monkeypatch, _PENDING)
+    assert resp.status_code == 400 and "pending_selection" in resp.json()["detail"] and not started
+
+
+def test_create_run_refuses_c_test_run_v2_or_unlisted_alpha(monkeypatch):
+    resp, _ = _c_test_run(monkeypatch, _SELECTED, c_retrieval_version="v2")
+    assert resp.status_code == 400 and "v3" in resp.json()["detail"]
+    resp, _ = _c_test_run(monkeypatch, _SELECTED, alpha=0.5)
+    assert resp.status_code == 400 and "not an official alpha" in resp.json()["detail"]
+
+
+def test_create_run_allows_official_c_alpha_and_dev_runs(monkeypatch):
+    resp, started = _c_test_run(monkeypatch, _SELECTED, alpha=0.0)
+    assert resp.status_code == 200 and len(started) == 1
+    resp, started = _c_test_run(monkeypatch, _PENDING, sample_split="dev", c_retrieval_version="v2", alpha=None)
+    assert resp.status_code == 200 and len(started) == 1

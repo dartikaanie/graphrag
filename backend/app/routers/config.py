@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 from llm.c_graphrag.c_graphrag import C_RETRIEVAL_VERSION  # noqa: E402
 from llm.d_lightrag.d_lightrag import D_RETRIEVAL_VERSION  # noqa: E402
 from llm.prompts import PROMPT_VERSION  # noqa: E402
+from llm.official_run_matrix import build_matrix  # noqa: E402
 
 router = APIRouter(prefix="/api/config")
 
@@ -40,42 +41,45 @@ def _official_c_params() -> dict | None:
 
 
 _LOCKED_PARAM_KEYS = (
-    "c_retrieval_version", "alpha", "sample_split", "max_hops", "edge_types",
-    "use_author_trust", "accepted_only",
+    "c_retrieval_version", "sample_split", "max_hops", "edge_types", "use_author_trust", "accepted_only",
 )
+_ALPHA_KEYS = ("alpha_primary", "alpha_ablation")
 
 
 def check_official_c_params_lock(official_params: dict | None, requested: dict) -> dict:
     """Shared launch-refusal logic for the Factorial Batch page's
-    "Official (n=384)" preset -- the single place the "is this allowed to
-    launch" decision is made, so the frontend's warning and any future
-    server-side enforcement can't silently drift apart.
+    "Official (n=384)" preset (docs/DECISION_C_SCORING.md, Amendment 10).
 
-    Refuses whenever `official_params["status"] == "pending_selection"`
-    REGARDLESS of `c_retrieval_version` (even a plain v2 run is refused
-    while the decision is pending -- the Official preset as a whole is
-    locked, not just the v3 knobs), and otherwise refuses when any
-    locked key in `requested` differs from `official_params`.
+    Refuses whenever `official_params["status"]` is not "selected" (the
+    Official preset as a whole is locked until stage 2 fills in
+    alpha_primary/alpha_ablation), and otherwise refuses when any locked
+    key in `requested` differs from `official_params`. `requested` carries
+    either the preset's two C alphas (`alpha_primary`, `alpha_ablation`)
+    or a single run's `alpha`, which must be one of the two.
 
     Returns {"allowed": bool, "message": str | None, "mismatched_keys": list[str]}.
     `official_params=None` (file missing) always allows -- there's
     nothing to lock against yet, same as before this feature existed.
+    The per-run rule for the API itself is llm/c_graphrag/official_params.py
+    (enforced in routers/runs.py), not this function.
     """
     if official_params is None:
         return {"allowed": True, "message": None, "mismatched_keys": []}
 
-    if official_params.get("status") == "pending_selection":
+    if official_params.get("status") != "selected":
         return {
             "allowed": False,
             "message": (
-                "Official preset is locked pending the C retrieval v3 decision -- "
-                "see docs/DECISION_C_SCORING.md's Outcome section."
+                "Official preset is locked until stage 2 selects alpha_primary/alpha_ablation -- "
+                "see docs/DECISION_C_SCORING.md's Outcome section and Amendment 10 Record."
             ),
             "mismatched_keys": [],
         }
 
     mismatched = []
     for key in _LOCKED_PARAM_KEYS:
+        if key not in requested:
+            continue
         official_value = official_params.get(key)
         requested_value = requested.get(key)
         if key == "edge_types":
@@ -83,6 +87,11 @@ def check_official_c_params_lock(official_params: dict | None, requested: dict) 
             requested_value = sorted(requested_value) if requested_value else requested_value
         if official_value != requested_value:
             mismatched.append(key)
+    for key in _ALPHA_KEYS:
+        if key in requested and requested[key] != official_params.get(key):
+            mismatched.append(key)
+    if "alpha" in requested and requested["alpha"] not in [official_params.get(k) for k in _ALPHA_KEYS]:
+        mismatched.append("alpha")
 
     if mismatched:
         return {
@@ -109,6 +118,8 @@ def get_defaults():
         "c_retrieval_version": C_RETRIEVAL_VERSION,
         "d_retrieval_version": D_RETRIEVAL_VERSION,
         "official_c_params": _official_c_params(),
+        # R1-R9 on the test sample (llm/official_run_matrix.py; C alphas null while pending)
+        "official_run_matrix": build_matrix(_official_c_params()),
     }
 
 
