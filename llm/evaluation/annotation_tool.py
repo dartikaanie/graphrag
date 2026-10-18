@@ -17,7 +17,9 @@ Subcommands
 Two purposes share one flow:
     calibration   60 items = 20 per condition (A, B-plain, B-grounded), seed 42; annotator 2 labels a
                   fixed 30-item subset (10 per condition, seed 42).
-    confirmation  30 items stratified across the stage-2 run files given, seed 42; annotator 1 only.
+    confirmation  63 items = 7 per official test run x the 9 runs R1-R9 (Amendment 11), seed 42; annotator 1
+                  only. Exported only when the judge version is frozen (Amendment 11 Record filled in) and all
+                  nine official runs are given, each covering exactly the frozen test sample.
 
 BLINDING (Amendment 11). The XLSX files contain no condition, run label, model or judge output.
 Annotators see exactly what judge-v2.2 sees, built by the same function (judge_prompt_v2_2.
@@ -84,8 +86,8 @@ REANNOTATION_MIN_DAYS = 14
 PURPOSES = {
     # n_per_stratum / n_overlap_per_stratum: fixed per-condition counts (Amendment 4, calibration set).
     "calibration": {"prefix": "CAL", "n_per_stratum": 20, "n_overlap_per_stratum": 10, "n_total": 60},
-    # n_total split evenly across the stage-2 run files given; one annotator.
-    "confirmation": {"prefix": "CONF", "n_per_stratum": None, "n_overlap_per_stratum": 0, "n_total": 30},
+    # Amendment 11: 7 per official test run x 9 runs (R1-R9); one annotator.
+    "confirmation": {"prefix": "CONF", "n_per_stratum": 7, "n_overlap_per_stratum": 0, "n_total": 63},
 }
 
 SHOWN_COLUMNS = ["item_id", "question", "accepted_answer", "candidate_answer", "context"]
@@ -524,6 +526,90 @@ def build_export(items: list[dict], bodies_html: dict, purpose: str, seed: int =
     }
 
 
+DECISION_RECORD = REPO_ROOT / "docs" / "DECISION_C_SCORING.md"
+
+
+def frozen_judge_version(decision_path: Path = DECISION_RECORD) -> str | None:
+    """The judge version in Amendment 11's Record ("- Judge version frozen: judge-v2.x  commit: ..."), or None
+    while it is still "[ ]"."""
+    text = Path(decision_path).read_text()
+    start = text.find("## Amendment 11")
+    record = text.find("### Record (fill in)", start)
+    if start < 0 or record < 0:
+        return None
+    for line in text[record:].splitlines()[1:12]:
+        if line.startswith("- Judge version frozen:"):
+            m = re.search(r"judge-v\d+(?:\.\d+)*", line.split("commit:")[0])
+            return m.group(0) if m else None
+    return None
+
+
+def official_cell(config: dict, manifest: dict | None, official: dict | None) -> str | None:
+    """Official run-matrix label (R1-R9, llm/official_run_matrix.py) of a test-sample run, or None."""
+    cond = str(config.get("condition") or "").upper()
+    grounded = "grounded" if config.get("require_grounding") else "plain"
+    if cond == "A":
+        return "A"
+    if cond in ("B", "D"):
+        return f"{cond}-{grounded}"
+    if cond == "C":
+        from llm.c_graphrag.official_params import role_for_alpha
+
+        role = (manifest or {}).get("official_role") or role_for_alpha(official, config.get("alpha"))
+        return {"c_primary": f"C-primary-{grounded}", "c_ablation": f"C-ablation-{grounded}"}.get(role)
+    return None
+
+
+def confirmation_cells(run_files: list[str], test_ids: set, official: dict | None) -> dict[str, str]:
+    """{run file: cell label} for exactly the nine official runs; AnnotationError otherwise."""
+    from llm.official_run_matrix import CELLS
+
+    expected = {label for _, label, _, _, _ in CELLS}
+    cells, problems = {}, []
+    for path in run_files:
+        recs = [json.loads(line) for line in open(path) if line.strip()]
+        cfg = (recs[0].get("config") if recs else None) or {}
+        man_path = Path(path).with_name(Path(path).name + ".manifest.json")
+        manifest = json.loads(man_path.read_text()) if man_path.exists() else None
+        if cfg.get("sample_split") != "test":
+            problems.append(f"{Path(path).name}: sample_split is {cfg.get('sample_split')!r}, not 'test'")
+            continue
+        ids = {int(r["question_id"]) for r in recs}
+        if ids != test_ids:
+            problems.append(f"{Path(path).name}: does not cover exactly the frozen test sample "
+                            f"({len(ids - test_ids)} extra, {len(test_ids - ids)} missing)")
+            continue
+        cell = official_cell(cfg, manifest, official)
+        if cell not in expected:
+            problems.append(f"{Path(path).name}: not one of the official runs R1-R9 (cell {cell!r})")
+        elif cell in cells.values():
+            problems.append(f"{Path(path).name}: a second run for {cell}")
+        else:
+            cells[str(path)] = cell
+    missing = sorted(expected - set(cells.values()))
+    if missing:
+        problems.append(f"official runs missing: {missing}")
+    if problems:
+        raise AnnotationError("confirmation export refused: " + "; ".join(problems))
+    return cells
+
+
+def check_confirmation_allowed(run_files: list[str], decision_path: Path = DECISION_RECORD,
+                               test_ids: set | None = None, official: dict | None = None) -> dict:
+    """Amendment 11: refuse the confirmation export until the judge is frozen and all nine official runs exist."""
+    version = frozen_judge_version(decision_path)
+    if version is None:
+        raise AnnotationError("confirmation export refused: the judge version is not frozen yet (the Record of "
+                              "Amendment 11 in docs/DECISION_C_SCORING.md is still empty)")
+    if test_ids is None:
+        from llm.sample_split import load_frozen_ids
+        test_ids = {int(q) for q in load_frozen_ids("test")["ids"]}
+    if official is None:
+        from llm.c_graphrag.official_params import load_official_params
+        official = load_official_params()
+    return {"judge_version": version, "cells": confirmation_cells(run_files, test_ids, official)}
+
+
 def cmd_export(args) -> int:
     from _judge_common import load_calibration_registry, load_question_bodies
     from llm.repo_state import repo_state
@@ -542,7 +628,13 @@ def cmd_export(args) -> int:
     if not questions_parquet:
         raise AnnotationError("--questions-parquet (or QUESTIONS_PARQUET in .env) is required")
 
+    confirmation = None
+    if purpose == "confirmation":
+        confirmation = check_confirmation_allowed(run_files)
     items = load_run_items(run_files)
+    if confirmation:  # strata = the nine official cells, not the run labels
+        for it in items:
+            it["run_label"] = confirmation["cells"][str(it["source_file"])]
     sample_kw = {}
     if args.n_total is not None:
         sample_kw["n_total"] = args.n_total
@@ -558,6 +650,7 @@ def cmd_export(args) -> int:
                      "n_overlap_per_stratum": spec["n_overlap_per_stratum"],
                      "n_total": len(export["key_items"]), "run_files": [Path(f).name for f in run_files]},
         "items": export["key_items"],
+        **({"frozen_judge_version": confirmation["judge_version"]} if confirmation else {}),
     }
     key_dir.mkdir(parents=True, exist_ok=True)
     key_name = f"{purpose}_key_seed{args.seed}.json"
@@ -1190,7 +1283,8 @@ def main(argv=None) -> int:
     p.add_argument("--run-files", nargs="*", default=[],
                    help="Run JSONL files to sample from (calibration: defaults to the calibration registry)")
     p.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    p.add_argument("--n-total", type=int, default=None, help="confirmation only: total items (default 30)")
+    p.add_argument("--n-total", type=int, default=None,
+                   help="only for a purpose without a fixed per-stratum count (calibration: 20, confirmation: 7)")
     p.add_argument("--questions-parquet", default=None)
     p.add_argument("--force", action="store_true", help="Overwrite an existing export (invalidates annotation in progress)")
     p.set_defaults(func=cmd_export)
