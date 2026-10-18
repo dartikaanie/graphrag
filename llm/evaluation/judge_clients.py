@@ -52,6 +52,14 @@ JUDGE_ROLE_CHANGES_PATH = REPO_ROOT / "logs" / "judge_role_changes.jsonl"
 
 ROLES = ("primary", "secondary", "fallback", "exploratory")
 
+# Temperature for EVERY LLM-as-Judge call (hallucination v1/v2/v2.1,
+# ctxrel, answer relevance, sanity check, legacy judges) -- the single
+# source of truth. Generators (Conditions A/B/C/D) never use this: they
+# send no temperature at all (API default, following Da Silva et al.
+# 2025). judge_prompt_v2_1.REQUEST_TEMPERATURE stays a pre-registered
+# literal (Amendment 4 rule 7); a test asserts it equals this value.
+JUDGE_TEMPERATURE = 0.0
+
 
 @dataclass(frozen=True)
 class JudgeConfig:

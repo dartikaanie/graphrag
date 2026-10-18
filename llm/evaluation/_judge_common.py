@@ -22,6 +22,8 @@ import threading
 import time
 from pathlib import Path
 
+from judge_clients import JUDGE_TEMPERATURE
+
 RESULTS_DIR = Path("results")
 LOG_DIR = Path("logs")
 
@@ -342,7 +344,7 @@ def append_judge_resolution_record(resolved_path, record: dict) -> None:
 JUDGE_RETRYABLE_MAX_ATTEMPTS = 6
 
 
-def call_judge_llm_with_retry(client, config, messages: list[dict], request_temperature: float = 0.0,
+def call_judge_llm_with_retry(client, config, messages: list[dict], request_temperature: float = JUDGE_TEMPERATURE,
                                log=print, max_tokens: int | None = None) -> tuple[dict | None, list[dict]]:
     """Returns (response_payload, attempts). response_payload is None
     only if every attempt failed. `attempts` lists EVERY attempt made

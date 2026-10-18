@@ -75,6 +75,7 @@ from scipy.stats import wilcoxon
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _stats_common import cliffs_delta, holm_correction  # noqa: E402
+from judge_clients import JUDGE_TEMPERATURE  # noqa: E402
 
 ANALYSIS_DIR = Path("analysis")
 LOG_DIR = Path("logs")
@@ -119,13 +120,29 @@ def _resolve_path_str(p) -> str:
 
 
 def find_latest_manifest_entry(manifest_path: Path, target_input_path) -> dict | None:
+    """Entri TERBARU untuk input_path ini, HANYA dari run judge dengan
+    judge_temperature == JUDGE_TEMPERATURE (0.0). Run lama di t0.1 (file
+    `_t0-1`, run uji n=1 sebelum temperature judge diseragamkan) dilewati
+    dengan peringatan -- tidak pernah diam-diam dipakai sbg fallback."""
     target_resolved = _resolve_path_str(target_input_path)
     best = None
+    skipped = []
     for rec in _read_jsonl(manifest_path):
         if _resolve_path_str(rec.get("input_path", "")) != target_resolved:
             continue
+        if rec.get("judge_temperature") != JUDGE_TEMPERATURE:
+            skipped.append(rec)
+            continue
         if best is None or str(rec.get("timestamp", "")) > str(best.get("timestamp", "")):
             best = rec
+    if skipped:
+        print(f"[WARN] {Path(manifest_path).name}: {len(skipped)} run judge utk {Path(target_input_path).name} "
+              f"dilewati karena judge_temperature != {JUDGE_TEMPERATURE} "
+              f"({sorted({str(r.get('judge_temperature')) for r in skipped})}): "
+              f"{[Path(r.get('output_path', '')).name for r in skipped]}")
+        if best is None:
+            print(f"[WARN] {Path(manifest_path).name}: TIDAK ADA run judge t{JUDGE_TEMPERATURE} utk "
+                  f"{Path(target_input_path).name} -- metrik ini kosong utk kondisi tsb.")
     return best
 
 

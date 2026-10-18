@@ -130,7 +130,7 @@ export function RunJudgePage() {
 
   const [judgeProvider, setJudgeProvider] = useState('openai')
   const [judgeModel, setJudgeModel] = useState('')
-  const [judgeTemperature, setJudgeTemperature] = useState(0.1)
+  const [judgeTemperature, setJudgeTemperature] = useState(0.0)
   const [majorityRounds, setMajorityRounds] = useState(1)
   const [force, setForce] = useState(false)
   const [kappaValidation, setKappaValidation] = useState(false)
