@@ -134,6 +134,7 @@ from llm.client_factory import get_llm_client
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_base_messages
 from llm.record_schema import latency_fields, new_run_id, record_header
+from llm.common.provenance import run_provenance  # noqa: E402
 from llm.sample_split import SampleMismatchError, verify_sample
 
 TOKEN_LIMIT = 2048  # sesuai batasan paper asli
@@ -606,6 +607,7 @@ def main():
     log(f"[6/6] Prompting {args.model} untuk {len(sample_df)} pertanyaan "
           f"(1 panggilan per pertanyaan, konfigurasi default)...")
 
+    provenance = run_provenance(sample_check=sample_check)  # manifest (llm/common/provenance.py)
     process_sample(sample_df, llm_client, call_llm_fn, embed_model, args.model, output_path, already_done,
                     config=config, config_hash=config_hash, run_id=run_id)
 
@@ -633,7 +635,7 @@ def main():
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_id=run_id,
+            output_path, run_id=run_id, provenance=provenance,
             run_label=run_label,
             status="failed",
             config=config,
@@ -669,7 +671,7 @@ def main():
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_id=run_id,
+            output_path, run_id=run_id, provenance=provenance,
             run_label=run_label,
             status="failed",
             config=config,
@@ -717,7 +719,7 @@ def main():
 
     finished_at = datetime.now(timezone.utc)
     manifest_path = write_manifest(
-        output_path, run_id=run_id,
+        output_path, run_id=run_id, provenance=provenance,
         run_label=run_label,
         config=config,
         config_hash=config_hash,

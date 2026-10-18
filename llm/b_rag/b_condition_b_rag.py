@@ -175,6 +175,7 @@ from llm.common.text import build_query_text
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_rag_messages
 from llm.record_schema import latency_fields, new_run_id, record_header
+from llm.common.provenance import run_provenance  # noqa: E402
 from llm.sample_split import SampleMismatchError, verify_sample
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, sama dgn Kondisi A
@@ -988,6 +989,8 @@ def main():
     log(f"[7/8] Retrieval top-{args.top_k} + prompting {args.model} untuk "
           f"{len(sample_df)} pertanyaan...")
 
+    provenance = run_provenance(sample_check=sample_check, leakage_mode=leakage_mode,
+                                b_index=index if args.corpus == CORPUS_KG else None)  # manifest (llm/common/provenance.py)
     process_sample(sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, args.top_k,
                     args.model, output_path, already_done, require_citation=args.require_citation,
                     require_grounding=args.require_grounding,
@@ -1030,7 +1033,7 @@ def main():
         run_label = (("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B") + dev_tag
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_id=run_id, run_label=run_label, status="failed",
+            output_path, run_id=run_id, provenance=provenance, run_label=run_label, status="failed",
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
@@ -1069,7 +1072,7 @@ def main():
         run_label = (("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B") + dev_tag
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_id=run_id, run_label=run_label, status="failed",
+            output_path, run_id=run_id, provenance=provenance, run_label=run_label, status="failed",
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
@@ -1172,7 +1175,7 @@ def main():
         run_label = "B"
     run_label += dev_tag
     manifest_path = write_manifest(
-        output_path, run_id=run_id,
+        output_path, run_id=run_id, provenance=provenance,
         run_label=run_label,
         config=config,
         config_hash=config_hash,

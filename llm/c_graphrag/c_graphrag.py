@@ -157,6 +157,7 @@ from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F40
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
 from llm.record_schema import latency_fields, new_run_id, record_header
+from llm.common.provenance import fetch_trust_score_version, run_provenance  # noqa: E402
 from llm.sample_split import SampleMismatchError, verify_sample
 from llm.c_graphrag.official_params import OfficialParamsError, check_c_test_run, load_official_params  # noqa: E402
 
@@ -596,19 +597,7 @@ def fetch_author_trust(driver, database, answer_ids: list[int]) -> dict[int, flo
         return {int(record["answer_id"]): float(record["weight"]) for record in result}
 
 
-def fetch_trust_score_version(driver, database) -> str | None:
-    """trustScoreVersion of the Answer nodes (docs/DECISION_C_SCORING.md
-    Amendments 5-6), recorded in the run manifest. One version on every
-    node -> that version; no node tagged -> None; anything else -> a
-    "mixed(...)" string, which no check accepts."""
-    with driver.session(database=database) as session:
-        counts = {r["version"]: r["n"] for r in session.run(
-            "MATCH (a:Answer) RETURN a.trustScoreVersion AS version, count(*) AS n")}
-    if not counts or set(counts) == {None}:
-        return None
-    if len(counts) == 1:
-        return next(iter(counts))
-    return "mixed(" + ", ".join(f"{v}={n}" for v, n in sorted(counts.items(), key=lambda kv: str(kv[0]))) + ")"
+# fetch_trust_score_version: moved unchanged to llm/common/provenance.py (shared with D), imported above
 
 
 # ---------------------------------------------------------------------
@@ -1735,6 +1724,8 @@ def main():
     log(f"[7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting {args.model} "
         f"untuk {len(sample_df)} pertanyaan...")
 
+    provenance = run_provenance(sample_check=sample_check, leakage_mode=leakage_mode,
+                                kg_workspace_dir=kg_workspace_dir)  # manifest (llm/common/provenance.py)
     results, stats = process_sample(
         sample_df, llm_client, call_llm_fn, embed_model, driver, database,
         faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
@@ -1799,7 +1790,7 @@ def main():
         })["run_label"]
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_id=run_id, run_label=run_label, status="failed",
+            output_path, run_id=run_id, provenance=provenance, run_label=run_label, status="failed",
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
@@ -1893,7 +1884,7 @@ def main():
         "fusion_mode": args.fusion_mode, "grounding": "on" if args.require_grounding else "off",
     })["run_label"]
     manifest_path = write_manifest(
-        output_path, run_id=run_id,
+        output_path, run_id=run_id, provenance=provenance,
         run_label=run_label,
         status="interrupted" if interrupted else "completed",
         config=config,

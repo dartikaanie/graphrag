@@ -170,6 +170,7 @@ from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, add
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_lightrag_messages
 from llm.record_schema import latency_fields, new_run_id, record_header
+from llm.common.provenance import fetch_trust_score_version, run_provenance  # noqa: E402
 from llm.sample_split import SampleMismatchError, verify_sample
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B/C
@@ -948,6 +949,10 @@ def main():
     log(f"[7/9] Dual-level retrieval (low-level+high-level) + prompting {args.model} "
         f"untuk {len(sample_df)} pertanyaan...")
 
+    graph_state = {"trustScoreVersion": fetch_trust_score_version(driver, database)}  # same as C
+    log(f"[graph] trustScoreVersion: {graph_state['trustScoreVersion']}")
+    provenance = run_provenance(sample_check=sample_check, leakage_mode=leakage_mode,
+                                kg_workspace_dir=kg_workspace_dir)  # manifest (llm/common/provenance.py)
     results, stats = process_sample(
         sample_df, llm_client, call_llm_fn, embed_model, driver, database,
         faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
@@ -991,7 +996,7 @@ def main():
         run_label = ("D-grounded" if args.require_grounding else "D-plain") + ("" if args.sample_split == "test" else f" [{args.sample_split}]")
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_id=run_id, run_label=run_label, status="failed",
+            output_path, run_id=run_id, provenance=provenance, graph=graph_state, run_label=run_label, status="failed",
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
@@ -1066,7 +1071,7 @@ def main():
     finished_at = datetime.now(timezone.utc)
     run_label = ("D-grounded" if args.require_grounding else "D-plain") + ("" if args.sample_split == "test" else f" [{args.sample_split}]")
     manifest_path = write_manifest(
-        output_path, run_id=run_id,
+        output_path, run_id=run_id, provenance=provenance, graph=graph_state,
         run_label=run_label,
         status="interrupted" if interrupted else "completed",
         config=config,
