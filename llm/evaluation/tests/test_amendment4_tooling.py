@@ -248,11 +248,14 @@ def test_calibration_sampling_is_stratified_and_deterministic():
     assert len(a2) == 30 and [i["item_id"] for i in a2] != sorted(i["item_id"] for i in a2)
 
 
-def test_confirmation_sampling_splits_30_evenly_across_runs():
-    items = [dict(i, run_label=f"C-a={a} [dev]") for a in (0.25, 0.5) for i in _items()[:50]]
+def test_confirmation_sampling_is_7_per_official_run():
+    """Amendment 11: 7 items per stratum (the nine official runs); allocate_evenly stays for other uses."""
+    cells = ["A", "B-plain", "B-grounded", "C-primary-plain", "C-primary-grounded", "C-ablation-plain",
+             "C-ablation-grounded", "D-plain", "D-grounded"]
+    items = [dict(i, run_label=c) for c in cells for i in _items()[:50]]
     s = at.sample_items(items, "confirmation", 42)
-    assert len(s) == 30 and s[0]["item_id"] == "CONF-001" and not any(i["in_annotator2_subset"] for i in s)
-    assert sorted(sum(1 for i in s if i["run_label"] == lab) for lab in {i["run_label"] for i in s}) == [15, 15]
+    assert len(s) == 63 and s[0]["item_id"] == "CONF-001" and not any(i["in_annotator2_subset"] for i in s)
+    assert {sum(1 for i in s if i["run_label"] == c) for c in cells} == {7}
     assert at.allocate_evenly(["b", "a", "c", "d"], 30) == {"a": 8, "b": 8, "c": 7, "d": 7}
     with pytest.raises(at.AnnotationError):
         at.sample_items(items[:5], "confirmation", 42)
