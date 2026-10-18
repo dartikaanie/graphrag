@@ -48,7 +48,8 @@ from _run_metadata import RunMetadataNotFoundError, resolve_run_metadata  # noqa
 from judge_binary import derive_hallucinated, severity_of  # noqa: E402
 from judge_clients import get_judge_client  # noqa: E402
 from judge_prompt_v2_2 import (BLINDING_VERSION, PARSE_VERSION, PROMPT_VERSION, REQUEST_MAX_TOKENS,  # noqa: E402
-                               REQUEST_TEMPERATURE, build_messages, parse_judgment_v2_2, prepare_judge_input)
+                               REQUEST_TEMPERATURE, build_messages, candidate_with_citation_labels,
+                               parse_judgment_v2_2, prepare_judge_input)
 from llm.manifest import write_manifest  # noqa: E402
 from llm_judge_hallucination_v2_1 import format_tags  # noqa: E402
 
@@ -107,9 +108,14 @@ _EMPTY_PARSE = {
 }
 
 
-def judge_one(item: dict, judge_id: str, client, config, body_text: str, reference_text: str) -> dict:
+def judge_one(item: dict, judge_id: str, client, config, body_text: str, reference_text: str,
+              keep_citation_labels: bool = False) -> dict:
+    """`keep_citation_labels` is for the authority bias probe only (judge_bias_probes.py): the candidate keeps
+    its citations as [Kn] labels instead of having them removed."""
     has_context = has_context_for(item.get("condition"))
     prepared = prepare_judge_input(item["candidate"], item["retrieved_context"], has_context)
+    if keep_citation_labels:
+        prepared["candidate_blind"] = candidate_with_citation_labels(item["candidate"], prepared["citation_map"])
     messages = build_messages(item["title"], body_text, item["tags"], reference_text, item["candidate"],
                               prepared=prepared)
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -126,6 +132,7 @@ def judge_one(item: dict, judge_id: str, client, config, body_text: str, referen
         "messages_sha256": _messages_sha256(messages), "attempt_count": len(attempts), "attempts": attempts,
         "has_context": has_context, "n_context_items": prepared["n_context_items"],
         "citation_map": prepared["citation_map"], "n_cited_statements": len(prepared["cited_statements"]),
+        "probe_citation_labels_kept": keep_citation_labels,
     }
     if payload is None:
         base.update({**_EMPTY_PARSE, "raw_response": None, "prompt_tokens": None, "completion_tokens": None,

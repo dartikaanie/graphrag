@@ -218,6 +218,16 @@ def prepare_judge_input(candidate: str, context_items: list[dict] | None, has_co
     }
 
 
+def candidate_with_citation_labels(candidate: str, cmap: dict) -> str:
+    """Bias probe (authority, Amendment 11): the candidate with each [SO-<id>] REPLACED by its [Kn] label(s)
+    instead of removed ([K?] for an id not among the context items), then blind-v3."""
+    def repl(m):
+        ids = _SO_DIGITS.findall(m.group(0))
+        labels = [k for i in ids for k in cmap.get(str(int(i)), cmap.get(int(i), []))]
+        return "".join(f"[{k}]" for k in labels) or "[K?]"
+    return blind_candidate_v3(_SO_TOKEN.sub(repl, candidate or ""))
+
+
 def build_messages(title, body, tags, reference, candidate, context_items=None, has_context=False,
                    prepared: dict | None = None):
     prepared = prepared or prepare_judge_input(candidate, context_items, has_context)
