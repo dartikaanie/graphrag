@@ -674,7 +674,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
 
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, model, output_path, already_done,
-            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id), run_id=run_id,
             config=config, config_hash=config_hash,
         )
 
@@ -683,6 +683,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
         cond.append_run_history({
+            "run_id": run_id,
             "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
@@ -707,7 +708,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             **summary,
         })
         _write_manifest(
-            output_path, run_label="A", status=_manifest_status(cancelled, results),
+            output_path, run_id=run_id, run_label="A", status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
@@ -838,7 +839,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
 
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, top_k, model, output_path, already_done,
-            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id), run_id=run_id,
             require_citation=require_citation, require_grounding=require_grounding,
             log_full_candidates=log_full_candidates,
             config=config, config_hash=config_hash, leakage=_leakage_context(leakage_mode),
@@ -873,6 +874,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
         cond.append_run_history({
+            "run_id": run_id,
             "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
@@ -903,7 +905,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         })
         run_label = ("B-grounded" if require_grounding else "B-plain") if require_citation else "B"
         _write_manifest(
-            output_path, run_label=run_label, status=_manifest_status(cancelled, results),
+            output_path, run_id=run_id, run_label=run_label, status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
@@ -1043,7 +1045,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             semantic_expansion_trust_cap=semantic_expansion_trust_cap,
             require_grounding=require_grounding, enable_semantic_expansion=enable_semantic_expansion,
             log_full_candidates=log_full_candidates,
-            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id), run_id=run_id,
             config=config, config_hash=config_hash,
             c_retrieval_version=c_retrieval_version, alpha=alpha, max_hops=max_hops, edge_types=edge_types,
             use_author_trust=use_author_trust, accepted_only=accepted_only,
@@ -1072,6 +1074,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         summary["require_grounding"] = require_grounding
         summary["enable_semantic_expansion"] = enable_semantic_expansion
         cond.append_run_history({
+            "run_id": run_id,
             "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
             "c_retrieval_version": c_retrieval_version,
@@ -1115,7 +1118,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "fusion_mode": fusion_mode, "grounding": "on" if require_grounding else "off",
         })["run_label"]
         _write_manifest(
-            output_path, run_label=run_label, status=_manifest_status(cancelled, results),
+            output_path, run_id=run_id, run_label=run_label, status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
@@ -1216,7 +1219,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
             top_k, n_low_level, n_high_level, token_chunk_limit, model, output_path, already_done,
             require_grounding=require_grounding,
-            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id),
+            on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id), run_id=run_id,
             config=config, config_hash=config_hash, leakage=_leakage_context(leakage_mode),
         )
 
@@ -1241,6 +1244,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         summary["duration_sec"] = duration
         summary["require_grounding"] = require_grounding
         cond.append_run_history({
+            "run_id": run_id,
             "batch_id": params.get("batch_id"), "batch_launched_at": params.get("batch_launched_at"),
             "prompt_version": cond.PROMPT_VERSION,
             "d_retrieval_version": cond.D_RETRIEVAL_VERSION,
@@ -1273,7 +1277,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         })
         run_label = "D-grounded" if require_grounding else "D-plain"
         _write_manifest(
-            output_path, run_label=run_label, status=_manifest_status(cancelled, results),
+            output_path, run_id=run_id, run_label=run_label, status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),

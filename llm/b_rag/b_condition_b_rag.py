@@ -174,6 +174,7 @@ from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, Lea
 from llm.common.text import build_query_text
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_rag_messages
+from llm.record_schema import latency_fields, new_run_id, record_header
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, sama dgn Kondisi A
 
@@ -526,7 +527,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     on_progress=None, check_cancel=None, require_citation: bool = True,
                     require_grounding: bool = False, log_full_candidates: bool = False,
                     config: dict | None = None, config_hash: str | None = None,
-                    leakage: LeakageContext | None = None) -> list[dict]:
+                    leakage: LeakageContext | None = None, run_id: str | None = None) -> list[dict]:
     """Proses satu-per-satu sample_df: retrieval top-k + prompt RAG + hitung
     cosine similarity, tulis ke output_path (append, resumable). Diekstrak
     dari main() dengan pola SAMA PERSIS dengan process_sample() Kondisi A
@@ -553,8 +554,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     BUKAN fusion_mode) supaya run_label membedakan keduanya sama seperti
     "C-uniform-grounded"/"C-trust-plain" -- lihat llm/evaluation/
     _run_metadata.py dan docs/GROUNDING_FACTOR_UI.md.
+
+    `run_id`: UUID of this run, written into every record and the manifest
+    (llm/record_schema.py); a fresh one when not given.
     """
     already_done = already_done or set()
+    run_id = run_id or new_run_id()
     # `leakage` (llm/common/leakage.py): mode + precomputed exclusion table (read
     # from results/leakage/exclusion_sets.parquet -- never Neo4j). None = MODE_THREAD.
     leakage = leakage or LEGACY_CONTEXT
@@ -576,6 +581,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             if qid in already_done:
                 continue
 
+            t_query_start = time.time()
             exclusion = leakage.exclusion_for(qid, thread_answer_ids.get(qid, []), row["AcceptedAnswerId"])
             leak_stats: dict = {"n_hits_filtered": 0}
             t_retrieval_start = time.time()
@@ -611,7 +617,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                                            require_citation=require_citation,
                                            require_grounding=require_grounding)
             try:
+                t_generation_start = time.time()
                 call_result = call_llm_fn(llm_client, messages, model)
+                generation_latency = time.time() - t_generation_start
                 llm_answer = call_result["content"]
             except Exception as e:
                 log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
@@ -624,11 +632,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
             if require_citation:
                 has_citation, cited_ids, has_valid_citation, valid_ids = extract_citations(llm_answer, retrieved)
+            total_latency = time.time() - t_query_start
 
             view_count = row.get("ViewCount")
             question_score = row.get("Score")
             record = {
                 "question_id": qid,
+                **record_header(run_id, "B"),
                 "title": row["Title"],
                 "tags": row["Tags"],
                 "n_tokens": int(row["n_tokens"]),
@@ -646,7 +656,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 "n_context_items_used": len(retrieved),
                 "query_text": query_text,
                 "leakage": leakage_log,
-                "retrieval_latency_sec": round(retrieval_latency, 3),
+                **latency_fields(retrieval_latency, generation_latency, total_latency),
                 "prompt_messages": messages,
                 "llm_answer": llm_answer,
                 "llm_model": model,
@@ -843,6 +853,7 @@ def main():
     logger, log_path = setup_logging(args.provider, args.model)
     log = logger.info
     run_started_at = datetime.now(timezone.utc)
+    run_id = new_run_id()  # every record + the manifest (llm/record_schema.py)
     log(f"[logging] Log detail run ini -> {log_path}")
 
     # PENTING utk NESTED SAMPLING -- IDENTIK Kondisi A, lihat komentar
@@ -972,7 +983,7 @@ def main():
                     args.model, output_path, already_done, require_citation=args.require_citation,
                     require_grounding=args.require_grounding,
                     log_full_candidates=args.log_full_candidates,
-                    config=config, config_hash=config_hash, leakage=leakage)
+                    config=config, config_hash=config_hash, leakage=leakage, run_id=run_id)
 
     log("[8/8] Selesai memproses seluruh sample.")
 
@@ -984,6 +995,7 @@ def main():
     if not file_exists or file_size == 0:
         log("\n[ERROR] Tidak ada hasil tersimpan sama sekali -- cek pesan [FAIL]/[FAIL-WRITE] di atas.")
         history_path = append_run_history({
+            "run_id": run_id,
             "prompt_version": PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "condition": "B",
@@ -1009,7 +1021,7 @@ def main():
         run_label = (("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B") + dev_tag
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_label=run_label, status="failed",
+            output_path, run_id=run_id, run_label=run_label, status="failed",
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
@@ -1022,6 +1034,7 @@ def main():
     if "cosine_similarity" not in results_df.columns or len(results_df) == 0:
         log("\n[ERROR] File hasil ada tapi tidak berisi record valid.")
         history_path = append_run_history({
+            "run_id": run_id,
             "prompt_version": PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "condition": "B",
@@ -1047,7 +1060,7 @@ def main():
         run_label = (("B-grounded" if args.require_grounding else "B-plain") if args.require_citation else "B") + dev_tag
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_label=run_label, status="failed",
+            output_path, run_id=run_id, run_label=run_label, status="failed",
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
@@ -1101,6 +1114,7 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
+        "run_id": run_id,
         "prompt_version": PROMPT_VERSION,
         "run_started_at": run_started_at.isoformat(),
         "condition": "B",
@@ -1149,7 +1163,7 @@ def main():
         run_label = "B"
     run_label += dev_tag
     manifest_path = write_manifest(
-        output_path,
+        output_path, run_id=run_id,
         run_label=run_label,
         config=config,
         config_hash=config_hash,

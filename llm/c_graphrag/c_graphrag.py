@@ -156,6 +156,7 @@ from llm.common.text import answer_doc_text, build_query_text
 from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F401 -- moved to llm/common/text.py; name kept for stage1_sweep.py
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
+from llm.record_schema import latency_fields, new_run_id, record_header
 from llm.c_graphrag.official_params import OfficialParamsError, check_c_test_run, load_official_params  # noqa: E402
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B
@@ -1040,7 +1041,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     accepted_only: bool = DEFAULT_ACCEPTED_ONLY,
                     embedding_cache=None, retrieval_only: bool = False,
                     leakage: LeakageContext | None = None, expansion_require_answer: bool = False,
-                    ) -> tuple[list[dict], dict]:
+                    run_id: str | None = None) -> tuple[list[dict], dict]:
     """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
     + validasi sitasi, tulis ke output_path (append, resumable). Diekstrak
@@ -1064,8 +1065,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     expansion) di-skip sepenuhnya (expansion_candidates selalu []) -- ablasi utk
     mengisolasi kontribusi tahap semantic expansion itu sendiri terhadap hasil.
     Keduanya opsional & default-nya PERSIS perilaku lama.
+
+    `run_id`: UUID of this run, written into every record and the manifest
+    (llm/record_schema.py); a fresh one when not given.
     """
     already_done = already_done or set()
+    run_id = run_id or new_run_id()
     # `leakage` (llm/common/leakage.py): mode + precomputed exclusion table.
     # None = MODE_THREAD, the exclusion every run before Amendment 8 used.
     leakage = leakage or LEGACY_CONTEXT
@@ -1178,7 +1183,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
                 if retrieval_only:
                     record = {
-                        "question_id": qid, "title": row["Title"], "tags": row["Tags"],
+                        "question_id": qid, **record_header(run_id, "C"),
+                        "title": row["Title"], "tags": row["Tags"],
                         "accepted_answer_id": int(row["AcceptedAnswerId"]),
                         "retrieved_context": retrieved,
                         "candidate_pool_size": candidate_pool_size,
@@ -1186,7 +1192,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "graph_candidate_answer_ids": sorted({int(c["answer_id"]) for c in graph_candidates}),
                         "n_graph_candidates": len(graph_candidates),
                         "n_expansion_candidates": len(expansion_candidates),
-                        "retrieval_latency_sec": round(retrieval_latency, 3),
+                        **latency_fields(retrieval_latency, None, time.time() - t_query_start),
                         "leakage": leakage_log,
                         "expansion_qids": leak_stats.get("expansion_qids", []),
                         "expansion_qids_empty": leak_stats.get("expansion_qids_empty", []),
@@ -1218,7 +1224,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 messages = build_graphrag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                                     require_grounding=require_grounding)
                 try:
+                    t_generation_start = time.time()
                     call_result = call_llm_fn(llm_client, messages, model)
+                    generation_latency = time.time() - t_generation_start
                     llm_answer = call_result["content"]
                 except Exception as e:
                     log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
@@ -1234,11 +1242,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     n_no_valid_citation += 1
 
                 similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
+                total_latency = time.time() - t_query_start
 
                 view_count = row.get("ViewCount")
                 question_score = row.get("Score")
                 record = {
                     "question_id": qid,
+                    **record_header(run_id, "C"),
                     "title": row["Title"],
                     "tags": row["Tags"],
                     "n_tokens": int(row["n_tokens"]),
@@ -1271,7 +1281,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "require_grounding": require_grounding,
                     "enable_semantic_expansion": enable_semantic_expansion,
                     **({"all_candidate_question_ids": all_candidate_question_ids} if log_full_candidates else {}),
-                    "retrieval_latency_sec": round(retrieval_latency, 3),
+                    **latency_fields(retrieval_latency, generation_latency, total_latency),
                     "llm_answer": llm_answer,
                     "llm_model": model,
                     "cosine_similarity": similarity,
@@ -1589,6 +1599,7 @@ def main():
     logger, log_path = setup_logging(args.provider, args.model)
     log = logger.info
     run_started_at = datetime.now(timezone.utc)
+    run_id = new_run_id()  # every record + the manifest (llm/record_schema.py)
     log(f"[logging] Log detail run ini -> {log_path}")
 
     if args.c_retrieval_version == "v3" and args.alpha is None:
@@ -1730,6 +1741,7 @@ def main():
         c_retrieval_version=args.c_retrieval_version, alpha=args.alpha,
         max_hops=args.max_hops, edge_types=args.edge_types,
         use_author_trust=args.use_author_trust, accepted_only=args.accepted_only,
+        run_id=run_id,
         embedding_cache=embedding_cache, retrieval_only=args.retrieval_only, leakage=leakage,
         expansion_require_answer=args.expansion_require_answer,
     )
@@ -1749,6 +1761,7 @@ def main():
     if not file_exists or file_size == 0:
         log("\n[ERROR] Tidak ada hasil tersimpan sama sekali.")
         history_path = append_run_history({
+            "run_id": run_id,
             "prompt_version": PROMPT_VERSION,
             "c_retrieval_version": args.c_retrieval_version,
             "alpha": args.alpha, "sample_split": args.sample_split,
@@ -1777,7 +1790,7 @@ def main():
         })["run_label"]
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_label=run_label, status="failed",
+            output_path, run_id=run_id, run_label=run_label, status="failed",
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
@@ -1823,6 +1836,7 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
+        "run_id": run_id,
         "prompt_version": PROMPT_VERSION,
         "c_retrieval_version": args.c_retrieval_version,
         "alpha": args.alpha, "sample_split": args.sample_split,
@@ -1870,7 +1884,7 @@ def main():
         "fusion_mode": args.fusion_mode, "grounding": "on" if args.require_grounding else "off",
     })["run_label"]
     manifest_path = write_manifest(
-        output_path,
+        output_path, run_id=run_id,
         run_label=run_label,
         status="interrupted" if interrupted else "completed",
         config=config,

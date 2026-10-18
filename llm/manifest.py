@@ -205,6 +205,23 @@ def sum_usage_tokens(records: list[dict]) -> int | None:
     return total if any_usage else None
 
 
+def _run_ids_in(path: Path) -> list[str]:
+    """Distinct top-level run_id values in a JSONL output file, in order of
+    first appearance (records without one are skipped)."""
+    seen: list[str] = []
+    if not path.exists():
+        return seen
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            try:
+                rid = json.loads(line).get("run_id")
+            except (json.JSONDecodeError, AttributeError):
+                continue
+            if rid and rid not in seen:
+                seen.append(rid)
+    return seen
+
+
 def write_manifest(
     output_path,
     *,
@@ -222,6 +239,9 @@ def write_manifest(
     config_hash: str | None = None,
     log_path: str | None = None,
     graph: dict | None = None,
+    run_id: str | None = None,
+    record_schema_version: str | None = None,
+    provenance: dict | None = None,
 ) -> Path:
     """Writes "<output_path>.manifest.json". Returns the manifest path.
 
@@ -243,6 +263,15 @@ def write_manifest(
     `graph`: state of the knowledge graph the run read, e.g.
     {"trustScoreVersion": "v3-logscore"} (Condition C; the graph is not part
     of `config`/`config_hash`). Written only when given.
+    `run_id`: the run's UUID, the same value every record of this run
+    carries (llm/record_schema.py). When given, the manifest also records
+    `record_schema_version` (default: the current RECORD_SCHEMA_VERSION)
+    and `run_ids_in_output`, the distinct run_id values found in the output
+    file -- more than one after a resumed run, none for records written
+    before schema r2.
+    `provenance`: inputs the run read that are not part of config --
+    leakage exclusion-set hash, FAISS index fingerprints, frozen sample-ID
+    list hashes, ... (see llm/common/provenance.py). Written only when given.
     """
     output_path = Path(output_path)
     all_files = [output_path] + [Path(p) for p in (extra_output_files or [])]
@@ -268,6 +297,14 @@ def write_manifest(
 
     if graph is not None:
         manifest["graph"] = graph
+    if run_id is not None:
+        from llm.record_schema import RECORD_SCHEMA_VERSION
+
+        manifest["run_id"] = run_id
+        manifest["record_schema_version"] = record_schema_version or RECORD_SCHEMA_VERSION
+        manifest["run_ids_in_output"] = _run_ids_in(output_path)
+    if provenance is not None:
+        manifest["provenance"] = provenance
 
     manifest_path = output_path.with_name(output_path.name + ".manifest.json")
     manifest_path.parent.mkdir(parents=True, exist_ok=True)

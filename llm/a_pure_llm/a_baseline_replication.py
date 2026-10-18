@@ -133,6 +133,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_base_messages
+from llm.record_schema import latency_fields, new_run_id, record_header
 
 TOKEN_LIMIT = 2048  # sesuai batasan paper asli
 
@@ -336,7 +337,8 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 
 def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, model: str,
                     output_path: Path, already_done: set | None = None, on_progress=None,
-                    check_cancel=None, config: dict | None = None, config_hash: str | None = None) -> list[dict]:
+                    check_cancel=None, config: dict | None = None, config_hash: str | None = None,
+                    run_id: str | None = None) -> list[dict]:
     """Proses satu-per-satu sample_df: panggil LLM, hitung cosine similarity,
     tulis ke output_path (append, resumable via `already_done`). Diekstrak
     dari main() supaya SATU-SATUNYA implementasi loop generasi dipakai baik
@@ -348,8 +350,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     `check_cancel()` -> bool, dicek di awal tiap iterasi -- dipakai backend
     untuk POST /api/runs/{id}/cancel (§5.4). Kedua parameter opsional supaya
     CLI (main()) tidak perlu berubah perilaku.
+
+    `run_id`: UUID of this run, written into every record and the manifest
+    (llm/record_schema.py); a fresh one when not given.
     """
     already_done = already_done or set()
+    run_id = run_id or new_run_id()
     total = len(sample_df)
     results = []
     with open(output_path, "a") as f_out:
@@ -362,9 +368,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             if qid in already_done:
                 continue
 
+            t_query_start = time.time()
             messages = build_base_messages(row["Title"], row["Body"], row["Tags"])
             try:
+                t_generation_start = time.time()
                 call_result = call_llm_fn(llm_client, messages, model)
+                generation_latency = time.time() - t_generation_start
                 llm_answer = call_result["content"]
             except Exception as e:
                 log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
@@ -374,9 +383,12 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 continue
 
             similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
+            total_latency = time.time() - t_query_start
 
             record = {
                 "question_id": qid,
+                **record_header(run_id, "A"),
+                **latency_fields(None, generation_latency, total_latency),
                 "title": row["Title"],
                 "tags": row["Tags"],
                 "n_tokens": int(row["n_tokens"]),
@@ -495,6 +507,7 @@ def main():
     logger, log_path = setup_logging(args.provider, args.model)
     log = logger.info
     run_started_at = datetime.now(timezone.utc)
+    run_id = new_run_id()  # every record + the manifest (llm/record_schema.py)
     log(f"[logging] Log detail run ini -> {log_path}")
 
     # PENTING utk NESTED SAMPLING (lihat sample_questions()): pool ini SENGAJA
@@ -585,7 +598,7 @@ def main():
           f"(1 panggilan per pertanyaan, konfigurasi default)...")
 
     process_sample(sample_df, llm_client, call_llm_fn, embed_model, args.model, output_path, already_done,
-                    config=config, config_hash=config_hash)
+                    config=config, config_hash=config_hash, run_id=run_id)
 
     # --- Ringkasan akhir ---
     if not output_path.exists() or output_path.stat().st_size == 0:
@@ -593,6 +606,7 @@ def main():
               "panggilan API gagal (cek pesan [FAIL] di atas, sering karena API key "
               "tidak valid/kehabisan credit/rate limit). Tidak ada ringkasan untuk ditampilkan.")
         history_path = append_run_history({
+            "run_id": run_id,
             "prompt_version": PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "status": "no_results",
@@ -610,7 +624,7 @@ def main():
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path,
+            output_path, run_id=run_id,
             run_label=run_label,
             status="failed",
             config=config,
@@ -628,6 +642,7 @@ def main():
         log("\n[ERROR] File hasil ada tapi tidak berisi record valid -- cek pesan "
               "[FAIL] di atas untuk penyebabnya.")
         history_path = append_run_history({
+            "run_id": run_id,
             "prompt_version": PROMPT_VERSION,
             "run_started_at": run_started_at.isoformat(),
             "status": "no_valid_records",
@@ -645,7 +660,7 @@ def main():
         log(f"[logging] Ringkasan run (gagal) dicatat -> {history_path}")
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path,
+            output_path, run_id=run_id,
             run_label=run_label,
             status="failed",
             config=config,
@@ -669,6 +684,7 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
+        "run_id": run_id,
         "prompt_version": PROMPT_VERSION,
         "run_started_at": run_started_at.isoformat(),
         "status": "success",
@@ -692,7 +708,7 @@ def main():
 
     finished_at = datetime.now(timezone.utc)
     manifest_path = write_manifest(
-        output_path,
+        output_path, run_id=run_id,
         run_label=run_label,
         config=config,
         config_hash=config_hash,

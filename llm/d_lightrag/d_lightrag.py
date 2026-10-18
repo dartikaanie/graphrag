@@ -169,6 +169,7 @@ from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, add
                                 assert_no_leakage, build_exclusion, config_leakage_key, leakage_mode_from_args)
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_lightrag_messages
+from llm.record_schema import latency_fields, new_run_id, record_header
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B/C
 D_RETRIEVAL_VERSION = "v3"  # lihat docstring modul ini bagian "D_RETRIEVAL_VERSION"
@@ -403,7 +404,7 @@ def retrieve_low_level(driver, database, anchors: list, exclude_answer_ids: set)
             WHERE NOT a.id IN $exclude_a
             RETURN anchor_id AS via_question_id, anchor.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, 1 AS hop,
-                   type(r) AS rel_type
+                   type(r) AS rel_type, a.isAccepted AS is_accepted
             ORDER BY a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_a=exclude_a,
@@ -473,7 +474,7 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
             WHERE NOT a.id IN $exclude_a
             RETURN q2.id AS via_question_id, q2.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, 2 AS hop,
-                   r2_type AS rel_type, relevance_score
+                   r2_type AS rel_type, relevance_score, a.isAccepted AS is_accepted
             ORDER BY q2.id ASC, a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
@@ -533,6 +534,8 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
             "hop": c["hop"],
             "rel_type": c.get("rel_type"),
             "source_stage": c["source_stage"],
+            # record schema r2 (llm/record_schema.py); same convention as C
+            "is_accepted": bool(c["is_accepted"]) if c.get("is_accepted") is not None else None,
         })
     return final
 
@@ -566,7 +569,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     on_progress=None, check_cancel=None, require_grounding: bool = True,
                     config: dict | None = None, config_hash: str | None = None,
                     leakage: LeakageContext | None = None, retrieval_only: bool = False,
-                    ) -> tuple[list[dict], dict]:
+                    run_id: str | None = None) -> tuple[list[dict], dict]:
     """Pola SAMA PERSIS process_sample() Kondisi C: retrieval (dual-level, bukan
     trust-weighted) + prompt (grounded/ungrounded sesuai require_grounding) +
     hitung cosine similarity + validasi sitasi, tulis ke output_path (append,
@@ -578,8 +581,11 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     `leakage` (llm/common/leakage.py): mode + tabel exclusion; None = MODE_THREAD
     (exclusion semua run sebelum Amendment 8). `retrieval_only`: tanpa LLM,
     record retrieval saja (audit leakage), pola sama dgn Kondisi C.
+    `run_id`: UUID of this run, written into every record and the manifest
+    (llm/record_schema.py); a fresh one when not given.
     """
     already_done = already_done or set()
+    run_id = run_id or new_run_id()
     leakage = leakage or LEGACY_CONTEXT
     total = len(sample_df)
     results = []
@@ -646,13 +652,14 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
                 if retrieval_only:
                     record = {
-                        "question_id": qid, "title": row["Title"], "tags": row["Tags"],
+                        "question_id": qid, **record_header(run_id, "D"),
+                        "title": row["Title"], "tags": row["Tags"],
                         "accepted_answer_id": int(row["AcceptedAnswerId"]),
                         "retrieved_context": retrieved,
                         "anchor_question_ids": [int(a) for a, _ in anchors],
                         "n_low_level_candidates": len(low_level_candidates),
                         "n_high_level_candidates": len(high_level_candidates),
-                        "retrieval_latency_sec": round(retrieval_latency, 3),
+                        **latency_fields(retrieval_latency, None, time.time() - t_query_start),
                         "leakage": leakage_log, "config": config, "config_hash": config_hash,
                     }
                     results.append(record)
@@ -663,7 +670,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 messages = build_lightrag_messages(row["Title"], row["Body"], row["Tags"], retrieved,
                                                     require_grounding=require_grounding)
                 try:
+                    t_generation_start = time.time()
                     call_result = call_llm_fn(llm_client, messages, model)
+                    generation_latency = time.time() - t_generation_start
                     llm_answer = call_result["content"]
                 except Exception as e:
                     log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
@@ -679,11 +688,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     n_no_valid_citation += 1
 
                 similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
+                total_latency = time.time() - t_query_start
 
                 view_count = row.get("ViewCount")
                 question_score = row.get("Score")
                 record = {
                     "question_id": qid,
+                    **record_header(run_id, "D"),
                     "title": row["Title"],
                     "tags": row["Tags"],
                     "n_tokens": int(row["n_tokens"]),
@@ -707,7 +718,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     # verification -- same field name as Condition C.
                     "n_context_items_used": len(retrieved),
                     "require_grounding": require_grounding,
-                    "retrieval_latency_sec": round(retrieval_latency, 3),
+                    **latency_fields(retrieval_latency, generation_latency, total_latency),
                     "llm_answer": llm_answer,
                     "llm_model": model,
                     "cosine_similarity": similarity,
@@ -850,6 +861,7 @@ def main():
     logger, log_path = setup_logging(args.provider, args.model)
     log = logger.info
     run_started_at = datetime.now(timezone.utc)
+    run_id = new_run_id()  # every record + the manifest (llm/record_schema.py)
     log(f"[logging] Log detail run ini -> {log_path}")
 
     MAX_PLANNED_N_SAMPLE = 384
@@ -934,6 +946,7 @@ def main():
         args.model, output_path, already_done,
         require_grounding=args.require_grounding,
         config=config, config_hash=config_hash, leakage=leakage, retrieval_only=args.retrieval_only,
+        run_id=run_id,
     )
     interrupted = stats["interrupted"]
     if args.retrieval_only:
@@ -952,6 +965,7 @@ def main():
     if not file_exists or file_size == 0:
         log("\n[ERROR] Tidak ada hasil tersimpan sama sekali.")
         history_path = append_run_history({
+            "run_id": run_id,
             "prompt_version": PROMPT_VERSION,
             "d_retrieval_version": D_RETRIEVAL_VERSION,
             "sample_split": args.sample_split, "leakage_mode": leakage_mode,
@@ -968,7 +982,7 @@ def main():
         run_label = ("D-grounded" if args.require_grounding else "D-plain") + ("" if args.sample_split == "test" else f" [{args.sample_split}]")
         finished_at = datetime.now(timezone.utc)
         manifest_path = write_manifest(
-            output_path, run_label=run_label, status="failed",
+            output_path, run_id=run_id, run_label=run_label, status="failed",
             config=config, config_hash=config_hash, log_path=str(log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=finished_at.isoformat(),
             item_counts={"attempted": args.n_sample, "succeeded": 0, "failed": args.n_sample},
@@ -1009,6 +1023,7 @@ def main():
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
+        "run_id": run_id,
         "prompt_version": PROMPT_VERSION,
         "d_retrieval_version": D_RETRIEVAL_VERSION,
         "sample_split": args.sample_split, "leakage_mode": leakage_mode,
@@ -1042,7 +1057,7 @@ def main():
     finished_at = datetime.now(timezone.utc)
     run_label = ("D-grounded" if args.require_grounding else "D-plain") + ("" if args.sample_split == "test" else f" [{args.sample_split}]")
     manifest_path = write_manifest(
-        output_path,
+        output_path, run_id=run_id,
         run_label=run_label,
         status="interrupted" if interrupted else "completed",
         config=config,
