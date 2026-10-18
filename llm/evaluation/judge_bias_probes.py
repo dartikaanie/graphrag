@@ -195,6 +195,12 @@ def main(argv=None) -> int:
     if not args.run:
         print("[plan] no API call made; re-run with --run")
         return 0
+    from judge_versions import JudgeVersionError, check_run_allowed
+    try:
+        check_run_allowed(runner.PROMPT_VERSION, args.run_files)
+    except JudgeVersionError as e:
+        print(f"[STOP] {e}")
+        return 1
     qids = sorted({it["question_id"] for it in sample})
     bodies = {q: html_to_text(b) for q, b in load_question_bodies(args.questions_parquet, qids).items()}
     refs = {it["question_id"]: html_to_text(it["ground_truth_answer_html"]) for it in sample}

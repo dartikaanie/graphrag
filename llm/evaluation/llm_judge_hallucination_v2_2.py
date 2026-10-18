@@ -252,6 +252,13 @@ def main(argv=None):
             log(f"\n--- {m['role']} ---\n{m['content']}")
         return 0
 
+    from judge_versions import JudgeVersionError, check_run_allowed
+    try:  # Amendment 11 freeze guard: allowed versions + revision limit
+        version_purpose = check_run_allowed(PROMPT_VERSION, args.run_files, log)
+    except JudgeVersionError as e:
+        log(f"[ERROR] {e}")
+        return 1
+
     output_path = Path(args.out)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     failures_path = output_path.with_name(output_path.stem + "_failures.jsonl")
@@ -263,13 +270,14 @@ def main(argv=None):
         "run_started_at": started_at, "run_files": args.run_files, "judge": args.judge, "limit": args.limit,
         "workers": args.workers, "out": str(output_path), "prompt_version": PROMPT_VERSION,
         "blinding_version": BLINDING_VERSION, "temperature": REQUEST_TEMPERATURE, "max_tokens": REQUEST_MAX_TOKENS,
-        "calibration_guard": LAST_CALIBRATION_GUARD, **summary,
+        "calibration_guard": LAST_CALIBRATION_GUARD, "version_purpose": version_purpose, **summary,
     })
     write_manifest(
         output_path, run_label=None,
         config={"run_files": args.run_files, "judge": args.judge, "limit": args.limit, "workers": args.workers,
                 "questions_parquet": args.questions_parquet, "temperature": REQUEST_TEMPERATURE,
-                "max_tokens": REQUEST_MAX_TOKENS, "calibration_guard": LAST_CALIBRATION_GUARD},
+                "max_tokens": REQUEST_MAX_TOKENS, "calibration_guard": LAST_CALIBRATION_GUARD,
+                "version_purpose": version_purpose},
         started_at_utc=started_at, finished_at_utc=datetime.now(timezone.utc).isoformat(),
         item_counts={"attempted": summary["judged"] + summary["failed"], "succeeded": summary["judged"],
                      "failed": summary["failed"]},
