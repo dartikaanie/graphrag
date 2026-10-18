@@ -10,6 +10,8 @@ Subcommands
     human-kappa         annotator 1 vs annotator 2 on the overlap + adjudication template
     finalize-reference  build the adjudicated reference file (unlocks the calibration judge guard)
     judge-kappa         judge vs human reference, per judge and judge version (Markdown report)
+    export-reannotation 20% of a COMPLETED sheet again, new ids and order, >= 14 days after completion
+    intra-kappa         first pass vs re-annotation of the same annotator
 
 Two purposes share one flow:
     calibration   60 items = 20 per condition (A, B-plain, B-grounded), seed 42; annotator 2 labels a
@@ -40,6 +42,12 @@ CARA PAKAI (from llm/evaluation)
     python3 annotation_tool.py human-kappa --purpose calibration
     python3 annotation_tool.py finalize-reference --purpose calibration
     python3 annotation_tool.py judge-kappa --purpose calibration --judge-output results/jv2_1_*.jsonl
+    python3 annotation_tool.py export-reannotation --purpose calibration          # >= 14 days after `validate`
+    python3 annotation_tool.py intra-kappa --purpose calibration
+
+SINGLE ANNOTATOR (Amendment 11). An annotator-2 sheet that is still completely empty is treated as "no
+second annotator": finalize-reference then uses annotator 1 alone. A partly filled annotator-2 sheet is an
+error. A second annotator can be added later by filling annotator2.xlsx -- no code change.
 """
 
 import argparse
@@ -68,6 +76,8 @@ ANNOTATION_ROOT = EVAL_DIR / "annotation"
 DEFAULT_KEY_DIR = Path.home() / "graphrag_annotation_keys"
 DEFAULT_SEED = 42
 ACCEPTANCE_KAPPA = 0.6
+REANNOTATION_FRACTION = 0.2
+REANNOTATION_MIN_DAYS = 14
 
 PURPOSES = {
     # n_per_stratum / n_overlap_per_stratum: fixed per-condition counts (Amendment 4, calibration set).
@@ -599,6 +609,26 @@ def load_annotator(purpose: str, annotator: str, key: dict, annotation_root: Pat
     return {r["item_id"]: r for r in rows}, problems
 
 
+def completion_path(purpose: str, annotator: str, annotation_root: Path | None = None) -> Path:
+    return purpose_dir(purpose, annotation_root) / f"{annotator}_completed.json"
+
+
+def record_completion(purpose: str, annotator: str, sheet: Path, now: datetime | None = None,
+                      annotation_root: Path | None = None) -> dict:
+    """Writes <annotator>_completed.json the first time a sheet validates completely (or again when the sheet
+    changed since). Its completed_at_utc starts the re-annotation waiting period."""
+    path = completion_path(purpose, annotator, annotation_root)
+    sha = file_sha256(sheet)
+    if path.exists():
+        rec = json.loads(path.read_text())
+        if rec.get("sheet_sha256") == sha:
+            return rec
+    rec = {"purpose": purpose, "annotator": annotator, "sheet": Path(sheet).name, "sheet_sha256": sha,
+           "completed_at_utc": (now or datetime.now(timezone.utc)).isoformat()}
+    path.write_text(json.dumps(rec, indent=2) + "\n")
+    return rec
+
+
 def cmd_validate(args) -> int:
     key = load_verified_key(args.purpose, key_dir_from(args.key_dir))
     annotator = args.annotator or ("annotator2" if "annotator2" in Path(args.xlsx).name else "annotator1")
@@ -606,7 +636,23 @@ def cmd_validate(args) -> int:
     log(f"{args.xlsx}: {len(rows)} rows read as {annotator}; {len(problems)} problem(s)")
     for p in problems:
         log(f"  - {p}")
+    if not problems and Path(args.xlsx).resolve() == (purpose_dir(args.purpose) / f"{annotator}.xlsx").resolve():
+        rec = record_completion(args.purpose, annotator, Path(args.xlsx))
+        log(f"Sheet complete; completion recorded at {rec['completed_at_utc']} "
+            f"(re-annotation possible after {REANNOTATION_MIN_DAYS} days)")
     return 1 if problems else 0
+
+
+def sheet_started(path: Path) -> bool:
+    """True when any annotator-filled cell (other than the prefilled annotator_id) is non-empty."""
+    from openpyxl import load_workbook
+
+    if not Path(path).exists():
+        return False
+    ws = load_workbook(path, data_only=True)["anotasi"]
+    filled = [COLUMNS.index(c) for c in FILL_COLUMNS if c != "annotator_id"]
+    return any(cells[i] not in (None, "") for cells in ws.iter_rows(min_row=2, values_only=True)
+               for i in filled if i < len(cells))
 
 
 def human_human(a1: dict, a2: dict) -> dict:
@@ -691,7 +737,8 @@ def _texts_from_sheet(path: Path) -> dict:
     out = {}
     for cells in load_workbook(path, data_only=True)["anotasi"].iter_rows(min_row=2, values_only=True):
         if cells and cells[0]:
-            out[str(cells[0]).strip()] = {"question": cells[1], "accepted_answer": cells[2], "candidate_answer": cells[3]}
+            out[str(cells[0]).strip()] = {"question": cells[1], "accepted_answer": cells[2],
+                                          "candidate_answer": cells[3], "context": cells[4] if len(cells) > 4 else ""}
     return out
 
 
@@ -748,7 +795,9 @@ def cmd_finalize_reference(args) -> int:
     key = load_verified_key(purpose, key_dir_from(args.key_dir))
     a1, problems = load_annotator(purpose, "annotator1", key)
     a2, adjudicated, hh = {}, {}, None
-    if manifest.get("n_items_annotator2"):
+    if manifest.get("n_items_annotator2") and not sheet_started(pdir / "annotator2.xlsx"):
+        log("annotator2.xlsx is empty: single-annotator reference (Amendment 11)")
+    elif manifest.get("n_items_annotator2"):
         a2, p2 = load_annotator(purpose, "annotator2", key)
         problems += p2
         if not problems:
@@ -875,6 +924,125 @@ def cmd_judge_kappa(args) -> int:
 
 
 # ---------------------------------------------------------------------------
+# export-reannotation / intra-kappa (Amendment 11)
+# ---------------------------------------------------------------------------
+
+def select_reannotation(item_ids: list[str], purpose: str, seed: int = DEFAULT_SEED,
+                        fraction: float = REANNOTATION_FRACTION) -> list[tuple[str, str]]:
+    """[(new_id, original_id)] in the new sheet order: round(fraction * n) items drawn with a fixed seed,
+    new ids assigned after a fresh shuffle (they carry no information about the original id or order)."""
+    pool = sorted(item_ids)
+    n = max(1, round(fraction * len(pool)))
+    chosen = _rng(seed, purpose, "reannotation", "sample").sample(pool, n)
+    _rng(seed, purpose, "reannotation", "order").shuffle(chosen)
+    prefix = PURPOSES[purpose]["prefix"]
+    width = max(2, len(str(n)))
+    return [(f"{prefix}R-{i:0{width}d}", orig) for i, orig in enumerate(chosen, start=1)]
+
+
+def days_since(iso: str, now: datetime | None = None) -> float:
+    return ((now or datetime.now(timezone.utc)) - datetime.fromisoformat(iso)).total_seconds() / 86400
+
+
+def cmd_export_reannotation(args, now: datetime | None = None, annotation_root: Path | None = None) -> int:
+    purpose, annotator = args.purpose, args.annotator
+    pdir, key_dir = purpose_dir(purpose, annotation_root), key_dir_from(args.key_dir)
+    sheet = pdir / f"{annotator}.xlsx"
+    comp_path = completion_path(purpose, annotator, annotation_root)
+    if not comp_path.exists():
+        raise AnnotationError(f"{comp_path.name} not found: the sheet was never validated as complete -- run "
+                              f"`validate --xlsx {sheet}` first")
+    completion = json.loads(comp_path.read_text())
+    if completion["sheet_sha256"] != file_sha256(sheet):
+        raise AnnotationError(f"{sheet.name} changed after it was recorded complete -- validate it again first")
+    key = load_verified_key(purpose, key_dir, annotation_root)
+    rows, problems = load_annotator(purpose, annotator, key, annotation_root)
+    if problems:
+        raise AnnotationError(f"{sheet.name} is not complete: {len(problems)} problem(s), e.g. {problems[0]}")
+    waited = days_since(completion["completed_at_utc"], now)
+    override = bool(args.override_min_days)
+    if waited < REANNOTATION_MIN_DAYS and not override:
+        raise AnnotationError(f"only {waited:.1f} days since {sheet.name} was completed "
+                              f"({completion['completed_at_utc']}); re-annotation needs >= {REANNOTATION_MIN_DAYS} "
+                              f"days. Override (recorded in the manifest): --override-min-days \"<reason>\"")
+    out = pdir / f"reannotation_{annotator}.xlsx"
+    if out.exists() and not args.force:
+        raise AnnotationError(f"{out} already exists; pass --force to overwrite")
+
+    pairs = select_reannotation(sorted(rows), purpose, args.seed)
+    texts = _texts_from_sheet(sheet)
+    write_annotation_xlsx(out, [{"item_id": new, **{c: texts[orig][c] or "" for c in TEXT_COLUMNS}}
+                                for new, orig in pairs], annotator)
+    mapping = {"purpose": purpose, "annotator": annotator, "pairs": [{"new_id": n, "item_id": o} for n, o in pairs]}
+    key_dir.mkdir(parents=True, exist_ok=True)
+    map_path = key_dir / f"{purpose}_{annotator}_reannotation_map_seed{args.seed}.json"
+    map_path.write_text(json.dumps(mapping, indent=2) + "\n")
+    manifest = {
+        "purpose": purpose, "annotator": annotator, "seed": args.seed, "fraction": REANNOTATION_FRACTION,
+        "n_items": len(pairs), "exported_at_utc": (now or datetime.now(timezone.utc)).isoformat(),
+        "source_sheet": sheet.name, "source_sheet_sha256": completion["sheet_sha256"],
+        "source_completed_at_utc": completion["completed_at_utc"], "days_since_completion": round(waited, 2),
+        "min_days": REANNOTATION_MIN_DAYS, "override_min_days": override,
+        "override_reason": args.override_min_days if override else None,
+        "map_file_name": map_path.name, "map_sha256": file_sha256(map_path),
+        "map_location_note": "kept OUTSIDE the repository (it links new ids to the first-pass items)",
+    }
+    (pdir / f"reannotation_{annotator}_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    log(f"Wrote {len(pairs)} items -> {out} ({waited:.1f} days after completion"
+        f"{'; OVERRIDE: ' + args.override_min_days if override else ''})")
+    log(f"Wrote the id map OUTSIDE the repo -> {map_path}")
+    return 0
+
+
+def intra_annotator(first: dict, second: dict, pairs: list[dict]) -> dict:
+    """Agreement between the first pass (by original id) and the re-annotation (by new id)."""
+    a = [first[p["item_id"]]["category"] for p in pairs]
+    b = [second[p["new_id"]]["category"] for p in pairs]
+    rep = agreement_report(a, b)
+    rep["changes"] = [{"item_id": p["item_id"], "new_id": p["new_id"], "first": x, "second": y}
+                      for p, x, y in zip(pairs, a, b) if x != y]
+    return rep
+
+
+def cmd_intra_kappa(args, annotation_root: Path | None = None) -> int:
+    purpose, annotator = args.purpose, args.annotator
+    pdir, key_dir = purpose_dir(purpose, annotation_root), key_dir_from(args.key_dir)
+    man_path = pdir / f"reannotation_{annotator}_manifest.json"
+    if not man_path.exists():
+        raise AnnotationError(f"{man_path.name} not found -- run `export-reannotation` first")
+    manifest = json.loads(man_path.read_text())
+    map_path = key_dir / manifest["map_file_name"]
+    if not map_path.exists() or file_sha256(map_path) != manifest["map_sha256"]:
+        raise AnnotationError(f"re-annotation map {map_path} missing or not the one of this export")
+    pairs = json.loads(map_path.read_text())["pairs"]
+    key = load_verified_key(purpose, key_dir, annotation_root)
+    first, p1 = load_annotator(purpose, annotator, key, annotation_root)
+    second_rows, p2 = read_annotation_xlsx(pdir / f"reannotation_{annotator}.xlsx")
+    second = {r["item_id"]: r for r in second_rows}
+    expected = {k["item_id"]: k for k in key["items"]}
+    for p in pairs:  # same texts as the first pass, every item labelled
+        r = second.get(p["new_id"])
+        if r is None:
+            p2.append(f"re-annotation item {p['new_id']} is missing")
+        elif r["text_sha256"] != expected[p["item_id"]]["text_sha256"]:
+            p2.append(f"re-annotation item {p['new_id']}: text differs from the exported item")
+    problems = p1 + p2
+    if problems:
+        log(f"[STOP] {len(problems)} problem(s):")
+        for p in problems:
+            log(f"  - {p}")
+        return 1
+    rep = intra_annotator(first, second, pairs)
+    rep.update({"days_since_completion": manifest["days_since_completion"],
+                "override_min_days": manifest["override_min_days"]})
+    (pdir / f"intra_annotator_{annotator}.json").write_text(json.dumps(rep, indent=2) + "\n")
+    log(f"Intra-annotator ({annotator}, n = {rep['n']}): 3-category kappa = {rep['kappa_3cat']}; "
+        f"binary (n = {rep['n_both_non_abstain']}) = {rep['kappa_binary_non_abstain']}; "
+        f"{len(rep['changes'])} label change(s)")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -918,6 +1086,20 @@ def main(argv=None) -> int:
     p.add_argument("--judge-output", nargs="+", required=True)
     p.add_argument("--out", default=None)
     p.set_defaults(func=cmd_judge_kappa)
+
+    p = sub.add_parser("export-reannotation")
+    common(p)
+    p.add_argument("--annotator", choices=["annotator1", "annotator2"], default="annotator1")
+    p.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    p.add_argument("--override-min-days", default=None, metavar="REASON",
+                   help=f"Export before {REANNOTATION_MIN_DAYS} days have passed; the reason is recorded in the manifest")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_export_reannotation)
+
+    p = sub.add_parser("intra-kappa")
+    common(p)
+    p.add_argument("--annotator", choices=["annotator1", "annotator2"], default="annotator1")
+    p.set_defaults(func=cmd_intra_kappa)
 
     args = parser.parse_args(argv)
     try:
