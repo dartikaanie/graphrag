@@ -419,9 +419,9 @@ PARAMETERS: tuple[Param, ...] = (
       rationale=Quote(DEC, "If still tied: choose the larger α (the contribution under test is trust)."),
       spec=Quote(DEC, "Differences of ≤2 answers (2 percentage points) are ties."), set_by="decision"),
     P("sel.stage2_alphas", "Stage 2 candidates", "alpha_selection", Src("const", STAGE2, "STAGE2_ALPHAS"), "alpha",
-      (STAGE2,), rationale=Quote(DEC, "Ranking: 0.5, 0.25, 0.0, 0.75, 1.0"),
-      spec=Quote(DEC, "The binding v3 recheck confirms the stage-2 candidates of record"),
-      set_by="amendment-6", status="candidate"),
+      (STAGE2,), rationale=Quote(DEC, "under the unchanged rule: 0.25, 0.0, 0.5, 0.75, 1.0"),
+      spec=Quote(DEC, "Stage-2 candidates of record: α = 0.25 and α = 0."),
+      set_by="amendment-9", status="candidate"),
 
     # ---------------------------------------------------------------- 8 judge
     P("judge.primary_model", "Primary judge model", "judge",
