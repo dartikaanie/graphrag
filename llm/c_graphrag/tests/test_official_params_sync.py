@@ -30,28 +30,33 @@ def test_official_params_json_matches_decision_record_block():
 def test_official_params_has_required_keys():
     from_file = json.loads((REPO_ROOT / "llm" / "c_graphrag" / "official_params.json").read_text())
     assert set(from_file) == {
-        "status", "c_retrieval_version", "alpha", "sample_split", "max_hops", "edge_types",
-        "use_author_trust", "accepted_only",
+        "status", "c_retrieval_version", "alpha_primary", "alpha_ablation", "selection_record",
+        "sample_split", "max_hops", "edge_types", "use_author_trust", "accepted_only",
     }
+    assert set(from_file["selection_record"]) == {"path", "commit"}
 
 
 def test_official_params_status_is_valid():
     from_file = json.loads((REPO_ROOT / "llm" / "c_graphrag" / "official_params.json").read_text())
-    assert from_file["status"] in ("pending_selection", "locked")
+    assert from_file["status"] in ("pending_selection", "selected")
 
 
-def test_official_params_alpha_and_version_null_until_outcome_filled_in():
-    """While status is "pending_selection", the dashboard must refuse to
-    launch ANY Official run (not just v3) -- see
-    test_config_router.py's check_official_c_params_lock tests for the
-    launch-refusal logic itself. This test documents and locks the
-    underlying data invariant: alpha and c_retrieval_version both stay
-    null until the Outcome section is actually filled in and status
-    flips to "locked" (the selection procedure hasn't run yet, so there
-    is no known winning version, v2 or v3)."""
+def test_official_params_alphas_null_until_selected():
+    """Amendment 10: both stage-2 candidates are v3 values, so
+    c_retrieval_version is "v3" from the start; alpha_primary,
+    alpha_ablation and selection_record.commit stay null until the Outcome
+    section and the Amendment 10 Record are filled in and status flips to
+    "selected". Once selected, the two alphas are the two distinct stage-2
+    candidates."""
     from_file = json.loads((REPO_ROOT / "llm" / "c_graphrag" / "official_params.json").read_text())
+    assert from_file["c_retrieval_version"] == "v3"
     if from_file["status"] == "pending_selection":
-        assert from_file["alpha"] is None
-        assert from_file["c_retrieval_version"] is None
-    if from_file["c_retrieval_version"] == "v3":
-        assert from_file["alpha"] is not None, "v3 official params must have a concrete alpha once chosen"
+        assert from_file["alpha_primary"] is None
+        assert from_file["alpha_ablation"] is None
+        assert from_file["selection_record"]["commit"] is None
+    else:
+        from stage2_report import STAGE2_ALPHAS
+
+        alphas = {from_file["alpha_primary"], from_file["alpha_ablation"]}
+        assert alphas == set(STAGE2_ALPHAS), "C-primary and C-ablation must be the two stage-2 candidates"
+        assert from_file["selection_record"]["commit"], "selected params must name the commit that selected them"

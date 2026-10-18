@@ -68,8 +68,9 @@ def test_pooled_counts_and_winner(tmp_path):
     assert per_run["0.25|off"]["n_hallucinated"] == 12
     sel = s2.select_stage2_winner(pooled)
     assert sel["winner"] == 0.5 and not sel["keep_current"]
-    assert s2.draft_official_params(sel) == {"status": "locked", "c_retrieval_version": "v3", "alpha": 0.5,
-                                             **s2.OFFICIAL_DEFAULTS}
+    assert s2.draft_official_params(sel, alphas=ALPHAS) == {
+        "status": "selected", "c_retrieval_version": "v3", "alpha_primary": 0.5, "alpha_ablation": 0.25,
+        "selection_record": {"path": s2.SELECTION_RECORD_PATH, "commit": None}, **s2.OFFICIAL_DEFAULTS}
 
 
 def test_tie_goes_to_larger_alpha(tmp_path):
@@ -127,8 +128,16 @@ def test_rejects_unjudged_answers(tmp_path):
         s2.load_judgments([jf], s2.load_runs(runs, alphas=ALPHAS), "judge-v2.1")
 
 
-def test_keep_current_draft():
-    assert s2.draft_official_params({"winner": 1.0, "keep_current": True})["c_retrieval_version"] == "v2"
+def test_keep_current_cannot_be_drafted_under_amendment_10():
+    with pytest.raises(s2.Stage2Error, match="keep-current"):
+        s2.draft_official_params({"winner": 1.0, "keep_current": True}, alphas=ALPHAS)
+
+
+def test_draft_ablation_is_the_other_candidate():
+    official = s2.draft_official_params({"winner": 0.0, "keep_current": False})
+    assert (official["alpha_primary"], official["alpha_ablation"]) == (0.0, 0.25)
+    with pytest.raises(s2.Stage2Error, match="one of the two"):
+        s2.draft_official_params({"winner": 0.5, "keep_current": False})
 
 
 def test_stage2_alphas_are_the_amendment9_top_two():

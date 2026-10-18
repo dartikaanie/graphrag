@@ -251,7 +251,7 @@ def _step_status(key: str, ctx: dict) -> str:
         return "implemented"
     if key == "c_ranking":
         official = ctx["official"] or {}
-        return "alpha pending (stage 2)" if official.get("alpha") is None else "frozen"
+        return "alpha pending (stage 2)" if official.get("alpha_primary") is None else "frozen"
     if key == "alpha_selection":
         s1 = "stage 1 done" if ctx["stage1"] else "stage 1 not done"
         return f"{s1}; stage 2: {ctx['stage2']['status']}"
@@ -259,7 +259,7 @@ def _step_status(key: str, ctx: dict) -> str:
         return f"calibration: {ctx['calibration']['status']}"
     if key == "official":
         official = ctx["official"] or {}
-        return "not started" if official.get("status") == "pending_selection" else "ready"
+        return "ready" if official.get("status") == "selected" else "not started"
     if key == "metrics":
         return "not started (needs the official run)"
     return "unknown"

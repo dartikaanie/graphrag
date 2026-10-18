@@ -264,10 +264,22 @@ def stage2_metrics(judged: dict, alphas=STAGE2_ALPHAS) -> tuple[dict, dict]:
     return pooled, per_run
 
 
-def draft_official_params(selection: dict) -> dict:
+SELECTION_RECORD_PATH = "docs/DECISION_C_SCORING.md#amendment-10-2026-10-18-trust-ablation-on-the-official-evaluation"
+
+
+def draft_official_params(selection: dict, alphas=STAGE2_ALPHAS) -> dict:
+    """Amendment 10 schema: C-primary = the stage-2 winner, C-ablation =
+    the other stage-2 candidate. selection_record.commit is left null in
+    the draft: fill in the commit of the stage-2 report/runs when pasting."""
     if selection["keep_current"]:
-        return {"status": "locked", "c_retrieval_version": "v2", "alpha": None, **OFFICIAL_DEFAULTS}
-    return {"status": "locked", "c_retrieval_version": "v3", "alpha": selection["winner"], **OFFICIAL_DEFAULTS}
+        raise Stage2Error("keep-current rule (alpha = 1) cannot apply to the Amendment 10 candidates "
+                          f"{list(alphas)}; check the selection before drafting official_params.")
+    winner = selection["winner"]
+    others = [a for a in alphas if a != winner]
+    if winner not in alphas or len(others) != 1:
+        raise Stage2Error(f"winner {winner!r} must be one of the two stage-2 candidates {list(alphas)}")
+    return {"status": "selected", "c_retrieval_version": "v3", "alpha_primary": winner, "alpha_ablation": others[0],
+            "selection_record": {"path": SELECTION_RECORD_PATH, "commit": None}, **OFFICIAL_DEFAULTS}
 
 
 # ---------------------------------------------------------------------
