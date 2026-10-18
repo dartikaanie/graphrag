@@ -11,10 +11,9 @@ ctxrel_sweep.select_stage2_winner() -- the same helper the procedure names.
 INPUT (all required)
 ------------------------------------------------------------
 --run-files    The 4 C generation runs on the dev split: for each stage-2
-               candidate α (STAGE2_ALPHAS: 0.5 and 0.25, the Amendment 5
-               candidates; replaced by the top_two of the Amendment 6
-               stage-1 recheck if that differs), one run with grounding
-               on and one with grounding off.
+               candidate α (STAGE2_ALPHAS: 0.25 and 0.0, the top_two of the
+               Amendment 9 stage-1 recheck), one run with grounding on
+               and one with grounding off.
 --judge-files  judge-v2.x output file(s) (llm_judge_hallucination_v2_1.py
                --out ...) containing the PRIMARY judge's records for those
                4 runs. Other judge_ids in the same files are ignored.
@@ -79,10 +78,11 @@ from judge_binary import (CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED,  # noqa: E402
                           CATEGORY_NOT_HALLUCINATED, category_of, is_unusable, severity_of)
 from trust_formulas import TRUST_SCORE_VERSION  # noqa: E402
 
-# Stage-2 candidates. Amendment 6: the v3 stage-1 recheck is binding; it gave
-# top_two = [0.5, 0.25] (report results/logscore_check/
-# stage1_logscore_report_20261014T091601Z.md), so these are unchanged.
-STAGE2_ALPHAS = (0.5, 0.25)
+# Stage-2 candidates. Amendment 9: the stage-1 recheck with answerable-only
+# semantic expansion gave top_two = [0.25, 0.0] (report results/expansion_check/
+# stage1_expansion_report_20261018T042953Z.md), replacing Amendment 6's
+# [0.5, 0.25].
+STAGE2_ALPHAS = (0.25, 0.0)
 N_DEV = 50
 JUDGE_ID = "primary"
 # The APPLIED_AT line printed by `01_data_cleaning/14_apply_logscore_trust.py
@@ -302,7 +302,7 @@ def build_markdown(pooled, per_run, selection, runs, judge_version, judge_files,
               f"- reasoning: {selection['reasoning']}", "",
               "## DRAFT -- Outcome section for docs/DECISION_C_SCORING.md (review, then paste)", "",
               "```markdown",
-              f"- Stage 1 of record: Amendment 6 recheck (trustScore {TRUST_SCORE_VERSION}), "
+              f"- Stage 1 of record: Amendment 9 recheck (trustScore {TRUST_SCORE_VERSION}, answerable-only expansion), "
               f"top_two = {list(STAGE2_ALPHAS)}.",
               f"- Stage 2: {judge_version} (primary judge), pooled grounding on + off, n = "
               f"{next(iter(pooled.values()))['n']} answers per alpha.",

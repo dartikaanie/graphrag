@@ -362,9 +362,9 @@ def _run(tmp, alpha, grounded, started, **manifest_extra) -> Path:
 
 
 def _four_runs(tmp, started, special=None, **manifest_extra):
-    """4 stage-2 runs; `special` overrides the start of the (0.5, grounded) run."""
-    return [_run(tmp, a, g, special if (special and (a, g) == (0.5, True)) else started, **manifest_extra)
-            for a in (0.5, 0.25) for g in (True, False)]
+    """4 stage-2 runs; `special` overrides the start of the (0.25, grounded) run."""
+    return [_run(tmp, a, g, special if (special and (a, g) == (0.25, True)) else started, **manifest_extra)
+            for a in (0.25, 0.0) for g in (True, False)]
 
 
 def test_stage2_placeholder_fails_closed(tmp_path, monkeypatch, capsys):
@@ -458,16 +458,16 @@ def test_run_manifest_records_graph_trust_version(tmp_path):
     assert mixed == "mixed(v2-reputation=5, v3-logscore=7)"
 
     # What c_graphrag.py / the dashboard write at the end of a run, then what stage 2 reads back.
-    for (alpha, grounded), ver in zip([(a, g) for a in (0.5, 0.25) for g in (True, False)],
+    for (alpha, grounded), ver in zip([(a, g) for a in (0.25, 0.0) for g in (True, False)],
                                       ["v3-logscore", "v3-logscore", "v3-logscore", mixed]):
         path = _run(tmp_path, alpha, grounded, "unused")
         write_manifest(path, run_label=None, config={}, started_at_utc="2026-10-14T03:00:00+00:00",
                        finished_at_utc="2026-10-14T03:10:00+00:00", item_counts={},
                        graph={"trustScoreVersion": ver})
-    manifest = json.loads((tmp_path / "run_a0.5_g.jsonl.manifest.json").read_text())
+    manifest = json.loads((tmp_path / "run_a0.25_g.jsonl.manifest.json").read_text())
     assert manifest["graph"] == {"trustScoreVersion": "v3-logscore"}
-    runs = [tmp_path / f"run_a{a}_{g}.jsonl" for a in (0.5, 0.25) for g in ("g", "p")]
-    with pytest.raises(s2.Stage2Error, match="run_a0.25_p.jsonl: manifest records trustScoreVersion 'mixed"):
+    runs = [tmp_path / f"run_a{a}_{g}.jsonl" for a in (0.25, 0.0) for g in ("g", "p")]
+    with pytest.raises(s2.Stage2Error, match="run_a0.0_p.jsonl: manifest records trustScoreVersion 'mixed"):
         s2.load_runs(runs, applied_at=APPLIED)
     # A manifest written without `graph` (other conditions) has no such key.
     other = tmp_path / "other.jsonl"

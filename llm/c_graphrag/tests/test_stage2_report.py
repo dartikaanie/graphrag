@@ -42,7 +42,7 @@ def _judge(source: Path, qid: int, kind: str, version="judge-v2.1", judge_id="pr
 
 def _setup(tmp, n_hal):
     """n_hal[(alpha, grounding)] hallucinated answers; 2 ABSTAIN per run; rest OK."""
-    runs = [_run(tmp, a, g) for a in (0.5, 0.25) for g in (True, False)]
+    runs = [_run(tmp, a, g) for a in (0.25, 0.0) for g in (True, False)]
     recs = []
     for path in runs:
         cfg = json.loads(path.read_text().splitlines()[0])["config"]
@@ -57,55 +57,55 @@ def _setup(tmp, n_hal):
 
 
 def test_pooled_counts_and_winner(tmp_path):
-    runs, jf = _setup(tmp_path, {(0.5, "on"): 5, (0.5, "off"): 9, (0.25, "on"): 10, (0.25, "off"): 12})
+    runs, jf = _setup(tmp_path, {(0.25, "on"): 5, (0.25, "off"): 9, (0.0, "on"): 10, (0.0, "off"): 12})
     r = s2.load_runs(runs)
     pooled, per_run = s2.stage2_metrics(s2.load_judgments([jf], r, "judge-v2.1"))
-    assert pooled[0.5]["hallucination_count_excl_abstain"] == 14 and pooled[0.5]["n_excl_abstain"] == 96
-    assert pooled[0.5]["hallucination_count_incl_abstain"] == 18 and pooled[0.5]["n_incl_abstain"] == 100
-    assert per_run["0.25|off"]["n_hallucinated"] == 12
+    assert pooled[0.25]["hallucination_count_excl_abstain"] == 14 and pooled[0.25]["n_excl_abstain"] == 96
+    assert pooled[0.25]["hallucination_count_incl_abstain"] == 18 and pooled[0.25]["n_incl_abstain"] == 100
+    assert per_run["0.0|off"]["n_hallucinated"] == 12
     sel = s2.select_stage2_winner(pooled)
-    assert sel["winner"] == 0.5 and not sel["keep_current"]
-    assert s2.draft_official_params(sel) == {"status": "locked", "c_retrieval_version": "v3", "alpha": 0.5,
+    assert sel["winner"] == 0.25 and not sel["keep_current"]
+    assert s2.draft_official_params(sel) == {"status": "locked", "c_retrieval_version": "v3", "alpha": 0.25,
                                              **s2.OFFICIAL_DEFAULTS}
 
 
 def test_tie_goes_to_larger_alpha(tmp_path):
-    runs, jf = _setup(tmp_path, {(0.5, "on"): 6, (0.5, "off"): 6, (0.25, "on"): 5, (0.25, "off"): 5})
+    runs, jf = _setup(tmp_path, {(0.25, "on"): 6, (0.25, "off"): 6, (0.0, "on"): 5, (0.0, "off"): 5})
     pooled, _ = s2.stage2_metrics(s2.load_judgments([jf], s2.load_runs(runs), "judge-v2.1"))
-    assert s2.select_stage2_winner(pooled)["winner"] == 0.5  # 12 vs 10: within the 2-answer margin
+    assert s2.select_stage2_winner(pooled)["winner"] == 0.25  # 12 vs 10: within the 2-answer margin
 
 
 @pytest.mark.parametrize("over, msg", [({"sample_split": "test"}, "sample_split"),
                                        ({"c_retrieval_version": "v2"}, "c_retrieval_version")])
 def test_rejects_wrong_config(tmp_path, over, msg):
-    runs = [_run(tmp_path, 0.5, True, **over)]
+    runs = [_run(tmp_path, 0.25, True, **over)]
     with pytest.raises(s2.Stage2Error, match=msg):
         s2.load_runs(runs)
 
 
 def test_rejects_run_before_graph_update(tmp_path):
-    runs = [_run(tmp_path, a, g, started="2026-10-12T00:00:00+00:00" if (a, g) == (0.5, True) else AFTER)
-            for a in (0.5, 0.25) for g in (True, False)]
+    runs = [_run(tmp_path, a, g, started="2026-10-12T00:00:00+00:00" if (a, g) == (0.25, True) else AFTER)
+            for a in (0.25, 0.0) for g in (True, False)]
     with pytest.raises(s2.Stage2Error, match="Amendment 6"):
         s2.load_runs(runs)
 
 
 def test_fails_closed_without_applied_at(tmp_path, monkeypatch):
     monkeypatch.setattr(s2, "TRUST_V3_APPLIED_AT", None)  # overrides the autouse fixture
-    runs = [_run(tmp_path, a, g) for a in (0.5, 0.25) for g in (True, False)]
+    runs = [_run(tmp_path, a, g) for a in (0.25, 0.0) for g in (True, False)]
     with pytest.raises(s2.Stage2Error, match="TRUST_V3_APPLIED_AT is not set"):
         s2.load_runs(runs)
 
 
 def test_rejects_missing_run_and_wrong_alpha(tmp_path):
     with pytest.raises(s2.Stage2Error, match="missing runs"):
-        s2.load_runs([_run(tmp_path, 0.5, True)])
+        s2.load_runs([_run(tmp_path, 0.25, True)])
     with pytest.raises(s2.Stage2Error, match="not a stage-2 candidate"):
         s2.load_runs([_run(tmp_path, 0.75, True)])
 
 
 def test_rejects_wrong_judge_version_and_unusable(tmp_path):
-    runs, jf = _setup(tmp_path, {(a, g): 3 for a in (0.5, 0.25) for g in ("on", "off")})
+    runs, jf = _setup(tmp_path, {(a, g): 3 for a in (0.25, 0.0) for g in ("on", "off")})
     r = s2.load_runs(runs)
     with pytest.raises(s2.Stage2Error, match="frozen"):
         s2.load_judgments([jf], r, "judge-v2.2")
@@ -118,7 +118,7 @@ def test_rejects_wrong_judge_version_and_unusable(tmp_path):
 
 
 def test_rejects_unjudged_answers(tmp_path):
-    runs, jf = _setup(tmp_path, {(a, g): 3 for a in (0.5, 0.25) for g in ("on", "off")})
+    runs, jf = _setup(tmp_path, {(a, g): 3 for a in (0.25, 0.0) for g in ("on", "off")})
     jf.write_text("\n".join(jf.read_text().splitlines()[2:]) + "\n")  # drop q1000 of the first run
     with pytest.raises(s2.Stage2Error, match="not judged"):
         s2.load_judgments([jf], s2.load_runs(runs), "judge-v2.1")
