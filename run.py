@@ -23,6 +23,25 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 
+
+def _condition_c_default_args() -> list[str]:
+    """Condition C always runs retrieval v3 (Amendment 10). Once
+    official_params.json is "selected", the default is C-primary
+    (alpha_primary); otherwise no alpha is given, and c_graphrag.py refuses a
+    test-sample run until stage 2 is recorded (use --sample-split dev for
+    development). C-ablation: override with --alpha <alpha_ablation>; full
+    commands in docs/OFFICIAL_RUN_MATRIX.md."""
+    import json
+
+    try:
+        official = json.loads((REPO_ROOT / "llm" / "c_graphrag" / "official_params.json").read_text())
+    except (OSError, ValueError):
+        official = {}
+    args = ["--c-retrieval-version", "v3"]
+    if official.get("status") == "selected" and official.get("alpha_primary") is not None:
+        args += ["--alpha", f"{official['alpha_primary']:g}"]
+    return args
+
 # ---------------------------------------------------------------------
 # Definisi menu: (nomor tampil otomatis dari urutan list)
 # Setiap entri: key, label, deskripsi singkat, script (relatif ke repo root),
@@ -163,9 +182,13 @@ MENU = [
                 "semantic expansion) atas Neo4j KG, dengan constraint sitasi [SO-<id>].",
         "script": "c_graphrag.py",
         "cwd": "llm/c_graphrag",
-        "default_args": [],
+        "default_args": _condition_c_default_args(),
         "note": "Prasyarat: KG sudah dibangun (01_data_cleaning/7_build_knowledge_graph.py) dan "
-                "densifikasi FAISS/embedding sudah dijalankan (lihat docstring c_graphrag.py).",
+                "densifikasi FAISS/embedding sudah dijalankan (lihat docstring c_graphrag.py). "
+                "Selalu C retrieval v3 (Amendment 10). Sampel test hanya boleh dengan alpha_primary "
+                "(C-primary, default bila sudah dipilih) atau alpha_ablation (C-ablation: --alpha <nilai>) "
+                "dari llm/c_graphrag/official_params.json; selama status pending_selection, run test "
+                "ditolak -- pakai --sample-split dev. Perintah lengkap R1-R9: docs/OFFICIAL_RUN_MATRIX.md.",
         "confirm_cost": True,
     },
     {
@@ -181,16 +204,18 @@ MENU = [
         "confirm_cost": True,
     },
     {
-        "label": "Jalankan LLM-as-Judge (Faithfulness/Hallucination)",
-        "desc": "Nilai file JSONL hasil Kondisi A/B/C/D yang SUDAH ADA dengan LLM-as-judge -- "
-                "Faithfulness, Answer Relevance, Hallucination Rate 3-kelas -- TANPA re-run kondisi aslinya.",
-        "script": "llm_judge_hallucination.py",
+        "label": "Jalankan LLM-as-Judge halusinasi (judge-v2.1)",
+        "desc": "Nilai file JSONL hasil Kondisi A/B/C/D yang SUDAH ADA dengan judge-v2.1 (Amendment 4): "
+                "klaim per jawaban, label biner hallucinated diturunkan oleh kode, judge primary "
+                "(Llama-3.3-70B, DeepInfra) dan/atau secondary (gpt-4o-mini), temperature 0 -- "
+                "TANPA re-run kondisi aslinya.",
+        "script": "llm_judge_hallucination_v2_1.py",
         "cwd": "llm/evaluation",
         "default_args": [],
-        "note": "--input-path dan --condition WAJIB diisi manual (pilih 'tidak' pakai argumen default), "
-                "contoh: --input-path ../c_graphrag/results/condition_c_....jsonl --condition C "
-                "[--kappa-validation --secondary-judge-provider openai --secondary-judge-model gpt-4o "
-                "--kappa-sample-size 5].",
+        "note": "--run-files dan --out WAJIB diisi manual (pilih 'tidak' pakai argumen default), "
+                "contoh: --run-files ../c_graphrag/results/condition_c_....jsonl --judge both "
+                "--out results/jv2_1_<nama>.jsonl. Run kalibrasi ditolak sebelum referensi manusia ada. "
+                "Judge lama (llm_judge_hallucination.py) tidak lagi ada di menu.",
         "confirm_cost": True,
     },
     {
