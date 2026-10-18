@@ -304,6 +304,17 @@ def _b_kg_index(index_cache_dir_str: str, token_chunk_limit: int, embed_model_na
     return kg
 
 
+def _refuse_dashboard_dev_split(params: dict[str, Any]) -> None:
+    """Dashboard runs of A, B and D have only ever sampled the test split
+    (cond.sample_questions); a "dev" request used to run on test positions
+    1..n silently. Refuse it instead -- the dev split of A/B/D runs from the
+    CLI (--sample-split dev). Condition C's dashboard path does support dev."""
+    if (params.get("sample_split") or "test") != "test":
+        raise SampleMismatchError(
+            f"dashboard runs of condition {params.get('condition')} support only sample_split=test; "
+            "run the dev split from the CLI (--sample-split dev).")
+
+
 def _leakage_mode(params: dict[str, Any]) -> str:
     """Leakage exclusion mode for a B/C/D run (llm/common/leakage.py):
     params["leakage_mode"] if given, else LeakageSettings (LEAKAGE_* env /
@@ -478,6 +489,7 @@ from llm.manifest import compute_config_hash as _compute_config_hash  # noqa: E4
 from llm.manifest import read_already_done as _read_already_done  # noqa: E402
 from llm.manifest import sum_usage_tokens as _sum_usage_tokens  # noqa: E402
 from llm.manifest import write_manifest as _write_manifest  # noqa: E402
+from llm.sample_split import SampleMismatchError, verify_sample  # noqa: E402
 
 
 def _manifest_status(cancelled: bool, results: list) -> str:
@@ -634,6 +646,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
     n_candidates_after_token_filter: int | None = None
 
     try:
+        sample_check = None  # frozen sample-ID check (batch mode only)
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=log, with_meta=True)
 
         if params["mode"] == "single":
@@ -650,7 +663,9 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             )
             candidates = cond.filter_by_token_limit(candidates)
             n_candidates_after_token_filter = len(candidates)
+            _refuse_dashboard_dev_split(params)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
+            sample_check = verify_sample(sample_df["Id"], "test", n_sample)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
@@ -774,6 +789,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
     cond.log = log
 
     try:
+        sample_check = None  # frozen sample-ID check (batch mode only)
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=log, with_meta=True)
         con = _duckdb_connect()
 
@@ -794,7 +810,9 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             )
             candidates = cond.filter_by_token_limit(candidates)
             n_candidates_after_token_filter = len(candidates)
+            _refuse_dashboard_dev_split(params)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
+            sample_check = verify_sample(sample_df["Id"], "test", n_sample)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
@@ -968,6 +986,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
     original_cond_log = cond.log
     cond.log = log
     try:
+        sample_check = None  # frozen sample-ID check (batch mode only)
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=log, with_meta=True)
         con = _duckdb_connect()
 
@@ -995,6 +1014,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
                 sample_df = cond.sample_questions_split(candidates, n_sample, seed, split="dev")
             else:
                 sample_df = cond.sample_questions(candidates, n_sample, seed)
+            sample_check = verify_sample(sample_df["Id"], sample_split, n_sample)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")
@@ -1169,6 +1189,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
     original_cond_log = cond.log
     cond.log = log
     try:
+        sample_check = None  # frozen sample-ID check (batch mode only)
         llm_client, call_llm_fn = cond.get_llm_client(provider, model, log=log, with_meta=True)
         con = _duckdb_connect()
 
@@ -1186,7 +1207,9 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             )
             candidates = cond.filter_by_token_limit(candidates)
             n_candidates_after_token_filter = len(candidates)
+            _refuse_dashboard_dev_split(params)
             sample_df = cond.sample_questions(candidates, n_sample, seed)
+            sample_check = verify_sample(sample_df["Id"], "test", n_sample)
             accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
             answers_df = cond.get_accepted_answers(con, _answers_parquet(), accepted_ids)
             sample_df = sample_df.merge(answers_df, on="AcceptedAnswerId", how="left")

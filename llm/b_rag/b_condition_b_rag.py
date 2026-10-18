@@ -175,6 +175,7 @@ from llm.common.text import build_query_text
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_rag_messages
 from llm.record_schema import latency_fields, new_run_id, record_header
+from llm.sample_split import SampleMismatchError, verify_sample
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, sama dgn Kondisi A
 
@@ -917,6 +918,14 @@ def main():
         sample_df = sample_questions_split(candidates, args.n_sample, args.seed, args.sample_split, args.dev_offset)
         log(f"[3/8] sample_split='{args.sample_split}': {len(sample_df)} pertanyaan dari posisi "
             f"{args.dev_offset}..{args.dev_offset + args.n_sample - 1} (1-based) permutasi tetap seed={args.seed}")
+
+    # frozen sample-ID list (llm/sample_ids/, llm/sample_split.verify_sample)
+    try:
+        sample_check = verify_sample(sample_df["Id"], args.sample_split, args.n_sample, args.dev_offset)
+    except SampleMismatchError as e:
+        log(f"[ERROR] {e}")
+        sys.exit(2)
+    log(f"[sample] {sample_check['n_checked']} {args.sample_split} questions == frozen list {sample_check['file']}")
 
     accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
     answers_df = get_accepted_answers(con, args.answers_parquet, accepted_ids)
