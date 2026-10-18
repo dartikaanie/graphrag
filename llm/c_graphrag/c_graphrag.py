@@ -157,6 +157,7 @@ from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F40
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
 from llm.record_schema import latency_fields, new_run_id, record_header
+from llm.sample_split import SampleMismatchError, verify_sample
 from llm.c_graphrag.official_params import OfficialParamsError, check_c_test_run, load_official_params  # noqa: E402
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B
@@ -1672,6 +1673,14 @@ def main():
     candidates = filter_by_token_limit(candidates)
     sample_df = sample_questions_split(candidates, args.n_sample, args.seed,
                                         split=args.sample_split, dev_offset=args.dev_offset)
+
+    # frozen sample-ID list (llm/sample_ids/, llm/sample_split.verify_sample)
+    try:
+        sample_check = verify_sample(sample_df["Id"], args.sample_split, args.n_sample, args.dev_offset)
+    except SampleMismatchError as e:
+        log(f"[ERROR] {e}")
+        sys.exit(2)
+    log(f"[sample] {sample_check['n_checked']} {args.sample_split} questions == frozen list {sample_check['file']}")
 
     accepted_ids = sample_df["AcceptedAnswerId"].dropna().unique().tolist()
     answers_df = get_accepted_answers(con, args.answers_parquet, accepted_ids)

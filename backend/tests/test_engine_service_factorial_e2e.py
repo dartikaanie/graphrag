@@ -83,6 +83,28 @@ def _patch_sampling(monkeypatch, cond):
     monkeypatch.setattr(cond, "sample_questions", lambda df, n, seed: df.head(n).reset_index(drop=True))
     monkeypatch.setattr(cond, "get_accepted_answers", lambda con, path, ids: _accepted_answers())
     monkeypatch.setattr(cond, "get_llm_client", lambda *a, **k: (object(), _fake_call_llm_fn))
+    # frozen sample-ID lists (llm/sample_split.verify_sample) for the fake 2-question pool
+    import llm.sample_split as sample_split
+
+    monkeypatch.setattr(sample_split, "FROZEN_FILES", _fake_frozen_files())
+
+
+def _fake_frozen_files() -> dict:
+    """test/dev frozen lists made of the fake sample's own ids (101, 102),
+    in a temp dir -- the real llm/sample_ids/ files are never touched."""
+    import json
+    import tempfile
+
+    from llm.sample_split import ids_sha256
+
+    root = Path(tempfile.mkdtemp(prefix="frozen_ids_test_"))
+    files = {}
+    for split, offset in (("test", None), ("dev", 385)):
+        ids = [101, 102]
+        files[split] = root / f"{split}_ids_v1.json"
+        files[split].write_text(json.dumps({"split": split, "dev_offset": offset, "ids": ids,
+                                            "ids_sha256": ids_sha256(ids)}))
+    return files
 
 
 def _redirect_io(monkeypatch, tmp_path: Path, cond, log_subdir: str):
