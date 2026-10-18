@@ -31,8 +31,8 @@ def test_official_c_params_has_expected_keys():
     resp = client.get("/api/config/defaults")
     params = resp.json()["official_c_params"]
     assert set(params) == {
-        "status", "c_retrieval_version", "alpha", "sample_split", "max_hops", "edge_types",
-        "use_author_trust", "accepted_only",
+        "status", "c_retrieval_version", "alpha_primary", "alpha_ablation", "selection_record",
+        "sample_split", "max_hops", "edge_types", "use_author_trust", "accepted_only",
     }
 
 

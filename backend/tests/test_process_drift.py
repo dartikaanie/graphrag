@@ -190,7 +190,8 @@ def test_p99_matches_the_stage1_report(page_values):
 
 def test_official_fields_equal_official_params_json(page_values):
     official = json.loads((REPO_ROOT / "llm/c_graphrag/official_params.json").read_text())
-    for key, field in (("off.status", "status"), ("crank.alpha_official", "alpha"),
+    for key, field in (("off.status", "status"), ("crank.alpha_official", "alpha_primary"),
+                       ("crank.alpha_ablation_official", "alpha_ablation"),
                        ("off.max_hops", "max_hops"), ("off.edge_types", "edge_types"),
                        ("off.use_author_trust", "use_author_trust"), ("off.accepted_only", "accepted_only"),
                        ("off.sample_split", "sample_split")):

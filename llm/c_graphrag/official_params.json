@@ -1,7 +1,9 @@
 {
   "status": "pending_selection",
-  "c_retrieval_version": null,
-  "alpha": null,
+  "c_retrieval_version": "v3",
+  "alpha_primary": null,
+  "alpha_ablation": null,
+  "selection_record": {"path": "docs/DECISION_C_SCORING.md#amendment-10-2026-10-18-trust-ablation-on-the-official-evaluation", "commit": null},
   "sample_split": "test",
   "max_hops": 2,
   "edge_types": ["EMBED_SIM", "HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR"],
