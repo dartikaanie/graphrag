@@ -41,7 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _judge_common import html_to_text, load_question_bodies  # noqa: E402
-from judge_clients import get_judge_client  # noqa: E402
+from judge_clients import JUDGE_TEMPERATURE, get_judge_client  # noqa: E402
 from judge_prompt_v1 import build_messages, parse_judgment  # noqa: E402
 from llm_judge_hallucination_v1 import format_tags  # noqa: E402
 
@@ -166,7 +166,7 @@ def run_case(client, config, fixture: dict, variant_name: str, candidate: str, e
         title=fixture["title"], body=fixture["body"], tags=fixture["tags"],
         reference=fixture["reference"], candidate=candidate,
     )
-    response = client.chat.completions.create(model=config.model, messages=messages, temperature=0.0)
+    response = client.chat.completions.create(model=config.model, messages=messages, temperature=JUDGE_TEMPERATURE)
     parsed = parse_judgment(response.choices[0].message.content)
     actual = parsed.get("label")
     return {

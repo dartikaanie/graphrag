@@ -129,7 +129,7 @@ export function SettingsPage() {
 
   const [judgeProvider, setJudgeProvider] = useState('openai')
   const [judgeModel, setJudgeModel] = useState('')
-  const [judgeTemperature, setJudgeTemperature] = useState(0.1)
+  const [judgeTemperature, setJudgeTemperature] = useState(0.0)
   const [kappaValidationEnabled, setKappaValidationEnabled] = useState(false)
   const [secondaryJudgeProvider, setSecondaryJudgeProvider] = useState('openai')
   const [secondaryJudgeModel, setSecondaryJudgeModel] = useState('')

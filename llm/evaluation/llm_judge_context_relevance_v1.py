@@ -65,7 +65,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from _judge_common import append_manifest, html_to_text, load_question_bodies, strip_fences  # noqa: E402
 from _run_metadata import RunMetadataNotFoundError, resolve_run_metadata  # noqa: E402
-from judge_clients import get_judge_client  # noqa: E402
+from judge_clients import JUDGE_TEMPERATURE, get_judge_client  # noqa: E402
 from llm.manifest import write_manifest  # noqa: E402
 
 log = print
@@ -74,7 +74,7 @@ PROMPT_VERSION = "ctxrel-v1"
 LABELS = ("RELEVANT", "PARTIAL", "IRRELEVANT")
 LABEL_SCORE = {"RELEVANT": 1.0, "PARTIAL": 0.5, "IRRELEVANT": 0.0}
 RETRYABLE_EXCEPTIONS_MAX_ATTEMPTS = 6
-REQUEST_TEMPERATURE = 0.0
+REQUEST_TEMPERATURE = JUDGE_TEMPERATURE
 _WRITE_LOCK = threading.Lock()
 
 

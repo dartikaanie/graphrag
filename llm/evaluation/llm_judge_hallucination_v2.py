@@ -54,13 +54,13 @@ from _judge_common import load_judge_already_done as load_already_done  # noqa: 
 from _judge_common import load_judge_failed_keys as load_failed_keys  # noqa: E402
 from _judge_common import write_judge_record as write_record  # noqa: E402
 from _run_metadata import RunMetadataNotFoundError, resolve_run_metadata  # noqa: E402
-from judge_clients import get_judge_client  # noqa: E402
+from judge_clients import JUDGE_TEMPERATURE, get_judge_client  # noqa: E402
 from llm.manifest import write_manifest  # noqa: E402
 from judge_prompt_v2 import BLINDING_VERSION, PARSE_VERSION, PROMPT_VERSION, build_messages, parse_judgment_v2  # noqa: E402
 
 log = print
 
-REQUEST_TEMPERATURE = 0.0
+REQUEST_TEMPERATURE = JUDGE_TEMPERATURE
 # No cap is sent to the API today (see call_judge_with_retry() below --
 # call_judge_llm_with_retry() is called with no max_tokens argument).
 # Kept as its own constant (not just a bare None inline) so the ONE

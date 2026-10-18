@@ -56,7 +56,7 @@ SETUP .env (sama nama dgn judge lain)
 ----------------------------------------------------------------------------
     JUDGE_PROVIDER=openai
     JUDGE_MODEL=gpt-4o-mini
-    JUDGE_TEMPERATURE=0.1
+    JUDGE_TEMPERATURE=0.0   # default = judge_clients.JUDGE_TEMPERATURE
     SECONDARY_JUDGE_PROVIDER=openai
     SECONDARY_JUDGE_MODEL=gpt-4o
     KAPPA_SAMPLE_SIZE=50
@@ -94,6 +94,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from judge_clients import JUDGE_TEMPERATURE  # noqa: E402
 from _judge_common import (  # noqa: E402
     RESULTS_DIR,
     append_manifest,
@@ -463,7 +464,7 @@ def main():
     parser.add_argument("--judge-provider", default=os.getenv("JUDGE_PROVIDER", "openai"),
                          choices=["openai", "anthropic", "local", "ollama"])
     parser.add_argument("--judge-model", default=os.getenv("JUDGE_MODEL", "gpt-4o-mini"))
-    parser.add_argument("--judge-temperature", type=float, default=float(os.getenv("JUDGE_TEMPERATURE", 0.1)))
+    parser.add_argument("--judge-temperature", type=float, default=float(os.getenv("JUDGE_TEMPERATURE", JUDGE_TEMPERATURE)))
     parser.add_argument("--questions-parquet", default=os.getenv("QUESTIONS_PARQUET"))
     parser.add_argument("--max-body-chars", type=int, default=3000)
     parser.add_argument("--force", action="store_true")

@@ -44,7 +44,11 @@ DEFAULTS: dict[str, Any] = {
     # api_key/anthropic_api_key above.
     "judge_provider": "openai",
     "judge_model": "gpt-4o-mini",
-    "judge_temperature": 0.1,
+    # Mirrors llm/evaluation/judge_clients.JUDGE_TEMPERATURE (not imported:
+    # that module calls load_dotenv() on import, pulling the repo .env's
+    # keys into this process). tests/test_judge_temperature_defaults.py
+    # fails if the two ever drift.
+    "judge_temperature": 0.0,
     "secondary_judge_provider": "openai",
     "secondary_judge_model": "gpt-4o",
     "kappa_sample_size": 50,
