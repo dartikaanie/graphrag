@@ -178,6 +178,19 @@ def _run_and_collect(params: dict, run_fn, cond, run_label: str, stale_path: Pat
     assert manifest["run_label"] == run_label, f"{run_label}: manifest run_label={manifest['run_label']!r}"
     assert manifest["config_hash"] == next(iter(hashes)), f"{run_label}: manifest config_hash doesn't match records"
 
+    # record schema r2 + provenance (llm/record_schema.py, llm/common/provenance.py)
+    condition = output_records[0]["condition"]
+    assert {r["run_id"] for r in output_records} == {manifest["run_id"]} == {state["run_id"]}, run_label
+    assert manifest["record_schema_version"] == "r2" and manifest["run_ids_in_output"] == [state["run_id"]]
+    assert all(r["record_schema_version"] == "r2" and r["total_latency_sec"] is not None for r in output_records)
+    prov = manifest["provenance"]
+    assert prov["sample_ids"]["n_checked"] == 2 and prov["sample_ids"]["split"] == "test", run_label
+    if condition in ("B", "C", "D"):
+        assert prov["leakage"]["mode"] and len(prov["leakage"]["exclusion_sets_sha256"]) == 64, run_label
+    if condition in ("C", "D"):
+        assert prov["question_index"]["fingerprint"], run_label
+        assert manifest["graph"]["trustScoreVersion"] == "v3-logscore", run_label
+
     return state
 
 
@@ -315,6 +328,7 @@ def test_condition_d_pilot_configs_produce_records_history_and_manifest(
     _redirect_io(monkeypatch, tmp_path, cond, "d_logs")
     monkeypatch.setattr(cond, "get_all_answer_ids_for_questions", lambda *a, **k: {})
     monkeypatch.setattr(cond, "connect_neo4j", lambda *a, **k: (FakeDriver(), "neo4j"))
+    monkeypatch.setattr(cond, "fetch_trust_score_version", lambda *a, **k: "v3-logscore")  # D records it too
     # a related question (201), not the evaluation question itself -- the per-query
     # leakage assert (llm/common/leakage.py) rejects a context item from q's own thread
     monkeypatch.setattr(cond, "anchor_via_vector_search", lambda *a, **k: [(201, 0.9)])

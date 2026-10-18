@@ -490,6 +490,7 @@ from llm.manifest import read_already_done as _read_already_done  # noqa: E402
 from llm.manifest import sum_usage_tokens as _sum_usage_tokens  # noqa: E402
 from llm.manifest import write_manifest as _write_manifest  # noqa: E402
 from llm.sample_split import SampleMismatchError, verify_sample  # noqa: E402
+from llm.common.provenance import run_provenance as _run_provenance  # noqa: E402
 
 
 def _manifest_status(cancelled: bool, results: list) -> str:
@@ -687,6 +688,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
 
         embed_model = _embed_model()
 
+        provenance = _run_provenance(sample_check=sample_check)  # manifest (llm/common/provenance.py)
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, model, output_path, already_done,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id), run_id=run_id,
@@ -723,7 +725,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
             **summary,
         })
         _write_manifest(
-            output_path, run_id=run_id, run_label="A", status=_manifest_status(cancelled, results),
+            output_path, run_id=run_id, provenance=provenance, run_label="A", status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
@@ -855,6 +857,8 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
                 chunk_df, embed_model, index_cache_dir, index_pool, token_chunk_limit, embed_model_name, rebuild=False,
             )
 
+        provenance = _run_provenance(sample_check=sample_check, leakage_mode=leakage_mode,
+                                     b_index=index if corpus == cond.CORPUS_KG else None)
         results = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, index, meta_df, top_k, model, output_path, already_done,
             on_progress=_make_on_progress(run_id), check_cancel=lambda: run_registry.is_cancelled(run_id), run_id=run_id,
@@ -923,7 +927,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         })
         run_label = ("B-grounded" if require_grounding else "B-plain") if require_citation else "B"
         _write_manifest(
-            output_path, run_id=run_id, run_label=run_label, status=_manifest_status(cancelled, results),
+            output_path, run_id=run_id, provenance=provenance, run_label=run_label, status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
@@ -1057,6 +1061,8 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
 
+        provenance = _run_provenance(sample_check=sample_check, leakage_mode=leakage_mode,
+                                     kg_workspace_dir=kg_workspace_dir)
         results, stats = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, driver, database,
             faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
@@ -1138,7 +1144,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             "fusion_mode": fusion_mode, "grounding": "on" if require_grounding else "off",
         })["run_label"]
         _write_manifest(
-            output_path, run_id=run_id, run_label=run_label, status=_manifest_status(cancelled, results),
+            output_path, run_id=run_id, provenance=provenance, run_label=run_label, status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
@@ -1237,6 +1243,10 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         faiss_index, faiss_ids, faiss_embeddings, id_to_row = _faiss_cache(str(kg_workspace_dir))
         embed_model = _embed_model_cpu()
 
+        graph_state = {"trustScoreVersion": cond.fetch_trust_score_version(driver, database)}  # same as C
+        log(f"[graph] trustScoreVersion: {graph_state['trustScoreVersion']}")
+        provenance = _run_provenance(sample_check=sample_check, leakage_mode=leakage_mode,
+                                     kg_workspace_dir=kg_workspace_dir)
         results, stats = cond.process_sample(
             sample_df, llm_client, call_llm_fn, embed_model, driver, database,
             faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
@@ -1300,7 +1310,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         })
         run_label = "D-grounded" if require_grounding else "D-plain"
         _write_manifest(
-            output_path, run_id=run_id, run_label=run_label, status=_manifest_status(cancelled, results),
+            output_path, run_id=run_id, provenance=provenance, graph=graph_state, run_label=run_label, status=_manifest_status(cancelled, results),
             config=config, config_hash=config_hash, log_path=str(run_log_path),
             started_at_utc=run_started_at.isoformat(), finished_at_utc=datetime.now(timezone.utc).isoformat(),
             item_counts={"attempted": params.get("n_sample", 1), "succeeded": len(results),
