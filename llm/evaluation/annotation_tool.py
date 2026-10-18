@@ -12,6 +12,7 @@ Subcommands
     judge-kappa         judge vs human reference, per judge and judge version (Markdown report)
     export-reannotation 20% of a COMPLETED sheet again, new ids and order, >= 14 days after completion
     intra-kappa         first pass vs re-annotation of the same annotator
+    agreement           every rater pair (judges, researcher, re-annotation, annotator 2) with bootstrap CIs
 
 Two purposes share one flow:
     calibration   60 items = 20 per condition (A, B-plain, B-grounded), seed 42; annotator 2 labels a
@@ -65,7 +66,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from judge_blinding import BLINDING_VERSION  # noqa: E402
 from judge_binary import (  # noqa: E402
-    CATEGORIES, CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED, CATEGORY_NOT_HALLUCINATED, agreement_report, category_of,
+    CATEGORIES, CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED, CATEGORY_NOT_HALLUCINATED, FAITHFULNESS_LEVELS,
+    agreement_report, category_of, faithfulness_category, kappa_report,
 )
 
 log = print
@@ -95,7 +97,6 @@ LABEL_COLUMNS = ("abstain", "hallucinated", "severity")
 YES_NO = ("Y", "N")
 SEVERITIES = ("PENUH", "SEBAGIAN")
 WRONG_CLAIM_TYPES = ("contradicted", "fabricated")
-FAITHFULNESS_LEVELS = ("all_supported", "partly_supported", "not_supported")
 APPROACH_MATCH = ("same", "different_valid", "different_unassessable")
 FAMILIARITY = ("familiar", "not_familiar")
 _EVIDENCE_URL = re.compile(r"https?://\S+")
@@ -1043,6 +1044,134 @@ def cmd_intra_kappa(args, annotation_root: Path | None = None) -> int:
 
 
 # ---------------------------------------------------------------------------
+# agreement (Amendment 11): every rater pair, bootstrap 95% CI, faithfulness, familiarity split
+# ---------------------------------------------------------------------------
+
+def judges_by_item(key: dict, judge_records: list[dict], judge_version: str) -> dict:
+    """{judge_id: {item_id: record}} for one judge version, joined through the key by (run_id, question_id)."""
+    by_rq = {(k["run_id"], k["question_id"]): k["item_id"] for k in key["items"]}
+    out: dict[str, dict] = {}
+    for r in judge_records:
+        if r.get("prompt_version") != judge_version:
+            continue
+        item_id = by_rq.get((r.get("run_id"), r.get("question_id")))
+        if item_id is not None:
+            out.setdefault(r["judge_id"], {})[item_id] = r
+    return out
+
+
+def _paired(a: dict, b: dict, subset=None) -> tuple[list, list, int]:
+    ids = sorted(i for i in set(a) | set(b) if subset is None or i in subset)
+    both = [i for i in ids if a.get(i) is not None and b.get(i) is not None]
+    return [a[i] for i in both], [b[i] for i in both], len(ids) - len(both)
+
+
+def agreement_pairs(researcher: dict, judges: dict, annotator2: dict | None = None,
+                    intra: dict | None = None) -> dict:
+    """researcher / annotator2: {item_id: sheet row}; judges: {judge_id: {item_id: judge record}};
+    intra: {"first": {item_id: category}, "second": {item_id: category}} (keyed by the original item id).
+    Each pair: agreement_report on the items both raters label (others counted as n_excluded)."""
+    cat = {"researcher": {i: r["category"] for i, r in researcher.items()}}
+    for jid in ("primary", "secondary"):
+        if jid in judges:
+            cat[jid] = {i: category_of(r) for i, r in judges[jid].items()}
+    if annotator2:
+        cat["annotator2"] = {i: r["category"] for i, r in annotator2.items()}
+    plan = [("primary_vs_researcher", "primary", "researcher"), ("secondary_vs_researcher", "secondary", "researcher"),
+            ("primary_vs_secondary", "primary", "secondary"), ("annotator2_vs_researcher", "annotator2", "researcher")]
+    pairs = {}
+    for name, x, y in plan:
+        if x in cat and y in cat:
+            a, b, excluded = _paired(cat[x], cat[y])
+            pairs[name] = {**agreement_report(a, b), "n_excluded": excluded}
+    if intra:
+        a, b, excluded = _paired(intra["first"], intra["second"])
+        pairs["intra_researcher"] = {**agreement_report(a, b), "n_excluded": excluded}
+
+    familiarity = {}
+    for name, x in (("primary_vs_researcher", "primary"), ("secondary_vs_researcher", "secondary")):
+        if x not in cat:
+            continue
+        for level in ("familiar", "not_familiar"):
+            subset = {i for i, r in researcher.items() if r.get("domain_familiarity") == level}
+            a, b, excluded = _paired(cat[x], cat["researcher"], subset)
+            familiarity[f"{name}|{level}"] = {**agreement_report(a, b), "n_excluded": excluded}
+
+    faithfulness = {}
+    human_f = {i: r.get("faithfulness_level") for i, r in researcher.items() if r.get("has_context")}
+    for jid in ("primary", "secondary"):
+        if jid not in judges:
+            continue
+        from judge_prompt_v2_2 import faithfulness_of
+        judge_f = {i: faithfulness_category(r.get("faithfulness", faithfulness_of(r))) for i, r in judges[jid].items()
+                   if i in human_f}
+        a, b, excluded = _paired(judge_f, human_f)
+        faithfulness[f"{jid}_vs_researcher"] = {**kappa_report(a, b, FAITHFULNESS_LEVELS), "n_excluded": excluded}
+    return {"pairs": pairs, "familiarity": familiarity, "faithfulness": faithfulness}
+
+
+def _ci(ci) -> str:
+    return f"[{ci[0]}, {ci[1]}]" if ci else "-"
+
+
+def agreement_markdown(purpose: str, judge_version: str, rep: dict) -> str:
+    lines = [f"# Agreement report -- {purpose} set, {judge_version}", "",
+             f"Generated: {datetime.now(timezone.utc).isoformat()}. Unweighted Cohen's kappa; 95% CI = percentile "
+             "bootstrap over item pairs (2,000 resamples, fixed seed). Acceptance (Amendment 4/11): primary judge vs "
+             f"researcher, 3-category kappa >= {ACCEPTANCE_KAPPA}.", "",
+             "| pair | n | excluded | 3-category kappa | 95% CI | n both non-ABSTAIN | binary kappa | 95% CI |",
+             "|---|---|---|---|---|---|---|---|"]
+    for section in ("pairs", "familiarity"):
+        for name, r in rep[section].items():
+            lines.append(f"| {name} | {r['n']} | {r['n_excluded']} | {r['kappa_3cat']} | {_ci(r['kappa_3cat_ci95'])} | "
+                         f"{r['n_both_non_abstain']} | {r['kappa_binary_non_abstain']} | "
+                         f"{_ci(r['kappa_binary_non_abstain_ci95'])} |")
+    if rep["faithfulness"]:
+        lines += ["", "## Faithfulness (judge ratio -> all / partly / not supported, vs researcher)", "",
+                  "| pair | n | excluded | kappa | 95% CI | observed agreement |", "|---|---|---|---|---|---|"]
+        for name, r in rep["faithfulness"].items():
+            lines.append(f"| {name} | {r['n']} | {r['n_excluded']} | {r['kappa']} | {_ci(r['kappa_ci95'])} | "
+                         f"{r['observed_agreement']} |")
+    for name, r in rep["pairs"].items():
+        if r["n"]:
+            lines += ["", f"## {name} (n = {r['n']})", "", "3-category confusion matrix (rows: first rater):", ""]
+            lines += _matrix_md(r["confusion_3cat"], CATEGORIES)
+    return "\n".join(lines) + "\n"
+
+
+def cmd_agreement(args, annotation_root: Path | None = None) -> int:
+    from judge_agreement import load_judge_records
+
+    purpose, pdir = args.purpose, purpose_dir(args.purpose, annotation_root)
+    key = load_verified_key(purpose, key_dir_from(args.key_dir), annotation_root)
+    researcher, problems = load_annotator(purpose, "annotator1", key, annotation_root)
+    annotator2 = None
+    if sheet_started(pdir / "annotator2.xlsx"):
+        annotator2, p2 = load_annotator(purpose, "annotator2", key, annotation_root)
+        problems += p2
+    if problems:
+        log(f"[STOP] {len(problems)} problem(s) in the annotation files -- fix them first:")
+        for p in problems[:20]:
+            log(f"  - {p}")
+        return 1
+    records = []
+    for path in args.judge_output:
+        records += load_judge_records([path])
+    judges = judges_by_item(key, records, args.judge_version)
+    rep = agreement_pairs(researcher, judges, annotator2)
+    intra_path = pdir / "intra_annotator_annotator1.json"  # written by `intra-kappa`
+    if intra_path.exists():
+        rep["pairs"]["intra_researcher"] = {**json.loads(intra_path.read_text()), "n_excluded": 0}
+    out = Path(args.out) if args.out else pdir / f"agreement_{args.judge_version}.md"
+    out.write_text(agreement_markdown(purpose, args.judge_version, rep))
+    out.with_suffix(".json").write_text(json.dumps(rep, indent=2, default=str) + "\n")
+    for name, r in rep["pairs"].items():
+        log(f"{name}: n={r['n']} kappa_3cat={r['kappa_3cat']} {_ci(r.get('kappa_3cat_ci95'))}")
+    log(f"Report -> {out}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1100,6 +1229,13 @@ def main(argv=None) -> int:
     common(p)
     p.add_argument("--annotator", choices=["annotator1", "annotator2"], default="annotator1")
     p.set_defaults(func=cmd_intra_kappa)
+
+    p = sub.add_parser("agreement")
+    common(p)
+    p.add_argument("--judge-output", nargs="+", required=True)
+    p.add_argument("--judge-version", required=True, help="e.g. judge-v2.2")
+    p.add_argument("--out", default=None)
+    p.set_defaults(func=cmd_agreement)
 
     args = parser.parse_args(argv)
     try:

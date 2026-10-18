@@ -126,23 +126,91 @@ def cohen_kappa(labels_a: list, labels_b: list, categories) -> float | None:
     return (observed - expected) / (1 - expected)
 
 
-def agreement_report(labels_a: list, labels_b: list) -> dict:
-    """Agreement between two raters given paired 3-category labels (each
-    in CATEGORIES). Returns the 3-category kappa + confusion matrix, and
-    the BINARY kappa (hallucinated vs not) restricted to items that BOTH
-    raters label non-ABSTAIN (Amendment 4 Addendum), each with its n."""
+BOOTSTRAP_RESAMPLES = 2000
+BOOTSTRAP_SEED = 20261019  # fixed (Amendment 11): the CI of a given pair of label lists is reproducible
+
+FAITHFULNESS_LEVELS = ("all_supported", "partly_supported", "not_supported")
+
+
+def bootstrap_kappa_ci(labels_a: list, labels_b: list, categories, n_resamples: int = BOOTSTRAP_RESAMPLES,
+                       seed: int = BOOTSTRAP_SEED) -> dict:
+    """Percentile 95% CI of unweighted Cohen's kappa over `n_resamples` resamples of the item PAIRS (with
+    replacement, random.Random(seed)). Resamples where kappa is undefined (one shared category) are skipped
+    and counted. {"ci95": [lo, hi] | None, "n_resamples": n, "n_defined": k}."""
+    import random
+
+    n = len(labels_a)
+    if n == 0 or n_resamples <= 0:
+        return {"ci95": None, "n_resamples": n_resamples, "n_defined": 0}
+    rng = random.Random(seed)
+    values = []
+    for _ in range(n_resamples):
+        idx = [rng.randrange(n) for _ in range(n)]
+        k = cohen_kappa([labels_a[i] for i in idx], [labels_b[i] for i in idx], categories)
+        if k is not None:
+            values.append(k)
+    if not values:
+        return {"ci95": None, "n_resamples": n_resamples, "n_defined": 0}
+    values.sort()
+
+    def q(p):
+        pos = p * (len(values) - 1)
+        lo, hi = int(pos), min(int(pos) + 1, len(values) - 1)
+        return values[lo] + (values[hi] - values[lo]) * (pos - lo)
+
+    return {"ci95": [round(q(0.025), 4), round(q(0.975), 4)], "n_resamples": n_resamples, "n_defined": len(values)}
+
+
+def kappa_report(labels_a: list, labels_b: list, categories, n_resamples: int = BOOTSTRAP_RESAMPLES,
+                 seed: int = BOOTSTRAP_SEED) -> dict:
+    """kappa + bootstrap 95% CI + observed agreement + confusion matrix for any label set."""
+    k = cohen_kappa(labels_a, labels_b, categories)
+    boot = bootstrap_kappa_ci(labels_a, labels_b, categories, n_resamples, seed)
+    return {
+        "n": len(labels_a), "kappa": round(k, 4) if k is not None else None, "kappa_ci95": boot["ci95"],
+        "bootstrap": {"n_resamples": boot["n_resamples"], "n_defined": boot["n_defined"], "seed": seed},
+        "observed_agreement": round(sum(1 for a, b in zip(labels_a, labels_b) if a == b) / len(labels_a), 4)
+        if labels_a else None,
+        "confusion": confusion_matrix(labels_a, labels_b, categories),
+    }
+
+
+def agreement_report(labels_a: list, labels_b: list, n_resamples: int = BOOTSTRAP_RESAMPLES,
+                     seed: int = BOOTSTRAP_SEED) -> dict:
+    """Agreement between two raters given paired 3-category labels (each in CATEGORIES). Returns the
+    3-category kappa + confusion matrix, and the BINARY kappa (hallucinated vs not) restricted to items that
+    BOTH raters label non-ABSTAIN (Amendment 4 Addendum), each with its n and a bootstrap 95% CI
+    (Amendment 11: 2,000 resamples, fixed seed; n_resamples=0 disables)."""
     k3 = cohen_kappa(labels_a, labels_b, CATEGORIES)
     both = [(a, b) for a, b in zip(labels_a, labels_b) if a != CATEGORY_ABSTAIN and b != CATEGORY_ABSTAIN]
     bin_cats = (CATEGORY_NOT_HALLUCINATED, CATEGORY_HALLUCINATED)
     ba, bb = [a for a, _ in both], [b for _, b in both]
     kb = cohen_kappa(ba, bb, bin_cats)
+    ci3 = bootstrap_kappa_ci(labels_a, labels_b, CATEGORIES, n_resamples, seed)
+    cib = bootstrap_kappa_ci(ba, bb, bin_cats, n_resamples, seed)
     return {
         "n": len(labels_a),
         "kappa_3cat": round(k3, 4) if k3 is not None else None,
+        "kappa_3cat_ci95": ci3["ci95"],
         "observed_agreement_3cat": round(sum(1 for a, b in zip(labels_a, labels_b) if a == b) / len(labels_a), 4)
         if labels_a else None,
         "confusion_3cat": confusion_matrix(labels_a, labels_b, CATEGORIES),
         "n_both_non_abstain": len(both),
         "kappa_binary_non_abstain": round(kb, 4) if kb is not None else None,
+        "kappa_binary_non_abstain_ci95": cib["ci95"],
         "confusion_binary_non_abstain": confusion_matrix(ba, bb, bin_cats),
+        "bootstrap": {"n_resamples": n_resamples, "seed": seed, "n_defined_3cat": ci3["n_defined"],
+                      "n_defined_binary": cib["n_defined"]},
     }
+
+
+def faithfulness_category(ratio: float | None) -> str | None:
+    """judge-v2.2 faithfulness ratio -> the annotator's faithfulness_level scale: 1 -> all_supported,
+    0 -> not_supported, anything in between -> partly_supported; None stays None."""
+    if ratio is None:
+        return None
+    if ratio >= 1.0:
+        return "all_supported"
+    if ratio <= 0.0:
+        return "not_supported"
+    return "partly_supported"
