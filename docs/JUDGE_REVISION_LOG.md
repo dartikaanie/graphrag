@@ -11,7 +11,7 @@ The hallucination judge's prompt versions (docs/DECISION_C_SCORING.md, Amendment
 | version | date | commit | reason | κ before (95% CI) | κ after (95% CI) |
 |---|---|---|---|---|---|
 | judge-v2.2 | 2026-10-19 | 79b907c | Base version (Amendment 11): retrieval context, supported_by_context, cited_item_supports, approach_match, blind-v3. Not a revision. | – | panel-v1 (Amendment 12), run 35fab00: 3-category κ 0.551 (95% CI 0.329–0.731); panel binary κ 0.195 (ABSTAIN excluded). Below the 0.6 target. |
-| judge-v2.3 | 2026-10-19 | db12f5e | Iteration 2, revision 1 of 3 after judge-v2.2. Prompt changes #1+#2 (always together), #3, #4, #5; JSON mode (response_format json_object) for all three judges; parser pv2.3-1 (supported_by_context "N/A" with context → null). Details and rationale below. | judge-v2.2: 3-category 0.551 (0.329–0.731); binary (ABSTAIN excl.) 0.195 | [after the run against the frozen labels] |
+| judge-v2.3 | 2026-10-19 | db12f5e | Iteration 2, revision 1 of 3 after judge-v2.2. Prompt changes #1+#2 (always together), #3, #4, #5; JSON mode (response_format json_object) for all three judges; parser pv2.3-1 (supported_by_context "N/A" with context → null). Details and rationale below. | judge-v2.2: 3-category 0.551 (0.329–0.731); binary (ABSTAIN excl.) 0.195 | panel-v1, run cc140db: 3-category κ 0.529; panel binary κ 0.180 (ABSTAIN excluded); recall 2/15. Fails both Amendment 13 conditions. |
 
 ## Iteration 2: judge-v2.3 (2026-10-19)
 
