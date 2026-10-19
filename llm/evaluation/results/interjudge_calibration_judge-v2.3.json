@@ -1,0 +1,782 @@
+{
+  "prompt_version": "judge-v2.3",
+  "n_items": 60,
+  "missing": {
+    "llama": {},
+    "deepseek": {},
+    "qwen": {}
+  },
+  "pairwise": {
+    "abstain_excluded": {
+      "llama_vs_deepseek": {
+        "n": 51,
+        "agree": {
+          "x": 46,
+          "n": 51,
+          "rate": 0.902
+        },
+        "kappa": 0.4084
+      },
+      "llama_vs_qwen": {
+        "n": 52,
+        "agree": {
+          "x": 50,
+          "n": 52,
+          "rate": 0.9615
+        },
+        "kappa": 0.0
+      },
+      "deepseek_vs_qwen": {
+        "n": 51,
+        "agree": {
+          "x": 44,
+          "n": 51,
+          "rate": 0.8627
+        },
+        "kappa": 0.0
+      }
+    },
+    "abstain_counted": {
+      "llama_vs_deepseek": {
+        "n": 60,
+        "agree": {
+          "x": 55,
+          "n": 60,
+          "rate": 0.9167
+        },
+        "kappa": 0.4141
+      },
+      "llama_vs_qwen": {
+        "n": 60,
+        "agree": {
+          "x": 58,
+          "n": 60,
+          "rate": 0.9667
+        },
+        "kappa": 0.0
+      },
+      "deepseek_vs_qwen": {
+        "n": 60,
+        "agree": {
+          "x": 53,
+          "n": 60,
+          "rate": 0.8833
+        },
+        "kappa": 0.0
+      }
+    },
+    "three_category": {
+      "llama_vs_deepseek": {
+        "n": 60,
+        "agree": {
+          "x": 54,
+          "n": 60,
+          "rate": 0.9
+        },
+        "kappa": 0.726
+      },
+      "llama_vs_qwen": {
+        "n": 60,
+        "agree": {
+          "x": 58,
+          "n": 60,
+          "rate": 0.9667
+        },
+        "kappa": 0.8718
+      },
+      "deepseek_vs_qwen": {
+        "n": 60,
+        "agree": {
+          "x": 52,
+          "n": 60,
+          "rate": 0.8667
+        },
+        "kappa": 0.6129
+      }
+    }
+  },
+  "fleiss": {
+    "abstain_excluded": {
+      "n": 51,
+      "kappa": 0.1736,
+      "unanimous": {
+        "x": 44,
+        "n": 51,
+        "rate": 0.8627
+      }
+    },
+    "abstain_counted": {
+      "n": 60,
+      "kappa": 0.1813,
+      "unanimous": {
+        "x": 53,
+        "n": 60,
+        "rate": 0.8833
+      }
+    },
+    "three_category": {
+      "n": 60,
+      "kappa": 0.7225,
+      "unanimous": {
+        "x": 52,
+        "n": 60,
+        "rate": 0.8667
+      }
+    }
+  },
+  "prevalence": {
+    "llama": {
+      "abstain_excluded": {
+        "x": 2,
+        "n": 52,
+        "rate": 0.0385
+      },
+      "abstain_counted": {
+        "x": 2,
+        "n": 60,
+        "rate": 0.0333
+      },
+      "abstain": {
+        "x": 8,
+        "n": 60,
+        "rate": 0.1333
+      }
+    },
+    "deepseek": {
+      "abstain_excluded": {
+        "x": 7,
+        "n": 51,
+        "rate": 0.1373
+      },
+      "abstain_counted": {
+        "x": 7,
+        "n": 60,
+        "rate": 0.1167
+      },
+      "abstain": {
+        "x": 9,
+        "n": 60,
+        "rate": 0.15
+      }
+    },
+    "qwen": {
+      "abstain_excluded": {
+        "x": 0,
+        "n": 52,
+        "rate": 0.0
+      },
+      "abstain_counted": {
+        "x": 0,
+        "n": 60,
+        "rate": 0.0
+      },
+      "abstain": {
+        "x": 8,
+        "n": 60,
+        "rate": 0.1333
+      }
+    },
+    "human": {
+      "abstain_excluded": {
+        "x": 15,
+        "n": 52,
+        "rate": 0.2885
+      },
+      "abstain_counted": {
+        "x": 15,
+        "n": 60,
+        "rate": 0.25
+      },
+      "abstain": {
+        "x": 8,
+        "n": 60,
+        "rate": 0.1333
+      }
+    }
+  },
+  "severity_distribution": {
+    "llama": {
+      "FAKTUAL": 50,
+      "ABSTAIN": 8,
+      "PENUH": 2
+    },
+    "deepseek": {
+      "FAKTUAL": 44,
+      "ABSTAIN": 9,
+      "PENUH": 7
+    },
+    "qwen": {
+      "FAKTUAL": 52,
+      "ABSTAIN": 8
+    },
+    "human": {
+      "FAKTUAL": 37,
+      "PENUH": 6,
+      "ABSTAIN": 8,
+      "SEBAGIAN": 9
+    }
+  },
+  "judge_sebagian_count": 0,
+  "categories": {
+    "A": [
+      "CAL-001",
+      "CAL-003",
+      "CAL-004",
+      "CAL-006",
+      "CAL-007",
+      "CAL-008",
+      "CAL-009",
+      "CAL-011",
+      "CAL-012",
+      "CAL-015",
+      "CAL-019",
+      "CAL-020",
+      "CAL-022",
+      "CAL-025",
+      "CAL-026",
+      "CAL-027",
+      "CAL-028",
+      "CAL-029",
+      "CAL-030",
+      "CAL-032",
+      "CAL-033",
+      "CAL-035",
+      "CAL-036",
+      "CAL-039",
+      "CAL-040",
+      "CAL-041",
+      "CAL-042",
+      "CAL-043",
+      "CAL-044",
+      "CAL-045",
+      "CAL-046",
+      "CAL-047",
+      "CAL-048",
+      "CAL-049",
+      "CAL-051",
+      "CAL-052",
+      "CAL-053",
+      "CAL-054",
+      "CAL-055",
+      "CAL-056",
+      "CAL-058",
+      "CAL-060"
+    ],
+    "B": [
+      "CAL-002",
+      "CAL-005",
+      "CAL-010",
+      "CAL-013",
+      "CAL-014",
+      "CAL-023",
+      "CAL-031",
+      "CAL-037",
+      "CAL-038",
+      "CAL-059"
+    ],
+    "C": [
+      "CAL-016",
+      "CAL-017",
+      "CAL-018",
+      "CAL-021",
+      "CAL-024",
+      "CAL-034",
+      "CAL-050",
+      "CAL-057"
+    ],
+    "D": []
+  },
+  "categories_sensitivity": {
+    "A": 41,
+    "B": 11,
+    "C": 8,
+    "D": 0
+  },
+  "sensitivity_items": [
+    "CAL-010",
+    "CAL-028",
+    "CAL-041"
+  ],
+  "per_item": {
+    "CAL-001": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-002": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "PENUH",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-003": {
+      "category": "A",
+      "human": "ABSTAIN",
+      "human_severity": null,
+      "llama": "ABSTAIN",
+      "deepseek": "ABSTAIN",
+      "qwen": "ABSTAIN"
+    },
+    "CAL-004": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-005": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-006": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-007": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-008": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-009": {
+      "category": "A",
+      "human": "ABSTAIN",
+      "human_severity": null,
+      "llama": "ABSTAIN",
+      "deepseek": "ABSTAIN",
+      "qwen": "ABSTAIN"
+    },
+    "CAL-010": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-011": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-012": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-013": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-014": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-015": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-016": {
+      "category": "C",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-017": {
+      "category": "C",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-018": {
+      "category": "C",
+      "human": "HALLUCINATED",
+      "human_severity": "PENUH",
+      "llama": "HALLUCINATED",
+      "deepseek": "HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-019": {
+      "category": "A",
+      "human": "ABSTAIN",
+      "human_severity": null,
+      "llama": "ABSTAIN",
+      "deepseek": "ABSTAIN",
+      "qwen": "ABSTAIN"
+    },
+    "CAL-020": {
+      "category": "A",
+      "human": "ABSTAIN",
+      "human_severity": null,
+      "llama": "ABSTAIN",
+      "deepseek": "ABSTAIN",
+      "qwen": "ABSTAIN"
+    },
+    "CAL-021": {
+      "category": "C",
+      "human": "HALLUCINATED",
+      "human_severity": "PENUH",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-022": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-023": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-024": {
+      "category": "C",
+      "human": "HALLUCINATED",
+      "human_severity": "PENUH",
+      "llama": "HALLUCINATED",
+      "deepseek": "HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-025": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-026": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-027": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-028": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-029": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-030": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-031": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-032": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-033": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-034": {
+      "category": "C",
+      "human": "HALLUCINATED",
+      "human_severity": "PENUH",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-035": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-036": {
+      "category": "A",
+      "human": "ABSTAIN",
+      "human_severity": null,
+      "llama": "ABSTAIN",
+      "deepseek": "ABSTAIN",
+      "qwen": "ABSTAIN"
+    },
+    "CAL-037": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-038": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "PENUH",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-039": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-040": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-041": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-042": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-043": {
+      "category": "A",
+      "human": "ABSTAIN",
+      "human_severity": null,
+      "llama": "ABSTAIN",
+      "deepseek": "ABSTAIN",
+      "qwen": "ABSTAIN"
+    },
+    "CAL-044": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-045": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-046": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-047": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-048": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-049": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-050": {
+      "category": "C",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "ABSTAIN",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-051": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-052": {
+      "category": "A",
+      "human": "ABSTAIN",
+      "human_severity": null,
+      "llama": "ABSTAIN",
+      "deepseek": "ABSTAIN",
+      "qwen": "ABSTAIN"
+    },
+    "CAL-053": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-054": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-055": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-056": {
+      "category": "A",
+      "human": "ABSTAIN",
+      "human_severity": null,
+      "llama": "ABSTAIN",
+      "deepseek": "ABSTAIN",
+      "qwen": "ABSTAIN"
+    },
+    "CAL-057": {
+      "category": "C",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-058": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-059": {
+      "category": "B",
+      "human": "HALLUCINATED",
+      "human_severity": "SEBAGIAN",
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    },
+    "CAL-060": {
+      "category": "A",
+      "human": "NOT_HALLUCINATED",
+      "human_severity": null,
+      "llama": "NOT_HALLUCINATED",
+      "deepseek": "NOT_HALLUCINATED",
+      "qwen": "NOT_HALLUCINATED"
+    }
+  }
+}
