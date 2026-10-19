@@ -317,7 +317,13 @@ def main(argv=None) -> int:
         return 1
     human = {k["item_id"]: (researcher.get(k["item_id"]) or {}).get("category") for k in key["items"]}
     conditions = {k["item_id"]: k["run_label"] for k in key["items"]}
-    raters = raters_from_records(key["items"], read_jsonl(Path(args.judge_output)), read_jsonl(Path(args.panel_output)))
+    judge_records, panel_records = read_jsonl(Path(args.judge_output)), read_jsonl(Path(args.panel_output))
+    versions = {r.get("prompt_version") for r in judge_records} | {r.get("prompt_version") for r in panel_records}
+    if len(versions) != 1:
+        print(f"[ERROR] the judge and panel files must hold exactly one prompt version, found {sorted(map(str, versions))}")
+        return 1
+    print(f"[judge version] {versions.pop()}")
+    raters = raters_from_records(key["items"], judge_records, panel_records)
     rep = agreement_report(human, raters, conditions)
     if SENSITIVITY_LABELS.get(args.purpose):
         rep["sensitivity"] = sensitivity_report(human, raters, conditions, SENSITIVITY_LABELS[args.purpose])

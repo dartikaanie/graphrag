@@ -39,7 +39,7 @@ BASE_URL = "https://api.deepinfra.com/v1/openai"
 API_KEY_ENV = "DEEPINFRA_API_KEY"
 PRICE_DATE = "2026-10-19"
 
-JUDGE_PROMPT_VERSION = PROMPT_VERSION      # "judge-v2.2", frozen; the same for all three judges
+JUDGE_PROMPT_VERSION = PROMPT_VERSION      # "judge-v2.2" (iteration 1); judge_panel.py --judge-version selects the run's version
 TEMPERATURE = REQUEST_TEMPERATURE          # 0.0
 MAX_TOKENS = REQUEST_MAX_TOKENS            # 2000, the current judge value
 
@@ -95,11 +95,16 @@ def judge_cost_usd(judge: PanelJudge, prompt_tokens: int | None, completion_toke
     return round(prompt_tokens / 1e6 * judge.price_per_m_input + completion_tokens / 1e6 * judge.price_per_m_output, 8)
 
 
-def panel_public_view() -> dict:
-    """The panel configuration as recorded in manifests (no keys)."""
+def panel_public_view(spec=None) -> dict:
+    """The panel configuration as recorded in manifests (no keys). `spec`: judge_panel.JudgeVersionSpec of the run
+    (default: the judge-v2.2 values above)."""
     return {
-        "panel_id": PANEL_ID, "provider": PROVIDER, "base_url": BASE_URL, "prompt_version": JUDGE_PROMPT_VERSION,
-        "temperature": TEMPERATURE, "max_tokens": MAX_TOKENS, "max_retries": MAX_RETRIES, "price_date": PRICE_DATE,
+        "panel_id": PANEL_ID, "provider": PROVIDER, "base_url": BASE_URL,
+        "prompt_version": spec.prompt_version if spec else JUDGE_PROMPT_VERSION,
+        "parse_version": spec.parse_version if spec else None,
+        "response_format": spec.response_format if spec else None,
+        "temperature": spec.temperature if spec else TEMPERATURE,
+        "max_tokens": spec.max_tokens if spec else MAX_TOKENS, "max_retries": MAX_RETRIES, "price_date": PRICE_DATE,
         "judges": [{"judge_id": j.judge_id, "model": j.model, "family": j.family,
                     "expected_served_model": j.expected_served_model, "extra_body": j.extra_body,
                     "thinking_disabled": j.thinking_disabled, "price_per_m_input": j.price_per_m_input,
