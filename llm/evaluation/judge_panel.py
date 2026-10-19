@@ -392,7 +392,7 @@ def summarize(judge_records: list[dict], panel_records: list[dict], new_records:
             "model": j.model, "n_records": len(rs), "parse_ok": f"{sum(1 for r in rs if r.get('parse_ok'))}/{len(rs)}",
             "parse_ok_this_run": f"{sum(1 for r in new if r.get('parse_ok'))}/{len(new)}",
             "finish_reason_this_run": dict(Counter(r.get("finish_reason") for r in new)),
-            "response_models": dict(Counter(r.get("response_model") for r in rs + new)),
+            "response_models": dict(Counter(r.get("response_model") for r in rs)),
             "finish_reason": dict(Counter(r.get("finish_reason") for r in rs)),
             "labels": dict(Counter(r.get("label") for r in rs)),
             "unspecified_votes": sum(1 for r in rs if r.get("label") == UNSPECIFIED),
