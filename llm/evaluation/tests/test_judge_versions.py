@@ -20,7 +20,7 @@ def _log(tmp_path, versions):
 def test_constants_match_the_runner_and_the_real_log():
     assert jv.BASE_VERSION == judge_prompt_v2_2.PROMPT_VERSION == jv.CALIBRATION_ALLOWED[0]
     assert len(jv.CALIBRATION_ALLOWED) == 1 + jv.MAX_REVISIONS == 4
-    assert jv.logged_versions() == ["judge-v2.2"]
+    assert jv.logged_versions() == ["judge-v2.2", "judge-v2.3"]   # base + revision 1 (iteration 2)
     from annotation_tool import frozen_judge_version
     assert (frozen_judge_version() is None) == (jv.OFFICIAL_ALLOWED == ())   # both filled in the same commit
 
