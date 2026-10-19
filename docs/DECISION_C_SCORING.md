@@ -697,6 +697,9 @@ calibration set, applied identically to all three judges).
 (f) Human annotation is done by a single annotator; agreement therefore measures the
 validity of judge labels, not inter-annotator reliability (Çetinkaya, 2027; Zhu et al., 2026).
 (g) This supersedes the earlier choice of Llama as primary and gpt-4o-mini as secondary judge.
+(h) blind-v3 does not mask every source-limitation phrase (e.g. 'The resources provided do not
+cover…'), so some RAG answers remain recognizable to both the annotator and the judges. blind-v3
+is kept unchanged so that judges and the annotator see identical input.
 
 ---
 

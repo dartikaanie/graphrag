@@ -148,6 +148,16 @@ def _letter(column: str) -> str:
     return get_column_letter(COLUMNS.index(column) + 1)
 
 
+# Excel writes a carriage return inside a cell as the escape "_x000D_" (OOXML ST_Xstring), and openpyxl reads
+# it back literally. Sheet text is converted back before hashing, so this round trip is not taken for an edit.
+_XLSX_CR_ESCAPE = "_x000D_"
+
+
+def from_xlsx_text(value):
+    """A text cell as read from a saved sheet, with Excel's "_x000D_" escape turned back into "\r"."""
+    return value.replace(_XLSX_CR_ESCAPE, "\r") if isinstance(value, str) else value
+
+
 def text_sha256(text) -> str:
     """Hash of a text cell, whitespace-normalized so a spreadsheet round trip (line endings, trailing
     spaces) does not look like an edit, while any change of wording does."""
@@ -413,7 +423,7 @@ def read_annotation_xlsx(path: Path) -> tuple[list[dict], list[str]]:
             "severity": sev, "wrong_claims": wrong_claims, "faithfulness_level": faith, "approach_match": approach,
             "domain_familiarity": familiarity, "uncertain": uncertain, "has_context": has_context,
             "notes": str(cell("notes") or "").strip(), "category": category,
-            "text_sha256": {c: text_sha256(cell(c)) for c in TEXT_COLUMNS},
+            "text_sha256": {c: text_sha256(from_xlsx_text(cell(c))) for c in TEXT_COLUMNS},
         })
     return rows, problems
 

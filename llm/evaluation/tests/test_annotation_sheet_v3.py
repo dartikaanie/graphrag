@@ -143,3 +143,24 @@ def test_old_format_sheet_is_refused(tmp_path):
     rows, problems = at.read_annotation_xlsx(tmp_path / "old.xlsx")
     assert rows == [] and "older export" in problems[0]
     assert json.dumps(at.COLUMNS)  # sanity
+
+
+def test_from_xlsx_text_restores_carriage_returns():
+    assert at.from_xlsx_text("a_x000D_\nb") == "a\r\nb"
+    assert at.from_xlsx_text(None) is None and at.from_xlsx_text(3) == 3
+    assert at.text_sha256(at.from_xlsx_text("one_x000D_\ntwo")) == at.text_sha256("one\r\ntwo")
+    assert at.text_sha256(at.from_xlsx_text("one_x000D_\ntwo")) != at.text_sha256("one\r\nthree")
+
+
+def test_excel_carriage_return_escape_is_not_an_edit(sheet):
+    export, pdir = sheet
+    row = export["annotator1"][0]
+    key = {"items": export["key_items"]}
+    # Excel saves a carriage return as "_x000D_": same text, not an edit
+    _set(pdir / "annotator1.xlsx", row["item_id"], accepted_answer=row["accepted_answer"] + "_x000D_\n")
+    rows, _ = at.read_annotation_xlsx(pdir / "annotator1.xlsx")
+    assert not [p for p in at.check_against_key(rows, key, "annotator1", "a.xlsx") if "was edited" in p]
+    # a real change of wording is still caught
+    _set(pdir / "annotator1.xlsx", row["item_id"], accepted_answer=row["accepted_answer"] + "_x000D_\nextra words")
+    rows, _ = at.read_annotation_xlsx(pdir / "annotator1.xlsx")
+    assert [p for p in at.check_against_key(rows, key, "annotator1", "a.xlsx") if "was edited" in p]
