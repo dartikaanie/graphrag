@@ -1,6 +1,12 @@
 # Panduan singkat anotasi (set kalibrasi)
 
-Panduan kerja untuk peneliti sebagai anotator. Definisi lengkap setiap label ada di `docs/ANNOTATION_GUIDELINE.md`. Bila ada yang tampak bertentangan, pedoman itulah yang berlaku. Keputusan desainnya ada di `docs/DECISION_C_SCORING.md`, Amendment 4 dan 11.
+Panduan kerja untuk peneliti sebagai anotator. Keputusan desainnya ada di `docs/DECISION_C_SCORING.md`, Amendment 4 dan 11.
+
+**Pedoman mana yang berlaku:**
+- **Lembar kalibrasi v2 (`annotator1_v2.xlsx`) dan set konfirmasi:** `docs/ANNOTATION_GUIDELINE_v2.md` (pedoman v2, dengan aturan waktu, istilah dari penanya, dan faithfulness lawan halusinasi).
+- **Lembar kalibrasi v1 yang sudah dibekukan (`annotator1.xlsx`, `annotator1_freeze.json`):** `docs/ANNOTATION_GUIDELINE.md` (pedoman v1). Lembar ini tidak diubah lagi.
+
+Bila panduan ini tampak bertentangan dengan pedoman yang berlaku, pedomanlah yang menang. Bagian 1–6 di bawah ditulis untuk lembar v1; untuk lembar v2 lihat bagian 8.
 
 ## 1. Sebelum mulai
 
@@ -82,3 +88,13 @@ Lembar `annotator2.xlsx` biarkan kosong bila tidak ada anotator kedua. Lembar ya
 ## 7. Setelah lembar selesai
 
 Langkah berikutnya (judge-v2.2 pada set kalibrasi, κ, revisi, pembekuan) ada di ringkasan `reports/p1_judge_annotation.md`, bagian "Langkah berikutnya untuk peneliti".
+
+## 8. Lembar kalibrasi v2 (`annotator1_v2.xlsx`)
+
+1. Baca `docs/ANNOTATION_GUIDELINE_v2.md`, terutama aturan 7 (aturan waktu), aturan 8 (istilah dari penanya), dan bagian "Konteks yang salah terap" di Langkah 5.
+2. Lembar v2 adalah salinan lembar v1 yang dibekukan, dengan label v1 sudah terisi, ditambah empat kolom di akhir:
+   - `v2_change_reason`: isi **hanya** pada baris yang labelnya Anda ubah, dengan alasannya;
+   - `question_date`, `reference_date`: tanggal dari data Stack Overflow, **jangan diubah**;
+   - `time_rule_check`: `Y` pada item yang perlu diperiksa ulang dengan aturan waktu, **jangan diubah**.
+3. Ubah hanya item yang memang perlu Anda nilai ulang. Kolom teks (`item_id` sampai `context`) tetap tidak boleh diubah.
+4. Setelah selesai, simpan dan tutup Excel, lalu beri tahu. Lembar diperiksa dengan pemeriksaan yang sama seperti v1, dibandingkan sel per sel dengan v1, lalu dibekukan.
