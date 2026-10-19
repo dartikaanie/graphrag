@@ -7,6 +7,7 @@ Blind human annotation for judge calibration and confirmation
 Subcommands
     export              stratified sample -> one blind XLSX per annotator + key (outside the repo)
     validate            check a filled XLSX (invalid cells are reported, nothing is written)
+    freeze              fix a valid sheet by its SHA-256 (record in the repo, copy outside), Amendment 12
     human-kappa         annotator 1 vs annotator 2 on the overlap + adjudication template
     finalize-reference  build the adjudicated reference file (unlocks the calibration judge guard)
     judge-kappa         judge vs human reference, per judge and judge version (Markdown report)
@@ -146,6 +147,16 @@ def shown_texts(title: str, body_html: str, reference_html: str, candidate: str,
 def _letter(column: str) -> str:
     from openpyxl.utils import get_column_letter
     return get_column_letter(COLUMNS.index(column) + 1)
+
+
+# Excel writes a carriage return inside a cell as the escape "_x000D_" (OOXML ST_Xstring), and openpyxl reads
+# it back literally. Sheet text is converted back before hashing, so this round trip is not taken for an edit.
+_XLSX_CR_ESCAPE = "_x000D_"
+
+
+def from_xlsx_text(value):
+    """A text cell as read from a saved sheet, with Excel's "_x000D_" escape turned back into "\r"."""
+    return value.replace(_XLSX_CR_ESCAPE, "\r") if isinstance(value, str) else value
 
 
 def text_sha256(text) -> str:
@@ -413,7 +424,7 @@ def read_annotation_xlsx(path: Path) -> tuple[list[dict], list[str]]:
             "severity": sev, "wrong_claims": wrong_claims, "faithfulness_level": faith, "approach_match": approach,
             "domain_familiarity": familiarity, "uncertain": uncertain, "has_context": has_context,
             "notes": str(cell("notes") or "").strip(), "category": category,
-            "text_sha256": {c: text_sha256(cell(c)) for c in TEXT_COLUMNS},
+            "text_sha256": {c: text_sha256(from_xlsx_text(cell(c))) for c in TEXT_COLUMNS},
         })
     return rows, problems
 
@@ -721,6 +732,81 @@ def record_completion(purpose: str, annotator: str, sheet: Path, now: datetime |
            "completed_at_utc": (now or datetime.now(timezone.utc)).isoformat()}
     path.write_text(json.dumps(rec, indent=2) + "\n")
     return rec
+
+
+# ---------------------------------------------------------------------------
+# Freeze (Amendment 12): the validated sheet is fixed by its SHA-256 before any judge runs on its items
+# ---------------------------------------------------------------------------
+
+FREEZE_NOTE = "frozen before any judge run on calibration items"
+REANNOTATION_NOT_SCHEDULED = "not_scheduled"
+
+
+def freeze_path(purpose: str, annotator: str, annotation_root: Path | None = None) -> Path:
+    return purpose_dir(purpose, annotation_root) / f"{annotator}_freeze.json"
+
+
+def freeze_annotation(purpose: str, annotator: str, key_dir: Path, now: datetime | None = None,
+                      annotation_root: Path | None = None, note: str = FREEZE_NOTE) -> dict:
+    """Validates the sheet (no problem allowed), copies it OUTSIDE the repo to
+    <key_dir>/<annotator>_frozen_<YYYYMMDD>.xlsx, writes <annotator>_freeze.json (file name, SHA-256, item
+    count, timestamp, note) and the completion record with re-annotation NOT scheduled (single-pass protocol;
+    re-annotation only on the supervisor's request). Refuses to replace an existing freeze of another hash."""
+    import shutil
+
+    now = now or datetime.now(timezone.utc)
+    sheet = purpose_dir(purpose, annotation_root) / f"{annotator}.xlsx"
+    key = load_verified_key(purpose, key_dir, annotation_root)
+    rows, problems = load_annotator(purpose, annotator, key, annotation_root)
+    if problems:
+        raise AnnotationError(f"{sheet.name} is not valid ({len(problems)} problem(s), e.g. {problems[0]}); "
+                              f"fix it before freezing")
+    sha = file_sha256(sheet)
+    fpath = freeze_path(purpose, annotator, annotation_root)
+    if fpath.exists():
+        old = json.loads(fpath.read_text())
+        if old["sha256"] != sha:
+            raise AnnotationError(f"{fpath.name} already freezes a different version ({old['sha256']}); a frozen "
+                                  f"sheet is not replaced")
+        return old
+    copy = Path(key_dir) / f"{annotator}_frozen_{now.strftime('%Y%m%d')}.xlsx"
+    if copy.exists() and file_sha256(copy) != sha:
+        raise AnnotationError(f"{copy} exists with a different hash; refusing to overwrite")
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(sheet, copy)
+    if file_sha256(copy) != sha:
+        raise AnnotationError(f"copy {copy} does not match the sheet's hash")
+    rec = {"purpose": purpose, "annotator": annotator, "file_name": sheet.name, "sha256": sha,
+           "item_count": len(rows), "frozen_at_utc": now.isoformat(), "note": note,
+           "frozen_copy_name": copy.name, "frozen_copy_location": "outside the repository (annotation key dir)"}
+    fpath.write_text(json.dumps(rec, indent=2) + "\n")
+    completion = record_completion(purpose, annotator, sheet, now, annotation_root)
+    completion.update({"reannotation": REANNOTATION_NOT_SCHEDULED,
+                       "reannotation_note": "single annotation pass; re-annotation only if the supervisor asks"})
+    completion_path(purpose, annotator, annotation_root).write_text(json.dumps(completion, indent=2) + "\n")
+    return rec
+
+
+def assert_annotation_frozen(purpose: str, annotator: str = "annotator1", annotation_root: Path | None = None,
+                             sheet: Path | None = None) -> dict:
+    """Raises AnnotationError unless the sheet's SHA-256 equals its freeze record."""
+    fpath = freeze_path(purpose, annotator, annotation_root)
+    sheet = sheet or purpose_dir(purpose, annotation_root) / f"{annotator}.xlsx"
+    if not fpath.exists():
+        raise AnnotationError(f"{fpath.name} not found: {sheet.name} has not been frozen")
+    rec = json.loads(fpath.read_text())
+    actual = file_sha256(sheet) if Path(sheet).exists() else None
+    if actual != rec["sha256"]:
+        raise AnnotationError(f"{Path(sheet).name} has sha256 {actual}, but {fpath.name} froze {rec['sha256']}; "
+                              f"the annotation changed after it was frozen")
+    return rec
+
+
+def cmd_freeze(args) -> int:
+    rec = freeze_annotation(args.purpose, args.annotator, key_dir_from(args.key_dir))
+    log(f"Frozen {rec['file_name']}: sha256 {rec['sha256']}, {rec['item_count']} items, {rec['frozen_at_utc']}; "
+        f"copy {rec['frozen_copy_name']} outside the repo; record {freeze_path(args.purpose, args.annotator).name}")
+    return 0
 
 
 def cmd_validate(args) -> int:
@@ -1047,6 +1133,9 @@ def cmd_export_reannotation(args, now: datetime | None = None, annotation_root: 
         raise AnnotationError(f"{comp_path.name} not found: the sheet was never validated as complete -- run "
                               f"`validate --xlsx {sheet}` first")
     completion = json.loads(comp_path.read_text())
+    if completion.get("reannotation") == REANNOTATION_NOT_SCHEDULED:
+        raise AnnotationError(f"re-annotation is not scheduled for {sheet.name} ({comp_path.name}: single annotation "
+                              f"pass, re-annotation only if the supervisor asks); change that record first")
     if completion["sheet_sha256"] != file_sha256(sheet):
         raise AnnotationError(f"{sheet.name} changed after it was recorded complete -- validate it again first")
     key = load_verified_key(purpose, key_dir, annotation_root)
@@ -1294,6 +1383,11 @@ def main(argv=None) -> int:
     p.add_argument("--xlsx", required=True)
     p.add_argument("--annotator", choices=["annotator1", "annotator2"], default=None)
     p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("freeze")
+    common(p)
+    p.add_argument("--annotator", choices=["annotator1", "annotator2"], default="annotator1")
+    p.set_defaults(func=cmd_freeze)
 
     p = sub.add_parser("human-kappa")
     common(p)

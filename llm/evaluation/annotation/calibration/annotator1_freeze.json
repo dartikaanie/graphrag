@@ -1,0 +1,11 @@
+{
+  "purpose": "calibration",
+  "annotator": "annotator1",
+  "file_name": "annotator1.xlsx",
+  "sha256": "bff6e290cbd345a13e3630855ea98ed1902a0e8e2304520a95231e85fbe8290b",
+  "item_count": 60,
+  "frozen_at_utc": "2026-10-19T13:42:51.284794+00:00",
+  "note": "frozen before any judge run on calibration items",
+  "frozen_copy_name": "annotator1_frozen_20261019.xlsx",
+  "frozen_copy_location": "outside the repository (annotation key dir)"
+}
