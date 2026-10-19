@@ -83,3 +83,21 @@ def test_raters_from_records_join_through_key():
     raters = ag.raters_from_records(key_items, [jrec], [prec])
     assert raters["qwen"] == {"CAL-001": H, "CAL-002": None}
     assert raters["panel"] == {"CAL-001": None, "CAL-002": None}
+
+
+def test_sensitivity_rows_apply_overrides_and_never_decide():
+    human = {"i1": H, "i2": N, "i3": N, "i4": H}
+    panel = {"i1": H, "i2": N, "i3": H, "i4": H}
+    raters = {"panel": panel}
+    rep = ag.agreement_report(human, raters, {i: "A" for i in human}, n_resamples=0)
+    rep["sensitivity"] = ag.sensitivity_report(human, raters, {i: "A" for i in human}, {"i3": H}, n_resamples=0)
+    assert rep["sensitivity"]["changed_items"] == ["i3"]
+    assert rep["sensitivity"]["three_category"]["panel"]["kappa"] == 1.0
+    assert rep["three_category"]["panel"]["kappa"] < 1.0
+    assert rep["acceptance"]["panel_kappa_3cat"] == rep["three_category"]["panel"]["kappa"]  # frozen labels decide
+    md = ag.report_markdown("calibration", rep)
+    assert "| SENSITIVITY: panel |" in md and "not used for acceptance" in md
+
+
+def test_calibration_sensitivity_labels_match_the_reconsiderations_doc():
+    assert ag.SENSITIVITY_LABELS["calibration"] == {"CAL-010": N, "CAL-028": H, "CAL-041": H}

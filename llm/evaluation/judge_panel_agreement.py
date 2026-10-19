@@ -54,6 +54,15 @@ BINARY = (CATEGORY_NOT_HALLUCINATED, CATEGORY_HALLUCINATED)
 ABSTAIN_YN = ("ABSTAIN", "NOT_ABSTAIN")
 ACCEPTANCE_KAPPA = 0.6
 
+# Post-freeze label edits (docs/ANNOTATION_POSTFREEZE_RECONSIDERATIONS.md): made after viewing calibration results,
+# never used for acceptance; every report adds a clearly labelled SENSITIVITY row computed with them.
+SENSITIVITY_LABELS = {
+    "calibration": {"CAL-010": CATEGORY_NOT_HALLUCINATED, "CAL-028": CATEGORY_HALLUCINATED,
+                    "CAL-041": CATEGORY_HALLUCINATED},
+}
+SENSITIVITY_NOTE = ("SENSITIVITY: human labels with the post-freeze edits (docs/ANNOTATION_POSTFREEZE_RECONSIDERATIONS.md); "
+                    "made after viewing calibration results; not used for acceptance")
+
 
 def _frac(x: int, n: int) -> dict:
     return {"x": x, "n": n, "rate": round(x / n, 4) if n else None}
@@ -174,6 +183,16 @@ def agreement_report(human: dict, raters: dict, conditions: dict, n_resamples: i
     return out
 
 
+def sensitivity_report(human: dict, raters: dict, conditions: dict, overrides: dict,
+                       n_resamples: int = BOOTSTRAP_RESAMPLES) -> dict:
+    """The same metrics with `overrides` ({item_id: category}) applied to the human labels. Never decides."""
+    edited = {i: overrides.get(i, c) for i, c in human.items()}
+    r = agreement_report(edited, raters, conditions, n_resamples)
+    return {"note": SENSITIVITY_NOTE, "overrides": dict(overrides),
+            "changed_items": sorted(i for i in overrides if human.get(i) != overrides[i]),
+            "three_category": r["three_category"], "vs_human": r["vs_human"]}
+
+
 def _fmt(f: dict) -> str:
     return f"{f['x']}/{f['n']} ({f['rate']:.1%})" if f["rate"] is not None else f"{f['x']}/{f['n']} (-)"
 
@@ -192,10 +211,16 @@ def report_markdown(purpose: str, rep: dict) -> str:
              f"**Panel 3-category kappa = {rep['acceptance']['panel_kappa_3cat']}; target met: "
              f"{rep['acceptance']['meets_target']}.**", "",
              "| rater | n | missing | raw agreement | 3-category kappa | 95% CI |", "|---|---|---|---|---|---|"]
-    for name, r in rep["three_category"].items():
+    sens = rep.get("sensitivity")
+    rows3 = list(rep["three_category"].items())
+    if sens:
+        rows3 += [(f"SENSITIVITY: {n}", r) for n, r in sens["three_category"].items()]
+    for name, r in rows3:
         lines.append(f"| {name} | {r['n']} | {r['n_missing']} | {_fmt(r['raw_agreement'])} | {r['kappa']} | "
                      f"{_ci(r['kappa_ci95'])} |")
     lines.append("")
+    if sens:
+        lines += [f"SENSITIVITY rows: {sens['note']}. Edited items: {', '.join(sens['changed_items'])}.", ""]
     for name, r in rep["three_category"].items():
         m = r["confusion_human_rows"]
         lines += [f"{name}:", "", "| human \\ judge | " + " | ".join(CATEGORIES) + " |", "|---|---|---|---|"]
@@ -208,7 +233,10 @@ def report_markdown(purpose: str, rep: dict) -> str:
         lines += [f"## Judge vs human -- {title}", "",
                   "| rater | n | missing | raw agreement | kappa | 95% CI | recall | unsafe pass | false alarm |",
                   "|---|---|---|---|---|---|---|---|---|"]
-        for name, by_mode in rep["vs_human"].items():
+        rows = list(rep["vs_human"].items())
+        if sens:
+            rows += [(f"SENSITIVITY: {n}", b) for n, b in sens["vs_human"].items()]
+        for name, by_mode in rows:
             r = by_mode[mode]
             lines.append(f"| {name} | {r['n']} | {r.get('n_missing', 0)} | {_fmt(r['raw_agreement'])} | {r['kappa']} | "
                          f"{_ci(r['kappa_ci95'])} | {_fmt(r['hallucination_recall'])} | "
@@ -283,12 +311,18 @@ def main(argv=None) -> int:
     conditions = {k["item_id"]: k["run_label"] for k in key["items"]}
     raters = raters_from_records(key["items"], read_jsonl(Path(args.judge_output)), read_jsonl(Path(args.panel_output)))
     rep = agreement_report(human, raters, conditions)
+    if SENSITIVITY_LABELS.get(args.purpose):
+        rep["sensitivity"] = sensitivity_report(human, raters, conditions, SENSITIVITY_LABELS[args.purpose])
     out = Path(args.out) if args.out else Path(args.judge_output).with_name(f"panel_agreement_{args.purpose}.md")
     out.write_text(report_markdown(args.purpose, rep))
     out.with_suffix(".json").write_text(json.dumps(rep, indent=2, default=str) + "\n")
     for name, by_mode in rep["vs_human"].items():
         print(f"{name}: 3-category kappa={rep['three_category'][name]['kappa']} | binary kappa "
               f"excl={by_mode['abstain_excluded']['kappa']} counted={by_mode['abstain_counted']['kappa']}")
+    if "sensitivity" in rep:
+        s3 = rep["sensitivity"]["three_category"]["panel"]["kappa"]
+        sb = rep["sensitivity"]["vs_human"]["panel"]["abstain_excluded"]["kappa"]
+        print(f"SENSITIVITY (post-freeze edits, not for acceptance): panel 3-category kappa={s3}, binary excl={sb}")
     print(f"Acceptance (panel 3-category kappa >= {ACCEPTANCE_KAPPA}): {rep['acceptance']['meets_target']}")
     print(f"Report -> {out}")
     return 0
