@@ -56,14 +56,14 @@ ABSTAIN_YN = ("ABSTAIN", "NOT_ABSTAIN")
 ACCEPTANCE_KAPPA = 0.6
 ACCEPTANCE_BINARY_KAPPA = 0.4  # Amendment 13: panel binary kappa, ABSTAIN excluded (judge-v2.3 and later)
 
-# Post-freeze label edits (docs/ANNOTATION_POSTFREEZE_RECONSIDERATIONS.md): made after viewing calibration results,
-# never used for acceptance; every report adds a clearly labelled SENSITIVITY row computed with them.
+# Post-freeze label edits (docs/ANNOTATION_POSTFREEZE_RECONSIDERATIONS.md): saved after the iteration-1 run, post-dating
+# the freeze; never used for acceptance; every report adds a clearly labelled SENSITIVITY row computed with them.
 SENSITIVITY_LABELS = {
     "calibration": {"CAL-010": CATEGORY_NOT_HALLUCINATED, "CAL-028": CATEGORY_HALLUCINATED,
                     "CAL-041": CATEGORY_HALLUCINATED},
 }
 SENSITIVITY_NOTE = ("SENSITIVITY: human labels with the post-freeze edits (docs/ANNOTATION_POSTFREEZE_RECONSIDERATIONS.md); "
-                    "made after viewing calibration results; not used for acceptance")
+                    "saved after the iteration-1 run, post-dating the freeze; not used for acceptance")
 
 
 def _frac(x: int, n: int) -> dict:
