@@ -4,9 +4,10 @@ judge_panel_agreement.py
 Judge-vs-human agreement for the three panel judges and the panel
 (docs/DECISION_C_SCORING.md, Amendment 12 (e)).
 
-ACCEPTANCE (as pre-registered in Amendment 11): the PANEL's unweighted
-3-category Cohen's kappa (ABSTAIN / hallucinated / not hallucinated) vs the
-human labels, target >= 0.6. It is computed for every judge and the panel.
+ACCEPTANCE (Amendment 11, 12 (e), 13): the PANEL's unweighted 3-category
+Cohen's kappa (ABSTAIN / hallucinated / not hallucinated) vs the frozen human
+labels >= 0.6 AND the panel's binary kappa (ABSTAIN excluded) >= 0.4. The
+3-category kappa is computed for every judge and the panel.
 
 Supporting statistics (do not decide acceptance), on the binary
 "hallucinated" outcome, reported twice:
@@ -53,6 +54,7 @@ MODES = ("abstain_excluded", "abstain_counted")
 BINARY = (CATEGORY_NOT_HALLUCINATED, CATEGORY_HALLUCINATED)
 ABSTAIN_YN = ("ABSTAIN", "NOT_ABSTAIN")
 ACCEPTANCE_KAPPA = 0.6
+ACCEPTANCE_BINARY_KAPPA = 0.4  # Amendment 13: panel binary kappa, ABSTAIN excluded (judge-v2.3 and later)
 
 # Post-freeze label edits (docs/ANNOTATION_POSTFREEZE_RECONSIDERATIONS.md): made after viewing calibration results,
 # never used for acceptance; every report adds a clearly labelled SENSITIVITY row computed with them.
@@ -173,12 +175,16 @@ def agreement_report(human: dict, raters: dict, conditions: dict, n_resamples: i
             **{f"n_{r}_usable": sum(1 for i in ids if raters[r].get(i) is not None) for r in raters},
         }
     k3 = out["three_category"].get("panel", {}).get("kappa")
+    kb = out["vs_human"].get("panel", {}).get("abstain_excluded", {}).get("kappa")
+    meets_3cat = k3 is not None and k3 >= ACCEPTANCE_KAPPA
+    meets_bin = kb is not None and kb >= ACCEPTANCE_BINARY_KAPPA
     out["acceptance"] = {
-        "rule": f"panel 3-category kappa (ABSTAIN / hallucinated / not hallucinated) >= {ACCEPTANCE_KAPPA}, as "
-                "pre-registered in Amendment 11 (Amendment 12 (e)); binary metrics and per-judge results are "
-                "supporting statistics and do not decide",
-        "panel_kappa_3cat": k3,
-        "meets_target": k3 is not None and k3 >= ACCEPTANCE_KAPPA,
+        "rule": f"panel 3-category kappa (ABSTAIN / hallucinated / not hallucinated) >= {ACCEPTANCE_KAPPA} "
+                f"(Amendment 11, 12 (e)) AND panel binary kappa, ABSTAIN excluded, >= {ACCEPTANCE_BINARY_KAPPA} "
+                "(Amendment 13); the other binary metrics and per-judge results are supporting statistics",
+        "panel_kappa_3cat": k3, "meets_3cat": meets_3cat,
+        "panel_kappa_binary_abstain_excluded": kb, "meets_binary": meets_bin,
+        "meets_target": meets_3cat and meets_bin,
     }
     return out
 
@@ -208,8 +214,10 @@ def report_markdown(purpose: str, rep: dict) -> str:
              "The panel composition is fixed; per-judge rows are informational.", "",
              "## Acceptance: 3-category kappa (ABSTAIN / hallucinated / not hallucinated)", "",
              f"Rule (Amendment 11, Amendment 12 (e)): {rep['acceptance']['rule']}.", "",
-             f"**Panel 3-category kappa = {rep['acceptance']['panel_kappa_3cat']}; target met: "
-             f"{rep['acceptance']['meets_target']}.**", "",
+             f"**Panel 3-category kappa = {rep['acceptance']['panel_kappa_3cat']} (>= {ACCEPTANCE_KAPPA}: "
+             f"{rep['acceptance']['meets_3cat']}); panel binary kappa, ABSTAIN excluded = "
+             f"{rep['acceptance']['panel_kappa_binary_abstain_excluded']} (>= {ACCEPTANCE_BINARY_KAPPA}: "
+             f"{rep['acceptance']['meets_binary']}). Accepted: {rep['acceptance']['meets_target']}.**", "",
              "| rater | n | missing | raw agreement | 3-category kappa | 95% CI |", "|---|---|---|---|---|---|"]
     sens = rep.get("sensitivity")
     rows3 = list(rep["three_category"].items())
@@ -323,7 +331,10 @@ def main(argv=None) -> int:
         s3 = rep["sensitivity"]["three_category"]["panel"]["kappa"]
         sb = rep["sensitivity"]["vs_human"]["panel"]["abstain_excluded"]["kappa"]
         print(f"SENSITIVITY (post-freeze edits, not for acceptance): panel 3-category kappa={s3}, binary excl={sb}")
-    print(f"Acceptance (panel 3-category kappa >= {ACCEPTANCE_KAPPA}): {rep['acceptance']['meets_target']}")
+    a = rep["acceptance"]
+    print(f"Acceptance (Amendment 13): 3-category {a['panel_kappa_3cat']} >= {ACCEPTANCE_KAPPA}: {a['meets_3cat']}; "
+          f"binary excl {a['panel_kappa_binary_abstain_excluded']} >= {ACCEPTANCE_BINARY_KAPPA}: {a['meets_binary']} "
+          f"-> accepted: {a['meets_target']}")
     print(f"Report -> {out}")
     return 0
 

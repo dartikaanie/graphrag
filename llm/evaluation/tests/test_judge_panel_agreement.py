@@ -50,6 +50,7 @@ def test_report_structure_and_acceptance():
     assert rep["vs_human"]["panel"]["abstain_excluded"]["kappa"] == 1.0
     assert rep["three_category"]["panel"]["kappa"] == 1.0 and rep["three_category"]["panel"]["n"] == 6
     assert rep["acceptance"]["panel_kappa_3cat"] == 1.0 and rep["acceptance"]["meets_target"] is True
+    assert rep["acceptance"]["meets_3cat"] and rep["acceptance"]["meets_binary"]
     assert rep["three_category"]["qwen"]["kappa"] < 1.0
     assert set(rep["pairwise_judges"]) == {"llama_vs_deepseek", "llama_vs_qwen", "deepseek_vs_qwen"}
     assert rep["abstain_agreement"]["panel"]["n_abstain_human"] == 1
@@ -101,3 +102,14 @@ def test_sensitivity_rows_apply_overrides_and_never_decide():
 
 def test_calibration_sensitivity_labels_match_the_reconsiderations_doc():
     assert ag.SENSITIVITY_LABELS["calibration"] == {"CAL-010": N, "CAL-028": H, "CAL-041": H}
+
+
+def test_amendment13_needs_both_kappas():
+    # 3-category agreement is high (ABSTAIN-driven) but the binary kappa among non-ABSTAIN items is poor
+    human = {f"a{i}": A for i in range(8)} | {"h1": H, "h2": H, "h3": H, "n1": N, "n2": N, "n3": N, "n4": N}
+    panel = {f"a{i}": A for i in range(8)} | {"h1": N, "h2": N, "h3": H, "n1": N, "n2": N, "n3": N, "n4": H}
+    rep = ag.agreement_report(human, {"panel": panel}, {i: "A" for i in human}, n_resamples=0)
+    acc = rep["acceptance"]
+    assert acc["panel_kappa_3cat"] >= 0.6 and acc["meets_3cat"]
+    assert acc["panel_kappa_binary_abstain_excluded"] < 0.4 and not acc["meets_binary"]
+    assert acc["meets_target"] is False
