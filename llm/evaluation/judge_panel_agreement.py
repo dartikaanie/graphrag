@@ -255,7 +255,7 @@ def raters_from_records(key_items: list[dict], judge_records: list[dict], panel_
 
 
 def main(argv=None) -> int:
-    from annotation_tool import key_dir_from, load_annotator, load_verified_key
+    from annotation_tool import AnnotationError, assert_annotation_frozen, key_dir_from, load_annotator, load_verified_key
     from judge_panel import read_jsonl
 
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -266,6 +266,12 @@ def main(argv=None) -> int:
     p.add_argument("--out", default=None)
     args = p.parse_args(argv)
 
+    try:  # the human labels must be exactly the frozen sheet (Amendment 12)
+        frozen = assert_annotation_frozen(args.purpose, "annotator1")
+    except AnnotationError as e:
+        print(f"[ERROR] {e}")
+        return 1
+    print(f"[freeze] {frozen['file_name']} matches its freeze record (sha256 {frozen['sha256'][:12]}...)")
     key = load_verified_key(args.purpose, key_dir_from(args.key_dir))
     researcher, problems = load_annotator(args.purpose, "annotator1", key)
     if problems:
