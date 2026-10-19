@@ -17,18 +17,23 @@ INVALID_RUNS_PATH = REPO_ROOT / "logs" / "invalid_runs.jsonl"
 
 
 def load_invalid_run_ids() -> set[str]:
-    if not INVALID_RUNS_PATH.exists():
-        return set()
+    """Ids from the active file and its pre-official archive copy (2026-10-19),
+    so archived runs keep their audit status behind the archive toggle."""
+    from app.archive import archive_paths
+
     ids: set[str] = set()
-    with open(INVALID_RUNS_PATH) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                ids.add(json.loads(line)["run_id"])
-            except Exception:
-                continue
+    for path in (INVALID_RUNS_PATH, archive_paths.archived(INVALID_RUNS_PATH)):
+        if path is None or not path.exists():
+            continue
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ids.add(json.loads(line)["run_id"])
+                except Exception:
+                    continue
     return ids
 
 

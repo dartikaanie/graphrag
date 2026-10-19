@@ -14,6 +14,12 @@ from typing import Any
 
 RUNS_DIR = Path(__file__).resolve().parents[3] / "backend" / ".runs"
 
+
+def _archived_runs_dir() -> Path | None:
+    """Job state moved to the pre-official archive (2026-10-19); read only on request."""
+    from app.archive import archive_paths
+    return archive_paths.archived(RUNS_DIR)
+
 _lock = threading.Lock()
 _REGISTRY: dict[str, dict[str, Any]] = {}
 
@@ -75,7 +81,7 @@ def append_result(run_id: str, result: dict[str, Any]) -> None:
         _persist(run_id)
 
 
-def get_run(run_id: str) -> dict[str, Any] | None:
+def get_run(run_id: str, include_archive: bool = False) -> dict[str, Any] | None:
     with _lock:
         if run_id in _REGISTRY:
             return dict(_REGISTRY[run_id])
@@ -88,6 +94,11 @@ def get_run(run_id: str) -> dict[str, Any] | None:
         with _lock:
             _REGISTRY[run_id] = data
         return data
+    archived_dir = _archived_runs_dir() if include_archive else None
+    if archived_dir is not None and (archived_dir / f"{run_id}.json").exists():
+        with open(archived_dir / f"{run_id}.json") as f:
+            data = json.load(f)
+        return {**data, "archived": True}  # read-only: never cached in or persisted to the live registry
     return None
 
 

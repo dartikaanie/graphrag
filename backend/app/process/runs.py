@@ -22,7 +22,7 @@ MANIFEST_SUFFIX = ".manifest.json"
 MAX_MANIFEST_BYTES = 1024 * 1024
 
 
-def _row(condition_dir: str, name: str, m: dict) -> dict:
+def _row(condition_dir: str, name: str, m: dict, archived: bool = False) -> dict:
     cfg = m.get("config") if isinstance(m.get("config"), dict) else {}
     git = m.get("git") if isinstance(m.get("git"), dict) else {}
     graph = m.get("graph") if isinstance(m.get("graph"), dict) else {}
@@ -58,13 +58,25 @@ def _row(condition_dir: str, name: str, m: dict) -> dict:
         "git_dirty": git.get("dirty"),
         "items_succeeded": counts.get("succeeded"),
         "run_kind": kind,
+        "archived": archived,
     })
 
 
-def list_runs() -> list[dict]:
-    rows = []
+def _run_dirs(include_archive: bool):
+    """(condition, directory, archived): the four results/ folders, plus their
+    pre-official archive copies (2026-10-19) only with include_archive."""
+    from app.archive import archive_paths
     for condition, rel in RUN_DIRS:
-        directory = REPO_ROOT / rel
+        yield condition, REPO_ROOT / rel, False
+        if include_archive:
+            archived = archive_paths.archived_dir(REPO_ROOT / rel)
+            if archived is not None:
+                yield condition, archived, True
+
+
+def list_runs(include_archive: bool = False) -> list[dict]:
+    rows = []
+    for condition, directory, archived in _run_dirs(include_archive):
         if not directory.is_dir():
             continue
         for p in directory.iterdir():
@@ -76,6 +88,6 @@ def list_runs() -> list[dict]:
             except (OSError, json.JSONDecodeError):
                 continue
             if isinstance(manifest, dict):
-                rows.append(_row(condition, p.name, manifest))
+                rows.append(_row(condition, p.name, manifest, archived))
     rows.sort(key=lambda r: r["started_at_utc"] or "", reverse=True)
     return rows

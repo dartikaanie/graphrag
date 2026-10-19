@@ -13,6 +13,7 @@ values, read directly from the real run_history files.
 import json
 from pathlib import Path
 
+from llm import archive_paths
 from llm.manifest import compute_config_hash
 
 import c_graphrag
@@ -25,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 def _pilot_v3_records(path: Path) -> list[dict]:
     records = []
-    with open(path) as f:
+    with open(archive_paths.resolve(path)) as f:  # run histories are in the pre-official archive
         for line in f:
             line = line.strip()
             if not line:

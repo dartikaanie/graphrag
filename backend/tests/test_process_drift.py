@@ -158,9 +158,16 @@ def test_runtime_map_covers_every_module_constant():
     assert consts - set(RUNTIME) == set()
 
 
+def _archived_or_active(rel_dir: str) -> Path:
+    """The stage-1 runs are in the pre-official archive (2026-10-19)."""
+    from llm import archive_paths
+    active = REPO_ROOT / rel_dir
+    return archive_paths.archived_dir(active) or active
+
+
 def _stage1_c_configs():
     configs = []
-    for p in (REPO_ROOT / "llm" / "c_graphrag" / "results").glob("condition_c_*_dev_v3_*.jsonl.manifest.json"):
+    for p in _archived_or_active("llm/c_graphrag/results").glob("condition_c_*_dev_v3_*.jsonl.manifest.json"):
         configs.append(json.loads(p.read_text())["config"])
     return configs
 
@@ -183,7 +190,7 @@ def test_source_literals_point_at_their_line(page_values):
 
 
 def test_p99_matches_the_stage1_report(page_values):
-    reports = sorted((REPO_ROOT / "llm/c_graphrag/results/logscore_check").glob("stage1_logscore_report_*.json"))
+    reports = sorted(_archived_or_active("llm/c_graphrag/results/logscore_check").glob("stage1_logscore_report_*.json"))
     meta = json.loads(reports[-1].read_text())["meta"]
     assert page_values["trust.p99_answer"]["value"] == meta["p99_answer"]
 

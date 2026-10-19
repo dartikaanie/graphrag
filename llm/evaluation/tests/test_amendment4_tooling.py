@@ -48,7 +48,8 @@ def test_category_and_severity():
 
 def test_binary_matches_v2_three_class_label_on_real_pilot_records():
     """For judge-v2, hallucinated == (label is HALUSINASI_*) and ABSTAIN -> null, on every real pilot record."""
-    path = Path(__file__).resolve().parents[1] / "results" / "jv2_dashboard_primary_judge-v2_reparsed.jsonl"
+    from llm import archive_paths
+    path = archive_paths.resolve(Path(__file__).resolve().parents[1] / "results" / "jv2_dashboard_primary_judge-v2_reparsed.jsonl")
     records = [json.loads(line) for line in open(path)]
     assert len(records) == 90
     for r in records:

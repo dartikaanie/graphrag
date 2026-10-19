@@ -25,7 +25,8 @@ RESULT_FILES = {
 
 
 def _load_records(path: Path) -> list[dict]:
-    return [json.loads(line) for line in open(path) if line.strip()]
+    from llm import archive_paths  # the n=10 pilot files are in the pre-official archive
+    return [json.loads(line) for line in open(archive_paths.resolve(path)) if line.strip()]
 
 
 def test_citation_pattern_matches_real_so_format():

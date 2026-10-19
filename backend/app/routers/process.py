@@ -30,13 +30,13 @@ def get_decisions():
 
 
 @router.get("/runs")
-def get_runs():
-    return redact_obj(service.run_list())
+def get_runs(include_archive: bool = Query(False, description="Also list pre-official archived runs (2026-10-19)")):
+    return redact_obj(service.run_list(include_archive))
 
 
 @router.get("/logs")
-def get_logs():
-    return redact_obj(service.log_list())
+def get_logs(include_archive: bool = Query(False, description="Also list pre-official archived logs (2026-10-19)")):
+    return redact_obj(service.log_list(include_archive))
 
 
 @router.get("/logs/{root}/{name}")

@@ -405,7 +405,13 @@ def main():
                          help="Override manual -- HANYA valid kalau cuma 1 --input-path.")
     parser.add_argument("--strict-hallucination", action="store_true",
                          help="Hanya HALUSINASI_PENUH dihitung 'hallucinated' (default: HALUSINASI_SEBAGIAN + HALUSINASI_PENUH).")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from llm import run_registry
+    run_registry.add_cli_flag(parser)
     args = parser.parse_args()
+    # Official runs only by default (results/run_registry.json; Amendment 14)
+    run_registry.guard_cli([*args.input_path, args.hallucination_path, args.ctxrel_path, args.ansrel_path],
+                           args.include_archived)
 
     input_paths = [Path(p) for p in args.input_path]
 

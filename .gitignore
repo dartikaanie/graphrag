@@ -61,3 +61,15 @@ llm/b_rag/index_cache/**/*.i64
 
 # Leakage audit retrieval dumps (llm/leakage/audit.py) -- large, regenerable; summary.json is kept
 results/leakage/audit/*.jsonl
+
+# Pre-official archive (2026-10-19; results/_archive/2026-10-19_pre-official/
+# ARCHIVE_INDEX.md). Files keep their original repo-relative path under the
+# archive root; a file that was git-ignored at its original path stays ignored
+# in the archive (manifest/resume/Icon/.DS_Store rules above are global).
+results/_archive/*/llm/evaluation/results/*_failures.jsonl
+results/_archive/*/llm/evaluation/results/*_failures_resolved.jsonl
+results/_archive/*/results/leakage/audit/*.jsonl
+results/_archive/*/backend/.runs/
+logs/_archive/*/llm/a_pure_llm/logs/
+logs/_archive/*/llm/b_rag/logs/
+logs/_archive/*/llm/*/logs/dashboard_*.log

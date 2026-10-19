@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from app.archive import archive_paths
 from app.services import invalid_runs_service, judge_lookup_service, superseded_runs_service
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -128,10 +129,42 @@ def derive_run_label(condition: str, record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _load_condition_history(condition: str) -> list[dict[str, Any]]:
-    path = HISTORY_PATHS[condition]
-    if not path.exists():
-        return []
+def _history_sources(condition: str, include_archive: bool) -> list[tuple[Path, bool]]:
+    """(path, archived) pairs: the active run_history.jsonl, plus its pre-official
+    archive copy (2026-10-19) only when include_archive -- the "show archive" toggle."""
+    active = HISTORY_PATHS[condition]
+    sources = [(active, False)]
+    if include_archive:
+        archived = archive_paths.archived(active)
+        if archived is not None:
+            sources.append((archived, True))
+    return sources
+
+
+def resolve_output_path(output_path: str | None, condition: str | None = None) -> Path | None:
+    """Where a run's output file is now: as recorded (absolute, or relative to the
+    condition folder), or its pre-official archive location. None if not found."""
+    if not output_path:
+        return None
+    p = Path(output_path)
+    candidates = [p] if p.is_absolute() else [p, *( [HISTORY_PATHS[condition].parent.parent / p]
+                                                   if condition in HISTORY_PATHS else [])]
+    for c in candidates:
+        found = archive_paths.resolve(c)
+        if found.exists():
+            return found
+    return None
+
+
+def _load_condition_history(condition: str, include_archive: bool = False) -> list[dict[str, Any]]:
+    records = []
+    for path, archived in _history_sources(condition, include_archive):
+        if path.exists():
+            records.extend(_read_history_file(path, condition, archived))
+    return records
+
+
+def _read_history_file(path: Path, condition: str, archived: bool) -> list[dict[str, Any]]:
     records = []
     with open(path) as f:
         for line in f:
@@ -154,18 +187,19 @@ def _load_condition_history(condition: str) -> list[dict[str, Any]]:
             # it were a real fusion_mode.
             record["fusion_mode"] = label_info["fusion_mode"]
             record["is_dev"] = label_info["is_dev"]
+            record["archived"] = archived
             records.append(record)
     return records
 
 
 def list_history(
     condition: str | None, date_from: str | None, date_to: str | None, page: int, page_size: int,
-    show_superseded: bool = False,
+    show_superseded: bool = False, include_archive: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
     conditions = [condition.upper()] if condition else list(HISTORY_PATHS.keys())
     all_records: list[dict[str, Any]] = []
     for c in conditions:
-        all_records.extend(_load_condition_history(c))
+        all_records.extend(_load_condition_history(c, include_archive))
 
     # Known-bad entries (logs/invalid_runs.jsonl, e.g. the 2026-10-05 pilot's
     # stale-file resume collisions) never appear in History or Compare --
@@ -204,15 +238,18 @@ def get_history_detail(history_id: str) -> dict[str, Any] | None:
     condition = history_id.split("-", 1)[0]
     if condition not in HISTORY_PATHS:
         return None
-    record = next((r for r in _load_condition_history(condition) if r["history_id"] == history_id), None)
+    # By id, an archived run still resolves (its id is only listed behind the archive toggle).
+    record = next((r for r in _load_condition_history(condition, include_archive=True)
+                   if r["history_id"] == history_id), None)
     if not record:
         return None
 
     results: list[dict[str, Any]] = []
     rows: list[dict[str, Any]] = []
     output_path = record.get("output_path")
-    if output_path and Path(output_path).exists():
-        with open(output_path) as f:
+    found = resolve_output_path(output_path, condition)
+    if found is not None:
+        with open(found) as f:
             for line in f:
                 try:
                     rows.append(json.loads(line))
@@ -351,8 +388,8 @@ def get_history_result_detail(history_id: str, question_id: int) -> dict[str, An
     detail = get_history_detail(history_id)
     if not detail or not detail.get("output_path"):
         return None
-    output_path = Path(detail["output_path"])
-    if not output_path.exists():
+    output_path = resolve_output_path(detail["output_path"], history_id.split("-", 1)[0])
+    if output_path is None:
         return None
     with open(output_path) as f:
         for line in f:
@@ -438,8 +475,8 @@ _QID_CACHE: dict[str, tuple[float, list[int]]] = {}
 
 
 def _read_question_ids_cached(output_path: str) -> list[int]:
-    path = Path(output_path)
-    if not path.exists():
+    path = resolve_output_path(output_path)
+    if path is None:
         return []
     mtime = path.stat().st_mtime
     cached = _QID_CACHE.get(output_path)

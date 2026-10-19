@@ -39,6 +39,7 @@ RUN_METADATA_FIELDS = frozenset({
     "run_id", "file", "condition", "split", "alpha", "grounding", "fusion_mode", "c_retrieval_version",
     "trust_score_version", "config_hash", "prompt_version", "judge_version", "model", "n_sample",
     "status", "started_at_utc", "finished_at_utc", "commit", "git_dirty", "items_succeeded", "run_kind",
+    "archived",
 })
 
 

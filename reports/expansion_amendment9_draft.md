@@ -20,12 +20,12 @@
 Karena perubahan ini mengubah retrieval C, stage 1 dicek ulang dengan **protokol yang sama persis**: dev set yang sama (posisi 385–434, n = 50), grid α yang sama {0; 0,25; 0,5; 0,75; 1}, judge context-relevance primary yang sama (ctxrel-v2, temperature 0), metrik yang sama, dan aturan pemilihan yang sama (`select_stage1_candidates`). Label judge dipakai ulang hanya bila question_id, answer_id, text_hash, model judge, dan versi prompt semuanya identik; item lain dinilai ulang. **Hasilnya diterima apa pun itu, termasuk bila α terpilih berubah.**
 
 ### Hasil
-Cek ulang dijalankan pada 2026-10-18 (laporan `llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.md`).
+Cek ulang dijalankan pada 2026-10-18 (laporan `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.md`).
 - **Reproduksi:** dengan switch off, top-5 identik dengan hasil stage-1 Amendment 6 (50 × 5), metrik yang dihitung ulang sama dengan yang tercatat, dan top_two tetap [0,5; 0,25].
 - **Expansion:** slot expansion kosong turun dari 64,1% menjadi 0% (432 Question expansion pada 50 pertanyaan dev, di semua α). Item konteks dari expansion di top-5 kira-kira dua kali lipat (α = 0,5: 36 → 82; α = 0,25: 37 → 88). Pertanyaan dengan konteks kurang dari 5 item turun dari 5 menjadi 2. Anchor dan kandidat traversal tidak berubah di semua pertanyaan.
 - **Pertanyaan yang top-5-nya berubah:** 38 / 50 pada α = 0,5 dan 34 / 50 pada α = 0,25.
 - **Latency:** p95 retrieval-only C berubah sekitar +0,01–0,02 detik, misalnya α = 0,5 dari 0,091 menjadi 0,106 detik.
-- **Judge:** 405 label cache dipakai ulang sesuai aturan identitas, dan 119 item baru dinilai (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`, temperature 0; 0 gagal). Label baru ada di `results/expansion_check/ctxrel_v2_expansion_primary.jsonl`. Biayanya $0,0137.
+- **Judge:** 405 label cache dipakai ulang sesuai aturan identitas, dan 119 item baru dinilai (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`, temperature 0; 0 gagal). Label baru ada di `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/ctxrel_v2_expansion_primary.jsonl`. Biayanya $0,0137.
 
 | α | % q ≥1 RELEVANT (lama → baru) | skor rata-rata (lama → baru) | % accepted (lama → baru) |
 |---|---|---|---|

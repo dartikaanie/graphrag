@@ -75,7 +75,7 @@ export function RunsTab({ data }: { data: RunsResponse }) {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={13} className="px-4 py-8 text-center text-text-muted">
-                  No runs match these filters.
+                  {data.runs.length === 0 ? 'No official runs yet. Pre-official runs are in the archive (toggle above).' : 'No runs match these filters.'}
                 </td>
               </tr>
             )}
@@ -86,7 +86,10 @@ export function RunsTab({ data }: { data: RunsResponse }) {
               >
                 <td className="px-3 py-2 min-w-[260px]">
                   <div className="font-mono text-xs break-all text-text-primary">{r.file}</div>
-                  <div className="text-xs text-text-muted">{r.run_kind}</div>
+                  <div className="text-xs text-text-muted">
+                    {r.run_kind}
+                    {r.archived && <> · <Badge tone="neutral">archived</Badge></>}
+                  </div>
                 </td>
                 <td className="px-3 py-2">{r.condition}</td>
                 <td className="px-3 py-2">

@@ -360,11 +360,17 @@ def main() -> int:
     p.add_argument("--run-files", nargs="+", required=True)
     p.add_argument("--judge-files", nargs="+", required=True)
     p.add_argument("--judge-version", required=True, help="Frozen judge version from Amendment 4 (e.g. judge-v2.1)")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from llm import run_registry
+    run_registry.add_cli_flag(p)
     args = p.parse_args()
     try:
         runs = load_runs([Path(f) for f in args.run_files])
         judged = load_judgments([Path(f) for f in args.judge_files], runs, args.judge_version)
-    except Stage2Error as e:
+        # Stage-2 inputs must also be registered as "dev-stage2" (results/run_registry.json; Amendment 14)
+        run_registry.assert_reportable([*args.run_files, *args.judge_files], (run_registry.STATUS_DEV_STAGE2,),
+                                       args.include_archived)
+    except (Stage2Error, run_registry.RegistryError) as e:
         print(f"[STOP] {e}")
         return 1
     pooled, per_run = stage2_metrics(judged)

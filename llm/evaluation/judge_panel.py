@@ -58,6 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from judge_binary import derive_hallucinated  # noqa: E402
+from llm import archive_paths  # noqa: E402
 from judge_panel_aggregate import UNRESOLVED, UNSPECIFIED, aggregate_labels  # noqa: E402
 from judge_panel_config import (MAX_RETRIES, PANEL_ID, PANEL_JUDGES, PanelJudge, judge_cost_usd,  # noqa: E402
                                 panel_public_view)
@@ -141,7 +142,7 @@ def load_panel_items(run_files: list[str], question_ids: list[int] | None = None
         if items_by_file is not None and idx not in items_by_file:
             continue
         meta = resolve_run_metadata(path)
-        records = [json.loads(line) for line in open(path) if line.strip()]
+        records = [json.loads(line) for line in open(archive_paths.resolve(path)) if line.strip()]
         assert_single_config_hash(records, source_label=path)
         for r in records:
             if wanted is not None and int(r["question_id"]) not in wanted:
@@ -563,8 +564,11 @@ def main(argv=None) -> int:
     concurrency = args.concurrency or DEFAULT_CONCURRENCY
     spec = judge_version_spec(args.judge_version)
     questions_parquet = args.questions_parquet or os.getenv("QUESTIONS_PARQUET")
+    # Pre-official archive (2026-10-19): a run file is identified by its ORIGINAL path (the calibration registry,
+    # the annotation key and the guards record it) and opened wherever it now is (archive_paths.resolve).
+    args.run_files = [str(archive_paths.canonical(p)) for p in args.run_files]
     for p in args.run_files:
-        if not Path(p).exists():
+        if not archive_paths.resolve(p).exists():
             log(f"[ERROR] run file not found: {p}")
             return 1
     from annotation_tool import AnnotationError, assert_annotation_frozen, load_verified_key

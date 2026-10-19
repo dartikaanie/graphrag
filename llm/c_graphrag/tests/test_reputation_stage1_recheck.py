@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 
 import reputation_stage1_recheck as rs
+from llm import archive_paths
 
-REPORT = Path(__file__).resolve().parents[1] / "results" / "stage1_report_ctxrel_v2_primary_n50_seed42.md"
+REPORT = archive_paths.resolve(Path(__file__).resolve().parents[1] / "results" / "stage1_report_ctxrel_v2_primary_n50_seed42.md")
 
 
 def _m(pct, score):

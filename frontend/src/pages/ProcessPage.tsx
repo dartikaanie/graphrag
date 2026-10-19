@@ -46,8 +46,26 @@ export function ProcessPage() {
   const steps = useProcessSteps()
   const params = useProcessParameters()
   const decisions = useProcessDecisions()
-  const runs = useProcessRuns()
-  const logs = useProcessLogs()
+  // "show archive": pre-official runs and logs (archived 2026-10-19) are listed only on request
+  const showArchive = searchParams.get('archive') === '1'
+  const runs = useProcessRuns(showArchive)
+  const logs = useProcessLogs(showArchive)
+  const archiveToggle = (
+    <label className="flex items-center gap-1.5 text-xs text-text-secondary mb-3">
+      <input
+        type="checkbox"
+        checked={showArchive}
+        onChange={(e) => {
+          const next = new URLSearchParams(searchParams)
+          if (e.target.checked) next.set('archive', '1')
+          else next.delete('archive')
+          next.delete('log')
+          setSearchParams(next, { replace: false })
+        }}
+      />
+      Show archive (pre-official runs and logs, archived 2026-10-19)
+    </label>
+  )
 
   const headline = steps.data?.headline
 
@@ -129,20 +147,22 @@ export function ProcessPage() {
       )}
       {tab === 'runs' && (
         <>
+          {archiveToggle}
           <LoadState isLoading={runs.isLoading} error={runs.error} />
           {runs.data && <RunsTab data={runs.data} />}
         </>
       )}
       {tab === 'logs' && (
         <>
+          {archiveToggle}
           <LoadState isLoading={logs.isLoading} error={logs.error} />
           {logs.data && (
             <LogsTab
               data={logs.data}
               selected={logId}
-              onSelect={(id) => go({ tab: 'logs', log: id, tail: String(tail) })}
+              onSelect={(id) => go({ tab: 'logs', log: id, tail: String(tail), ...(showArchive ? { archive: '1' } : {}) })}
               tail={tail}
-              onTailChange={(n) => go({ tab: 'logs', ...(logId ? { log: logId } : {}), tail: String(n) })}
+              onTailChange={(n) => go({ tab: 'logs', ...(logId ? { log: logId } : {}), tail: String(n), ...(showArchive ? { archive: '1' } : {}) })}
             />
           )}
         </>

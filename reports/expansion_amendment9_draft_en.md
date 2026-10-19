@@ -18,12 +18,12 @@
 Because the change alters C's retrieval, stage 1 is checked again with **exactly the same protocol**: the same dev set (positions 385–434, n = 50), the same α grid {0, 0.25, 0.5, 0.75, 1}, the same primary context-relevance judge (ctxrel-v2, temperature 0), the same metrics and the same selection rule (`select_stage1_candidates`). Judge labels are reused only when question_id, answer_id, text_hash, judge model and prompt version are all identical; every other item is judged anew. **The result is accepted whatever it is, including if the selected α changes.**
 
 ### Outcome
-Recheck run on 2026-10-18 (report `llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.md`).
+Recheck run on 2026-10-18 (report `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.md`).
 - **Reproduction:** with the switch off, the top-5 is identical to the Amendment 6 stage-1 result of record (50 × 5), the recomputed metrics equal the recorded ones, and top_two stays [0.5, 0.25].
 - **Expansion:** empty expansion slots fall from 64.1% to 0% (432 expansion Questions on 50 dev questions, every α). Context items from expansion in the top-5 roughly double (α = 0.5: 36 → 82; α = 0.25: 37 → 88). Questions with fewer than 5 context items fall from 5 to 2. Anchors and traversal candidates are unchanged for every question.
 - **Questions whose top-5 changed:** 38 / 50 at α = 0.5 and 34 / 50 at α = 0.25.
 - **Latency:** C retrieval-only p95 changes by about +0.01–0.02 s, for example α = 0.5 from 0.091 to 0.106 s.
-- **Judging:** 405 cached labels were reused under the identity rule, and 119 new items were judged (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`, temperature 0; 0 failures). The new labels are in `results/expansion_check/ctxrel_v2_expansion_primary.jsonl`. Cost was $0.0137.
+- **Judging:** 405 cached labels were reused under the identity rule, and 119 new items were judged (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`, temperature 0; 0 failures). The new labels are in `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/ctxrel_v2_expansion_primary.jsonl`. Cost was $0.0137.
 
 | α | % q ≥1 RELEVANT (old → new) | mean score (old → new) | % accepted (old → new) |
 |---|---|---|---|

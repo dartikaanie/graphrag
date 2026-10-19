@@ -27,9 +27,13 @@ dashboard's History page.
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from llm import archive_paths  # noqa: E402
 
 HISTORY_PATHS: dict[str, Path] = {
     "A": REPO_ROOT / "llm" / "a_pure_llm" / "logs" / "run_history.jsonl",
@@ -211,11 +215,17 @@ def resolve_run_metadata(result_file_path: str) -> dict:
     be inferred when missing -- that's a documented, bounded fallback,
     not the same as this error, which fires when there's NO entry at all.)
     """
-    result_path = Path(result_file_path).resolve()
+    # Identity is the ORIGINAL path (history entries record it); a file moved
+    # to the pre-official archive is matched through llm/archive_paths.py,
+    # and the archived copy of the condition's run_history.jsonl is read too.
+    result_path = archive_paths.canonical(result_file_path)
     condition = infer_condition_from_filename(result_path)
 
     history_path = HISTORY_PATHS[condition]
-    all_records = _load_history_records(history_path) + _load_history_records(CALIBRATION_HISTORY_PATH)
+    archived_history = archive_paths.archived(history_path)
+    all_records = (_load_history_records(history_path)
+                   + (_load_history_records(archived_history) if archived_history else [])
+                   + _load_history_records(CALIBRATION_HISTORY_PATH))
     if not all_records:
         raise RunMetadataNotFoundError(
             f"{history_path} does not exist or is empty -- cannot resolve run parameters for "

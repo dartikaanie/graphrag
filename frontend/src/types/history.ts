@@ -37,6 +37,8 @@ export interface HistoryItem {
   // but exposed separately so pages can render a dedicated badge instead
   // of parsing the label string.
   is_dev?: boolean
+  /** true for a pre-official run listed through the "show archive" toggle */
+  archived?: boolean
   output_path: string
   duration_sec: number
   source?: string

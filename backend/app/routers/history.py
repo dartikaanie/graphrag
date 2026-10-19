@@ -14,12 +14,13 @@ router = APIRouter(prefix="/api/history")
 
 
 @router.get("/batches")
-def get_history_batches(show_superseded: bool = Query(False)):
+def get_history_batches(show_superseded: bool = Query(False), include_archive: bool = Query(False)):
     """Every run (across A/B/C/D), grouped into launch batches -- for the
     Hallucination Judge (judge-v1) page's run picker. Invalid runs are
     always excluded; superseded runs excluded unless show_superseded=True
     (same policy as GET /api/history). See batch_grouping_service.py."""
-    items, _ = svc.list_history(None, None, None, page=1, page_size=100000, show_superseded=show_superseded)
+    items, _ = svc.list_history(None, None, None, page=1, page_size=100000, show_superseded=show_superseded,
+                                include_archive=include_archive)
     return {"batches": batch_grouping_service.group_into_batches(items)}
 
 
@@ -31,10 +32,11 @@ def get_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=200),
     show_superseded: bool = Query(False, description="Include runs superseded by a later re-run of the same config"),
+    include_archive: bool = Query(False, description="Also list pre-official archived runs (2026-10-19)"),
 ):
     if condition and condition.upper() not in ("A", "B", "C", "D"):
         raise HTTPException(status_code=400, detail="condition must be A, B, C, or D")
-    items, total = svc.list_history(condition, date_from, date_to, page, page_size, show_superseded)
+    items, total = svc.list_history(condition, date_from, date_to, page, page_size, show_superseded, include_archive)
     return {
         "items": items,
         "meta": {"page": page, "page_size": page_size, "total": total, "total_pages": svc.total_pages(total, page_size)},

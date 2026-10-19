@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(REPO_ROOT))
 
 from _judge_common import CALIBRATION_REGISTRY_PATH  # noqa: E402
+from llm import archive_paths  # noqa: E402
 from llm.repo_state import repo_relative, repo_state  # noqa: E402
 
 # Generation settings -- identical to the 2026-10-05 pilot (see each
@@ -137,11 +138,12 @@ def pilot_stats(run: dict) -> dict:
     pilot run (same condition/grounding, n=10) -- the basis of the dry-run
     estimate. Raises if the pilot file is missing (no silent default)."""
     pilot = run["pilot_file"]
-    records = [json.loads(line) for line in open(pilot) if line.strip()]
+    # pilot files and run histories are in the pre-official archive (2026-10-19)
+    records = [json.loads(line) for line in open(archive_paths.resolve(pilot)) if line.strip()]
     usage = [r.get("usage_full") or {} for r in records]
     history = REPO_ROOT / "llm" / pilot.parent.parent.name / "logs" / "run_history.jsonl"
     duration, prompt_version = None, None
-    for line in open(history):
+    for line in open(archive_paths.resolve(history)):
         h = json.loads(line)
         if Path(str(h.get("output_path", ""))).name == pilot.name and h.get("status") == "success":
             duration, prompt_version = h.get("duration_sec"), h.get("prompt_version")
@@ -162,7 +164,7 @@ def build_plan(runs: list[dict]) -> dict:
         est_sec = (st["sec_per_item"] or 0) * N_DEV
         tot_in, tot_out, tot_sec = tot_in + est_in, tot_out + est_out, tot_sec + est_sec
         rows.append({"run_label": r["run_label"], "items": N_DEV, "output": repo_relative(r["output_path"]),
-                     "config_hash": r["config_hash"], "exists": r["output_path"].exists(),
+                     "config_hash": r["config_hash"], "exists": archive_paths.resolve(r["output_path"]).exists(),
                      "est_tokens_in": round(est_in), "est_tokens_out": round(est_out), "est_sec": round(est_sec),
                      "pilot": st})
     return {"rows": rows, "items": N_DEV * len(runs), "est_tokens_in": round(tot_in), "est_tokens_out": round(tot_out),

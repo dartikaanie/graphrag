@@ -312,7 +312,13 @@ def main():
                          help="Override manual, urutan sejajar dgn --input-path.")
     parser.add_argument("--uniform-ctxrel-path", action="append", default=None,
                          help="Override manual, urutan sejajar dgn --uniform-path.")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from llm import run_registry
+    run_registry.add_cli_flag(parser)
     args = parser.parse_args()
+    # Official runs only by default (results/run_registry.json; Amendment 14)
+    run_registry.guard_cli([*args.input_path, *(args.uniform_path or []), *(args.ctxrel_path or []),
+                            *(args.uniform_ctxrel_path or [])], args.include_archived)
 
     input_paths = [Path(p) for p in args.input_path]
     uniform_paths = [Path(p) for p in args.uniform_path] if args.uniform_path else []

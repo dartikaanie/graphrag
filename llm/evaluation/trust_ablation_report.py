@@ -210,7 +210,11 @@ def main() -> int:
     p.add_argument("--run-files", nargs=4, required=True)
     p.add_argument("--judge-files", nargs="+", required=True)
     p.add_argument("--judge-version", required=True, help="the frozen judge version (Amendment 4 Record)")
+    from llm import run_registry
+    run_registry.add_cli_flag(p)
     args = p.parse_args()
+    # Official runs only by default (results/run_registry.json; Amendment 14)
+    run_registry.guard_cli([*args.run_files, *args.judge_files], args.include_archived)
     try:
         runs = load_runs(args.run_files, load_official_params())
         judged = s2.load_judgments(list(map(Path, args.judge_files)), runs, args.judge_version)

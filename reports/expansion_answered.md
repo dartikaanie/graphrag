@@ -46,7 +46,7 @@ Bukti bahwa hasil tidak berubah: semua snapshot C identik setelah perbaikan. Yan
 
 ## 3. Hasil cek ulang stage-1
 
-Laporan mesin: `llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.{md,json}`. Run dilakukan pada 2026-10-18T04:29:53Z di atas commit `38c4f6f` ditambah perubahan branch ini yang belum di-commit.
+Laporan mesin: `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.{md,json}`. Run dilakukan pada 2026-10-18T04:29:53Z di atas commit `38c4f6f` ditambah perubahan branch ini yang belum di-commit.
 
 | α | % q ≥1 RELEVANT (lama → baru) | skor rata-rata (lama → baru) | % accepted terpilih (lama → baru) | pertanyaan berubah |
 |---|---|---|---|---|
@@ -62,7 +62,7 @@ Laporan mesin: `llm/c_graphrag/results/expansion_check/stage1_expansion_report_2
   - 0,25 dan 0,0 seri pada kedua kriteria, dan yang lebih besar (0,25) ditempatkan pertama.
 - **top_two = [0,25; 0,0].** keep_current = False, karena α = 1 tidak berperingkat pertama.
 - **Validasi reproduksi:**
-  - Dengan switch off, top-5 identik dengan hasil Amendment 6 (`results/logscore_check/stage1_logscore_alpha*.jsonl`, 50 × 5).
+  - Dengan switch off, top-5 identik dengan hasil Amendment 6 (`results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/logscore_check/stage1_logscore_alpha*.jsonl`, 50 × 5).
   - Metrik yang dihitung ulang identik dengan metrik tercatat, dan top_two lama tetap [0,5; 0,25].
 - **Judge:**
   - Label lama dipakai ulang hanya bila (question_id, answer_id, text_hash, model, prompt_version) identik: 405 label dari cache.
@@ -70,7 +70,7 @@ Laporan mesin: `llm/c_graphrag/results/expansion_check/stage1_expansion_report_2
   - Item baru dinilai oleh `meta-llama/Llama-3.3-70B-Instruct` (DeepInfra, disajikan sebagai `-Turbo` seperti seluruh label cache), `ctxrel-v2`, temperature 0.
   - 0 call gagal, 0 parse error, semuanya selesai dalam 1 percobaan.
   - Label baru: 15 RELEVANT, 21 PARTIAL, 83 IRRELEVANT.
-  - Tersimpan di `results/expansion_check/ctxrel_v2_expansion_primary.jsonl`.
+  - Tersimpan di `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/ctxrel_v2_expansion_primary.jsonl`.
 
 ## 4. Retrieval dan latency (50 pertanyaan dev, retrieval-only)
 

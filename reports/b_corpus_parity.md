@@ -155,8 +155,8 @@ Seluruh suite: **966 passed, 2 skipped**. Dua test yang di-skip memerlukan `GRAP
 ¹ "Lama" = 35 pertanyaan yang sama, diambil dari run dev n = 50 dengan korpus `legacy_sample` (2026-10-13).
 
 File hasil:
-- `llm/b_rag/results/condition_b_openai_gpt-4o-mini_n35_seed42_plain_dev_v3_c8fb5cfbe0.jsonl`
-- `llm/b_rag/results/condition_b_openai_gpt-4o-mini_n35_seed42_grounded_dev_v3_0e2be4937f.jsonl`
+- `results/_archive/2026-10-19_pre-official/llm/b_rag/results/condition_b_openai_gpt-4o-mini_n35_seed42_plain_dev_v3_c8fb5cfbe0.jsonl`
+- `results/_archive/2026-10-19_pre-official/llm/b_rag/results/condition_b_openai_gpt-4o-mini_n35_seed42_grounded_dev_v3_0e2be4937f.jsonl`
 
 Catatan pembacaan:
 - **Cosine similarity hampir tidak berubah** (±0,01, dalam kisaran noise untuk n = 35).

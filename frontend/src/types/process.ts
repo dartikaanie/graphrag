@@ -173,6 +173,7 @@ export interface ProcessRun {
   git_dirty: boolean | null
   items_succeeded: number | null
   run_kind: 'generation' | 'retrieval-only' | 'judge'
+  archived?: boolean
 }
 
 export interface RunsResponse {
@@ -188,6 +189,7 @@ export interface ProcessLog {
   size_bytes: number
   timestamp_utc: string | null
   step: string | null
+  archived?: boolean
 }
 
 export interface LogsResponse {

@@ -33,7 +33,7 @@ export function LogsTab({ data, selected, onSelect, tail, onTailChange }: Props)
               >
                 <div className="font-mono text-xs break-all text-text-primary">{l.name}</div>
                 <div className="text-xs text-text-muted">
-                  {l.step ? STEP_LABELS[l.step] : 'no step'} · {formatTime(l.timestamp_utc)} ·{' '}
+                  {l.archived ? 'archived · ' : ''}{l.step ? STEP_LABELS[l.step] : 'no step'} · {formatTime(l.timestamp_utc)} ·{' '}
                   {(l.size_bytes / 1024).toFixed(1)} KB
                 </div>
               </button>

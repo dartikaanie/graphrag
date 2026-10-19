@@ -675,13 +675,18 @@ export function useRunResultDetail(runId: string, questionId: number | string) {
   })
 }
 
-export function useHistory(condition: string | undefined, page: number, pageSize: number, showSuperseded = false) {
+/** includeArchive: the explicit "show archive" toggle -- pre-official runs
+ * archived on 2026-10-19 are never listed by default. */
+export function useHistory(
+  condition: string | undefined, page: number, pageSize: number, showSuperseded = false, includeArchive = false,
+) {
   return useQuery({
-    queryKey: ['history', condition, page, pageSize, showSuperseded],
+    queryKey: ['history', condition, page, pageSize, showSuperseded, includeArchive],
     queryFn: () =>
       apiGet<HistoryListResponse>('/api/history', {
         condition, page, page_size: pageSize,
         ...(showSuperseded ? { show_superseded: 'true' } : {}),
+        ...(includeArchive ? { include_archive: 'true' } : {}),
       }),
     placeholderData: (prev) => prev,
   })
@@ -964,17 +969,17 @@ export function useProcessDecisions() {
   })
 }
 
-export function useProcessRuns() {
+export function useProcessRuns(includeArchive = false) {
   return useQuery({
-    queryKey: ['process-runs'],
-    queryFn: () => apiGet<RunsResponse>('/api/process/runs'),
+    queryKey: ['process-runs', includeArchive],
+    queryFn: () => apiGet<RunsResponse>('/api/process/runs', includeArchive ? { include_archive: 'true' } : {}),
   })
 }
 
-export function useProcessLogs() {
+export function useProcessLogs(includeArchive = false) {
   return useQuery({
-    queryKey: ['process-logs'],
-    queryFn: () => apiGet<LogsResponse>('/api/process/logs'),
+    queryKey: ['process-logs', includeArchive],
+    queryFn: () => apiGet<LogsResponse>('/api/process/logs', includeArchive ? { include_archive: 'true' } : {}),
   })
 }
 

@@ -39,6 +39,9 @@ LOG_ROOTS: tuple[LogRoot, ...] = (
     LogRoot("c_results", "llm/c_graphrag/results", ("stage1_report_*.md",)),
 )
 _ROOTS = {r.key: r for r in LOG_ROOTS}
+# Log ids of the pre-official archive (2026-10-19) carry this prefix on the root key;
+# they are listed only with include_archive ("show archive").
+ARCHIVE_KEY_PREFIX = "archived~"
 
 # filename fragment -> pipeline step key (first match wins)
 _STEP_BY_FRAGMENT = (
@@ -67,19 +70,24 @@ def step_for(name: str) -> str | None:
     return None
 
 
-def _root_dir(root: LogRoot) -> Path:
-    return (REPO_ROOT / root.rel_dir).resolve()
+def _root_dir(root: LogRoot, archived: bool = False) -> Path | None:
+    if not archived:
+        return (REPO_ROOT / root.rel_dir).resolve()
+    from app.archive import archive_paths
+    d = archive_paths.archived_dir(REPO_ROOT / root.rel_dir)
+    return d.resolve() if d is not None else None
 
 
 def _allowed_name(root: LogRoot, name: str) -> bool:
     return any(fnmatch(name, pat) for pat in root.patterns)
 
 
-def list_logs() -> list[dict]:
+def list_logs(include_archive: bool = False) -> list[dict]:
     out = []
-    for root in LOG_ROOTS:
-        directory = REPO_ROOT / root.rel_dir
-        if not directory.is_dir():
+    pairs = [(root, False) for root in LOG_ROOTS] + ([(root, True) for root in LOG_ROOTS] if include_archive else [])
+    for root, archived in pairs:
+        directory = _root_dir(root, archived)
+        if directory is None or not directory.is_dir():
             continue
         files = [
             p for p in directory.iterdir()
@@ -89,8 +97,9 @@ def list_logs() -> list[dict]:
         for p in files:
             stamp = file_stamp(p.name)
             out.append({
-                "id": f"{root.key}/{p.name}",
+                "id": f"{ARCHIVE_KEY_PREFIX if archived else ''}{root.key}/{p.name}",
                 "root": root.rel_dir,
+                "archived": archived,
                 "name": p.name,
                 "size_bytes": p.stat().st_size,
                 "timestamp_utc": stamp_to_iso(stamp),
@@ -107,18 +116,22 @@ def resolve_log(log_id: str) -> Path:
     if not isinstance(log_id, str) or log_id.count("/") != 1:
         raise LogAccessError("invalid log id")
     key, name = log_id.split("/", 1)
-    root = _ROOTS.get(key)
+    archived = key.startswith(ARCHIVE_KEY_PREFIX)
+    root = _ROOTS.get(key[len(ARCHIVE_KEY_PREFIX):] if archived else key)
     if root is None:
         raise LogAccessError("unknown log root")
     if not name or name.startswith(".") or "\\" in name or ".." in name or "\x00" in name:
         raise LogAccessError("invalid file name")
     if not _allowed_name(root, name):
         raise LogAccessError("file type not allowed")
-    candidate = REPO_ROOT / root.rel_dir / name
+    base = _root_dir(root, archived)
+    if base is None:
+        raise LogAccessError("not found")
+    candidate = base / name
     if candidate.is_symlink():
         raise LogAccessError("symlinks are not allowed")
     resolved = candidate.resolve()
-    if resolved.parent != _root_dir(root):
+    if resolved.parent != base:
         raise LogAccessError("path outside the allowed directory")
     if not resolved.is_file():
         raise LogAccessError("not found")

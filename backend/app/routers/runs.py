@@ -2,7 +2,7 @@ import asyncio
 import json
 import threading
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.models.schemas import (
@@ -94,8 +94,8 @@ def create_run(body: RunCreateRequest):
 
 
 @router.get("/{run_id}")
-def get_run(run_id: str):
-    run = run_registry.get_run(run_id)
+def get_run(run_id: str, include_archive: bool = Query(False, description="Also look in the pre-official archive")):
+    run = run_registry.get_run(run_id, include_archive)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return run

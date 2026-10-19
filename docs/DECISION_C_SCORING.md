@@ -94,7 +94,7 @@ One item is too few to evaluate the judge, so the controls are redefined:
 - Truncation check: 15 of 50 positive items were truncated; the primary judge rated 14 of those 15 RELEVANT (vs 30 of 35 untruncated), so truncation does not explain the failures.
 - Control results, ctxrel-v1 (primary / secondary): positives RELEVANT 88% / 74% (PARTIAL 12% / 26%, IRRELEVANT 0% / 0%); negatives IRRELEVANT 100% / 100%. Pass: **no** (primary 44/50 positives RELEVANT; threshold 45/50).
 - Failure pattern: every miss was a positive judged PARTIAL. The judges' reasons show RELEVANT being read as "completely solves the problem in the asker's exact way": accepted answers giving a workaround, an alternative approach, or the cause were judged PARTIAL.
-- Outputs: `llm/c_graphrag/results/controls/ctxrel_v1_controls_20261007T154329Z.jsonl` and `_summary.json` (control data only).
+- Outputs: `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/controls/ctxrel_v1_controls_20261007T154329Z.jsonl` and `_summary.json` (control data only).
 - Revision: see Amendment 2.
 - Date: 2026-10-07
 
@@ -174,7 +174,7 @@ All code used for the control runs (runner, judge module with ctxrel-v2, hard-ne
   - Pass: **yes** (primary decides: 94% ≥ 90%, 100% ≥ 90%, 100% ≥ 80%).
 - ctxrel-v2 positives not judged RELEVANT by primary (all PARTIAL): q45387122 (the accepted answer is a dependency-version tweak), q12278877 (a link-out to Flex 3 vs Flex 4 differences), q53432433 (background on environment configuration). Three positives missed by v1 are RELEVANT under v2: q26179020, q4316334, q50814048.
 - Hard negatives judged RELEVANT: none by primary (v1 or v2). Secondary (v2) judged one RELEVANT: q57331553 → donor q46370607 ("Didn't find class android.support.v7.widget.CardView"), cosine 0.801, the most similar pair in the set. Primary PARTIAL hard negatives all had donor similarity 0.298-0.687.
-- Outputs: `llm/c_graphrag/results/controls/ctxrel_v1_controls_hard_negative_20261007T164814Z.jsonl` (+ `_summary.json`) and `llm/c_graphrag/results/controls/ctxrel_v2_controls_positive-easy_negative-hard_negative_20261007T165007Z.jsonl` (+ `_summary.json`).
+- Outputs: `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/controls/ctxrel_v1_controls_hard_negative_20261007T164814Z.jsonl` (+ `_summary.json`) and `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/controls/ctxrel_v2_controls_positive-easy_negative-hard_negative_20261007T165007Z.jsonl` (+ `_summary.json`).
 - Context-relevance judge version used for stage 1: **ctxrel-v2**
 - Date: 2026-10-07
 
@@ -378,7 +378,7 @@ Nodes whose `trustScore` changes: 725,794 of 725,795 Answer; 2,685,812 of 2,685,
 ### Run attribution and archive
 - Condition C runs record the graph's `trustScoreVersion` in their manifest (`graph.trustScoreVersion`, read from the Answer nodes at run start; CLI and dashboard runs). `stage2_report.py` rejects a run whose manifest does not record `v3-logscore`, in addition to the start-time check.
 - A KG rebuild writes `trustScoreVersion = "v3-logscore"` on Question and Answer nodes; `9_load_author_trust.py` takes `w_auth` from `trust_formulas.py`.
-- The v2 stage-1 files are kept unchanged as an archive: the five stage-1 retrieval files `llm/c_graphrag/results/condition_c_*_dev_v3_*.jsonl`, `results/reputation_check/stage1_repfix_alpha*.jsonl`, their reports, and the judge label files. The v3 files are written to a separate directory, `results/logscore_check/`.
+- The v2 stage-1 files are kept unchanged as an archive: the five stage-1 retrieval files `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/condition_c_*_dev_v3_*.jsonl`, `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/reputation_check/stage1_repfix_alpha*.jsonl`, their reports, and the judge label files. The v3 files are written to a separate directory, `results/logscore_check/`.
 
 ### Record (fill in after apply)
 - Decision points 1–4 and the stage-1 rule confirmed: 2026-10-14
@@ -388,8 +388,8 @@ Nodes whose `trustScore` changes: 725,794 of 725,795 Answer; 2,685,812 of 2,685,
 - Rows updated: Answer 725,795 (725,794 with a changed value)  |  Question 2,685,814 (2,685,812 with a changed value); all tagged `trustScoreVersion = "v3-logscore"`. Graph state before: Answer `v2-reputation` 725,795; Question untagged 2,685,814.
 - Backup path: `01_data_cleaning/_kg_workspace/trust_backup_pre_amendment6_20261014T085414Z.parquet` (3,411,609 rows; not in git)
 - Verify result (max |diff|): 0 for Answer and Question on read-back after writing; `--verify-applied` re-check (log `20261014T085801Z_apply_logscore_trust.log`): max |diff| = 0, 0 nodes differing, Answer 725,795 / 725,795 and Question 2,685,814 / 2,685,814 `v3-logscore`.
-- Top-5 check (v2 vs v3, dev set): `llm/c_graphrag/results/logscore_check/logscore_top5_20261014T090618Z.md`; top-5 set changed for 4 / 50 questions (8%) at α = 0.25 and 11 / 50 (22%) at α = 0.5; α = 0 sanity check 0 / 50 (passed).
-- Stage-1 recheck: `llm/c_graphrag/results/logscore_check/stage1_logscore_report_20261014T091601Z.md` (run 2026-10-14T09:16:01Z with `--run-judge`, at commit `e539423`); v2 reproduced the Amendment 5 stage-1 result of record exactly (50 × 5); 3 new items judged (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`; 1 at α = 0.25, 2 at α = 0.75, 2 at α = 1, 3 unique), labels in `results/logscore_check/ctxrel_v2_logscore_primary.jsonl`; v3 `top_two` = [0.5, 0.25], keep_current = False; **`STAGE2_ALPHAS` changed: no**. The binding v3 recheck confirms the stage-2 candidates of record: **α = 0.5 and α = 0.25**. The v3 result is now the stage-1 result of record.
+- Top-5 check (v2 vs v3, dev set): `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/logscore_check/logscore_top5_20261014T090618Z.md`; top-5 set changed for 4 / 50 questions (8%) at α = 0.25 and 11 / 50 (22%) at α = 0.5; α = 0 sanity check 0 / 50 (passed).
+- Stage-1 recheck: `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/logscore_check/stage1_logscore_report_20261014T091601Z.md` (run 2026-10-14T09:16:01Z with `--run-judge`, at commit `e539423`); v2 reproduced the Amendment 5 stage-1 result of record exactly (50 × 5); 3 new items judged (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`; 1 at α = 0.25, 2 at α = 0.75, 2 at α = 1, 3 unique), labels in `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/logscore_check/ctxrel_v2_logscore_primary.jsonl`; v3 `top_two` = [0.5, 0.25], keep_current = False; **`STAGE2_ALPHAS` changed: no**. The binding v3 recheck confirms the stage-2 candidates of record: **α = 0.5 and α = 0.25**. The v3 result is now the stage-1 result of record.
 - Note on `e539423` ("update trustscore v3", 2026-10-14 16:14:08 +07:00): a post-apply commit, made after the apply (backup `085414Z`) and the top-5 check, and before the `--run-judge` recheck (16:16). It adds the apply logs, the top-5 report (`.md`/`.json`/`.csv`) and the five stage-1 v3 retrieval files `stage1_logscore_alpha*.jsonl`. The retrieval files were rewritten by the `--run-judge` run with byte-identical content (same git blob), so the committed versions are final. Its code changes only make the FAISS/embedding cache directory configurable through `KG_WORKSPACE_DIR` (`01_data_cleaning/11_densify_embedding_similarity.py`, `01_data_cleaning/12_validate_densification.py`, `backend/app/config.py`, `backend/app/services/engine_service.py`); none of these files is imported by the apply, the top-5 check or the recheck. These changes were already in the working tree, uncommitted, when the apply and the top-5 check ran; that is why the top-5 report records `6a42942`. From then on the cache was read from external storage (`KG_WORKSPACE_DIR`). Its five files are byte-identical (SHA-256) to the local cache used before. No secrets in the diff.
 - Git commit: the commit that adds this Record (Amendment 6 commit #2).
 
@@ -501,12 +501,12 @@ This is a correction of evaluation validity (ground truth must not reach the pro
 Because the change alters C's retrieval, stage 1 is checked again with **exactly the same protocol**: the same dev set (positions 385–434, n = 50), the same α grid {0, 0.25, 0.5, 0.75, 1}, the same primary context-relevance judge (ctxrel-v2, temperature 0), the same metrics and the same selection rule (`select_stage1_candidates`). Judge labels are reused only when question_id, answer_id, text_hash, judge model and prompt version are all identical; every other item is judged anew. **The result is accepted whatever it is, including if the selected α changes.**
 
 ### Outcome
-Recheck run on 2026-10-18 (report `llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.md`).
+Recheck run on 2026-10-18 (report `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.md`).
 - **Reproduction:** with the switch off, the top-5 is identical to the Amendment 6 stage-1 result of record (50 × 5), the recomputed metrics equal the recorded ones, and top_two stays [0.5, 0.25].
 - **Expansion:** empty expansion slots fall from 64.1% to 0% (432 expansion Questions on 50 dev questions, every α). Context items from expansion in the top-5 roughly double (α = 0.5: 36 → 82; α = 0.25: 37 → 88). Questions with fewer than 5 context items fall from 5 to 2. Anchors and traversal candidates are unchanged for every question.
 - **Questions whose top-5 changed:** 38 / 50 at α = 0.5 and 34 / 50 at α = 0.25.
 - **Latency:** C retrieval-only p95 changes by about +0.01–0.02 s, for example α = 0.5 from 0.091 to 0.106 s.
-- **Judging:** 405 cached labels were reused under the identity rule, and 119 new items were judged (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`, temperature 0; 0 failures). The new labels are in `results/expansion_check/ctxrel_v2_expansion_primary.jsonl`. Cost was $0.0137.
+- **Judging:** 405 cached labels were reused under the identity rule, and 119 new items were judged (ctxrel-v2, primary, `meta-llama/Llama-3.3-70B-Instruct`, temperature 0; 0 failures). The new labels are in `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/ctxrel_v2_expansion_primary.jsonl`. Cost was $0.0137.
 
 | α | % q ≥1 RELEVANT (old → new) | mean score (old → new) | % accepted (old → new) |
 |---|---|---|---|

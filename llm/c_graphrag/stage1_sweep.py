@@ -462,9 +462,10 @@ def load_controls_summary(path, ctxrel_version: str, deciding_judge_id: str, dev
     import hashlib
     import subprocess
 
-    p = Path(path)
+    from llm import archive_paths
+    p = archive_paths.canonical(path)
     try:
-        raw = p.read_bytes()
+        raw = archive_paths.resolve(path).read_bytes()
         s = json.loads(raw)
     except (OSError, json.JSONDecodeError) as e:
         raise ControlsSummaryError(f"cannot read controls summary {path}: {e}") from e

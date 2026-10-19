@@ -29,8 +29,9 @@ export function HistoryPage() {
   const [condition, setCondition] = useState<string | undefined>(searchParams.get('condition') ?? undefined)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showSuperseded, setShowSuperseded] = useState(false)
+  const [showArchive, setShowArchive] = useState(false)
   const navigate = useNavigate()
-  const { data, isLoading, isError } = useHistory(condition, page, PAGE_SIZE, showSuperseded)
+  const { data, isLoading, isError } = useHistory(condition, page, PAGE_SIZE, showSuperseded, showArchive)
   const deleteHistory = useDeleteHistory()
 
   const handleDelete = (e: MouseEvent, id: string) => {
@@ -91,6 +92,14 @@ export function HistoryPage() {
           />
           Show superseded runs (replaced by a later re-run of the same config)
         </label>
+        <label className="flex items-center gap-1.5 text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={showArchive}
+            onChange={(e) => { setShowArchive(e.target.checked); setPage(1) }}
+          />
+          Show archive (pre-official runs, archived 2026-10-19)
+        </label>
       </div>
 
       {isError && <div className="text-sm text-danger mb-4">Failed to load history.</div>}
@@ -115,7 +124,7 @@ export function HistoryPage() {
             {!isLoading && data?.items.length === 0 && (
               <tr>
                 <td colSpan={10} className="px-3 py-8 text-center text-text-muted">
-                  No runs yet.
+                  {showArchive ? 'No runs yet.' : 'No official runs yet. Pre-official runs are in the archive (toggle above).'}
                 </td>
               </tr>
             )}
@@ -131,6 +140,9 @@ export function HistoryPage() {
                   {item.condition}
                   {item.is_dev && (
                     <span className="ml-2 px-1.5 py-0.5 text-xs rounded bg-white border border-warning/40 text-warning">dev</span>
+                  )}
+                  {item.archived && (
+                    <span className="ml-2 px-1.5 py-0.5 text-xs rounded bg-white border border-border-strong text-text-muted">archived</span>
                   )}
                 </td>
                 <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
@@ -152,14 +164,14 @@ export function HistoryPage() {
                   <Badge tone={STATUS_TONE[item.status] ?? 'neutral'}>{item.status}</Badge>
                 </td>
                 <td className="px-3 py-2.5">
-                  <button
+                  {!item.archived && <button
                     onClick={(e) => handleDelete(e, item.history_id)}
                     disabled={deleteHistory.isPending}
                     title="Delete this run from History"
                     className="text-text-muted hover:text-danger disabled:opacity-50"
                   >
                     ✕
-                  </button>
+                  </button>}
                 </td>
               </tr>
             ))}

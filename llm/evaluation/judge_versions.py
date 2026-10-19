@@ -66,8 +66,9 @@ def run_purpose(run_files: list[str], calibration_paths: set[str] | None = None)
                              for r in load_calibration_registry().get("runs", [])}
     if any(str(Path(f).resolve()) in calibration_paths for f in run_files):
         return PURPOSE_CALIBRATION
+    from llm import archive_paths  # pre-official archive (2026-10-19): open wherever the file now is
     for f in run_files:
-        with open(f) as fh:
+        with open(archive_paths.resolve(f)) as fh:
             for line in fh:
                 if line.strip():
                     if (json.loads(line).get("config") or {}).get("sample_split") == "test":

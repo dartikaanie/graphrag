@@ -37,6 +37,8 @@ SOURCE_DIRS = [
     "llm/c_graphrag/results", "llm/c_graphrag/logs",
     "llm/d_lightrag/results", "llm/d_lightrag/logs",
     "llm/evaluation/results", "llm/evaluation/logs",
+    # pre-official archive of 2026-10-19 (results/_archive/*/ARCHIVE_INDEX.md) -- backed up like any result
+    "results/_archive", "logs/_archive",
 ]
 
 

@@ -282,7 +282,13 @@ def main():
                              "ringkasan per kondisi saja, TIDAK ke uji berpasangan/Holm (analisis utama tetap "
                              "C-primary vs A/B/D); tabel berpasangan C-primary vs C-ablation ada di "
                              "trust_ablation_report.py.")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from llm import run_registry
+    run_registry.add_cli_flag(parser)
     args = parser.parse_args()
+    # Official runs only by default (results/run_registry.json; Amendment 14)
+    run_registry.guard_cli([args.a_path, args.b_path, args.c_path, args.d_path, args.c_ablation_path],
+                           args.include_archived)
 
     given = {"A": args.a_path, "B": args.b_path, "C": args.c_path, "D": args.d_path}
     given = {k: Path(v) for k, v in given.items() if v}

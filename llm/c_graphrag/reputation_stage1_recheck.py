@@ -86,18 +86,25 @@ CTXREL_VERSION = "ctxrel-v2"
 JUDGE_ID = "primary"
 PCT_TIE = 2.0
 SCORE_TIE = 0.02
+from llm import archive_paths  # noqa: E402
+
 RESULTS = Path(__file__).resolve().parent / "results"
 OUT_DIR = RESULTS / "reputation_check"
-STAGE1_JUDGMENTS = RESULTS / "ctxrel_v2_stage1_sweep_primary.jsonl"
-NEW_JUDGMENTS = OUT_DIR / "ctxrel_v2_repfix_primary.jsonl"
+# Inputs of record were moved to the pre-official archive (2026-10-19);
+# resolve() returns the original path while it exists, else the archived copy.
+STAGE1_JUDGMENTS = archive_paths.resolve(RESULTS / "ctxrel_v2_stage1_sweep_primary.jsonl")
+NEW_JUDGMENTS = archive_paths.resolve(OUT_DIR / "ctxrel_v2_repfix_primary.jsonl")
 
 
 # ---------------------------------------------------------------------
 # Logika murni -- diuji di tests/test_reputation_stage1_recheck.py
 # ---------------------------------------------------------------------
 
-def stage1_file_for_alpha(alpha: float, results_dir: Path = RESULTS) -> Path:
+def stage1_file_for_alpha(alpha: float, results_dir: Path | None = None) -> Path:
     """File retrieval-only stage 1 (dev, n50, seed42) untuk satu alpha."""
+    if results_dir is None:  # default: results/, or its pre-official archive copy
+        results_dir = RESULTS if any(RESULTS.glob("condition_c_*_n50_seed42_*_dev_v3_*.jsonl")) \
+            else (archive_paths.archived_dir(RESULTS) or RESULTS)
     matches = []
     for p in sorted(results_dir.glob("condition_c_*_n50_seed42_*_dev_v3_*.jsonl")):
         with open(p) as f:
@@ -331,7 +338,7 @@ def main() -> int:
                    for r in recs} for a, recs in repfix_records.items()}
     base_m = {a: s1.compute_alpha_metrics(str(stage1_files[a]), judged, sel_base, a) for a in ALPHAS}
     fix_m = {a: s1.compute_alpha_metrics(str(repfix_files[a]), judged, sel_fix, a) for a in ALPHAS}
-    reported = parse_stage1_report(RESULTS / "stage1_report_ctxrel_v2_primary_n50_seed42.md")
+    reported = parse_stage1_report(archive_paths.resolve(RESULTS / "stage1_report_ctxrel_v2_primary_n50_seed42.md"))
     off = [a for a in ALPHAS if reported.get(a) != (base_m[a]["pct_questions_with_relevant"],
                                                     base_m[a]["mean_relevance_score"])]
     if off:

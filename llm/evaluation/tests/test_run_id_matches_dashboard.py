@@ -26,11 +26,18 @@ from _run_metadata import HISTORY_PATHS, _history_id as local_history_id  # noqa
 from _run_metadata import derive_run_label as local_derive_run_label  # noqa: E402
 
 
+def _history_paths():
+    """Each condition's active run_history.jsonl and its pre-official archive copy (2026-10-19)."""
+    from llm import archive_paths
+    for condition, active in HISTORY_PATHS.items():
+        for path in (active, archive_paths.archived(active)):
+            if path is not None and path.exists():
+                yield condition, path
+
+
 def _all_run_history_entries():
     entries = []
-    for condition, path in HISTORY_PATHS.items():
-        if not path.exists():
-            continue
+    for condition, path in _history_paths():
         with open(path) as f:
             for line in f:
                 line = line.strip()

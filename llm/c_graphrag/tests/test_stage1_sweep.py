@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from llm import archive_paths
+
 from stage1_sweep import (
     build_control_items,
     build_plan,
@@ -696,8 +698,9 @@ def test_run_history_written_where_run_metadata_reads_regardless_of_cwd(tmp_path
 # --controls-summary gate (validated, never re-run as a gate)
 # ---------------------------------------------------------------------
 
-GATE_SUMMARY = (Path(__file__).resolve().parents[1] / "results" / "controls"
-                / "ctxrel_v2_controls_positive-easy_negative-hard_negative_20261007T165007Z_summary.json")
+GATE_SUMMARY = archive_paths.resolve(
+    Path(__file__).resolve().parents[1] / "results" / "controls"
+    / "ctxrel_v2_controls_positive-easy_negative-hard_negative_20261007T165007Z_summary.json")
 
 
 def _gate_dev_ids():

@@ -16,7 +16,7 @@ from fnmatch import fnmatch
 from app.process import guard, live, logs, runs
 from app.process.decisions import DECISION_DOC, parse_decisions
 from app.process.registry import PARAMETERS, STEPS, Param, Quote
-from app.process.sources import (SourceError, file_stamp, last_change, newest_first, quote, read_text, repo_path,
+from app.process.sources import (REPO_ROOT, SourceError, file_stamp, last_change, newest_first, quote, read_text, repo_path,
                                  resolve, stamp_to_iso)
 
 KG_LOGS = "01_data_cleaning/logs"
@@ -191,14 +191,20 @@ def latest_verify() -> dict | None:
 
 def stage1_result() -> dict | None:
     """Stage-1 result of record: the newest logscore stage-1 report (dev set,
-    aggregates only)."""
+    aggregates only). Read from the pre-official archive (2026-10-19) when it
+    is no longer in results/; the row then carries from_archive=True."""
+    from app.archive import archive_paths
+
     directory = repo_path(LOGSCORE_DIR)
-    if not directory.is_dir():
-        return None
+    from_archive = not directory.is_dir()
+    if from_archive:
+        directory = archive_paths.archived_dir(directory)
+        if directory is None or not directory.is_dir():
+            return None
     reports = newest_first([p for p in directory.iterdir() if fnmatch(p.name, "stage1_logscore_report_*.json")])
     if not reports:
         return None
-    rel = f"{LOGSCORE_DIR}/{reports[0].name}"
+    rel = reports[0].relative_to(REPO_ROOT).as_posix()
     data = json.loads(read_text(rel))
     table = []
     for alpha in sorted(data.get("v3", {}), key=float):
@@ -216,7 +222,9 @@ def stage1_result() -> dict | None:
     md_name = reports[0].name.replace(".json", ".md")
     return {
         "file": rel,
-        "log_id": f"logscore_check/{md_name}" if (directory / md_name).exists() else None,
+        "from_archive": from_archive,
+        "log_id": (f"{logs.ARCHIVE_KEY_PREFIX if from_archive else ''}logscore_check/{md_name}"
+                   if (directory / md_name).exists() else None),
         "timestamp_utc": stamp_to_iso(file_stamp(reports[0].name)),
         "git_commit": (meta.get("git_commit") or "")[:7] or None,
         "judge_model": meta.get("judge_model"),
@@ -332,15 +340,16 @@ def decisions() -> dict:
     return {"as_of": _mtime_iso(DECISION_DOC), "source": DECISION_DOC, "decisions": parse_decisions()}
 
 
-def run_list() -> dict:
-    rows = runs.list_runs()
-    return {"as_of": _now(), "dirs": [d for _, d in runs.RUN_DIRS], "runs": rows}
+def run_list(include_archive: bool = False) -> dict:
+    rows = runs.list_runs(include_archive)
+    return {"as_of": _now(), "dirs": [d for _, d in runs.RUN_DIRS], "include_archive": include_archive, "runs": rows}
 
 
 def live_values() -> dict:
     return {"default": latest_verify(), "live": live.get_cached(), "queries": live.QUERIES}
 
 
-def log_list() -> dict:
-    return {"as_of": _now(), "roots": [r.rel_dir for r in logs.LOG_ROOTS], "logs": logs.list_logs()}
+def log_list(include_archive: bool = False) -> dict:
+    return {"as_of": _now(), "roots": [r.rel_dir for r in logs.LOG_ROOTS], "include_archive": include_archive,
+            "logs": logs.list_logs(include_archive)}
 

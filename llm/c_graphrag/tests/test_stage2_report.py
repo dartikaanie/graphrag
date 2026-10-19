@@ -169,6 +169,8 @@ def test_frozen_dev_list_is_the_stage1_dev_set(monkeypatch):
     """The frozen list stage 2 is checked against is exactly the question list the Amendment 9 stage-1
     recheck ran on (positions 385-434), in the same order."""
     monkeypatch.undo()  # the real stage1_dev_ids, not the autouse stand-in
-    recheck = Path(s2.__file__).resolve().parent / "results" / "expansion_check" / "stage1_expansion_new_alpha0-25.jsonl"
+    from llm import archive_paths
+    recheck = archive_paths.resolve(
+        Path(s2.__file__).resolve().parent / "results" / "expansion_check" / "stage1_expansion_new_alpha0-25.jsonl")
     ids = [json.loads(line)["question_id"] for line in recheck.read_text().splitlines()]
     assert s2.stage1_dev_ids() == ids and len(ids) == 50
