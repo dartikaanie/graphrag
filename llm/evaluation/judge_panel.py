@@ -167,6 +167,17 @@ def annotation_exclusions(run_files: list[str], key_dir: Path | None = None, cal
             "calibration_paths": calibration_paths}
 
 
+def select_calibration_set(items: list[dict], key: dict) -> list[dict]:
+    """--calibration-set: exactly the items of the (verified) calibration key, nothing else."""
+    wanted = {(k["run_id"], int(k["question_id"])) for k in key["items"]}
+    picked = [it for it in items if (it["run_id"], it["question_id"]) in wanted]
+    found = {(it["run_id"], it["question_id"]) for it in picked}
+    if len(picked) != len(wanted) or found != wanted:
+        raise PanelGuardError(f"calibration set: {len(found)} of the {len(wanted)} key items found in the run files "
+                              f"(missing {len(wanted - found)}); give the three calibration run files")
+    return picked
+
+
 def apply_exclusions(items: list[dict], excl: dict, explicit_question_ids: bool) -> tuple[list[dict], dict]:
     """Drops excluded items (counts only, never ids, are reported). An explicitly requested question that is
     excluded is an error, not a silent skip."""
@@ -495,6 +506,9 @@ def main(argv=None) -> int:
     parser.add_argument("--allow-unannotated-calibration", action="store_true",
                         help="Calibration guard override (logged); annotation items stay excluded regardless")
     parser.add_argument("--dry-run", action="store_true", help="Plan and project the cost; no API call")
+    parser.add_argument("--calibration-set", action="store_true",
+                        help="Judge exactly the 60 human-labelled calibration items (Amendment 12). Requires the "
+                             "frozen annotation sheet (hash = freeze record) and the finalized reference; no override")
     args = parser.parse_args(argv)
 
     from dotenv import load_dotenv
@@ -511,14 +525,31 @@ def main(argv=None) -> int:
         if not Path(p).exists():
             log(f"[ERROR] run file not found: {p}")
             return 1
+    from annotation_tool import AnnotationError, assert_annotation_frozen, load_verified_key
+    frozen = None
     try:
         version_purpose = check_run_allowed(PROMPT_VERSION, args.run_files, log)
+        if args.calibration_set:
+            if args.allow_unannotated_calibration or args.question_ids or args.items:
+                raise PanelGuardError("--calibration-set takes no override and no item selection")
+            frozen = assert_annotation_frozen("calibration", "annotator1")
+            log(f"[freeze] {frozen['file_name']} matches its freeze record (sha256 {frozen['sha256']})")
         guard = assert_calibration_judging_allowed(args.run_files, args.allow_unannotated_calibration, log)
-        excl = annotation_exclusions(args.run_files, key_dir_from(args.key_dir))
-        items_by_file = parse_item_specs(args.items, len(args.run_files))
-        items = load_panel_items(args.run_files, args.question_ids, items_by_file)
-        items, excl_counts = apply_exclusions(items, excl, explicit_question_ids=bool(args.question_ids or args.items))
-    except (JudgeVersionError, CalibrationGuardError, PanelGuardError, ValueError) as e:
+        if args.calibration_set:
+            if not guard["calibration_run_files"] or not guard["reference_ok"]:
+                raise PanelGuardError(f"--calibration-set needs the calibration run files and the finalized "
+                                      f"reference ({guard['reference_status']})")
+            items = select_calibration_set(load_panel_items(args.run_files),
+                                           load_verified_key("calibration", key_dir_from(args.key_dir)))
+            excl = {"keys": {"calibration": "verified; its 60 items ARE the run (--calibration-set)"}}
+            excl_counts = {"calibration_set_items": len(items)}
+        else:
+            excl = annotation_exclusions(args.run_files, key_dir_from(args.key_dir))
+            items_by_file = parse_item_specs(args.items, len(args.run_files))
+            items = load_panel_items(args.run_files, args.question_ids, items_by_file)
+            items, excl_counts = apply_exclusions(items, excl,
+                                                  explicit_question_ids=bool(args.question_ids or args.items))
+    except (JudgeVersionError, CalibrationGuardError, PanelGuardError, AnnotationError, ValueError) as e:
         log(f"[ERROR] {e}")
         return 1
     log(f"[annotation exclusion] keys: {excl['keys']}; {excl_counts}")
@@ -569,6 +600,7 @@ def main(argv=None) -> int:
         "n_items": len(items),
         "out": str(out), "panel_out": str(panel_path), "panel": panel_public_view(), "concurrency": concurrency,
         "max_cost_usd": args.max_cost_usd, "projection": projection, "calibration_guard": guard,
+        "calibration_set": args.calibration_set, "annotation_freeze": frozen,
         "annotation_exclusion": {"keys": excl["keys"], **excl_counts}, "version_purpose": version_purpose,
         "n_calls": len(new), "n_cached": n_cached, "actual_cost_usd": summary["actual_cost_usd_this_run"],
     })

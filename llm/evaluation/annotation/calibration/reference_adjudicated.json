@@ -1,0 +1,371 @@
+{
+  "purpose": "calibration",
+  "items": [
+    {
+      "item_id": "CAL-001",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-002",
+      "category": "HALLUCINATED",
+      "severity": "PENUH",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-003",
+      "category": "ABSTAIN",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-004",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-005",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-006",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-007",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-008",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-009",
+      "category": "ABSTAIN",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-010",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-011",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-012",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-013",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-014",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-015",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-016",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-017",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-018",
+      "category": "HALLUCINATED",
+      "severity": "PENUH",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-019",
+      "category": "ABSTAIN",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-020",
+      "category": "ABSTAIN",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-021",
+      "category": "HALLUCINATED",
+      "severity": "PENUH",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-022",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-023",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-024",
+      "category": "HALLUCINATED",
+      "severity": "PENUH",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-025",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-026",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-027",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-028",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-029",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-030",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-031",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-032",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-033",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-034",
+      "category": "HALLUCINATED",
+      "severity": "PENUH",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-035",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-036",
+      "category": "ABSTAIN",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-037",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-038",
+      "category": "HALLUCINATED",
+      "severity": "PENUH",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-039",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-040",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-041",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-042",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-043",
+      "category": "ABSTAIN",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-044",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-045",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-046",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-047",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-048",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-049",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-050",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-051",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-052",
+      "category": "ABSTAIN",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-053",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-054",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-055",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-056",
+      "category": "ABSTAIN",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-057",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-058",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-059",
+      "category": "HALLUCINATED",
+      "severity": "SEBAGIAN",
+      "source": "annotator1"
+    },
+    {
+      "item_id": "CAL-060",
+      "category": "NOT_HALLUCINATED",
+      "severity": null,
+      "source": "annotator1"
+    }
+  ],
+  "status": "adjudicated",
+  "finalized_at_utc": "2026-10-19T13:49:24.682741+00:00",
+  "key_sha256": "1eb982f1d7c5f33c0273ac0e96e9d79c265a8b399255b8437d2145f4493d6311",
+  "n_items": 60,
+  "human_human": null,
+  "n_adjudicated": 0
+}

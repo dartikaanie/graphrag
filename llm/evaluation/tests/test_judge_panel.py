@@ -243,3 +243,11 @@ def test_parse_item_specs():
     for bad in (["3:1"], ["x:1"], ["1"]):
         with pytest.raises(ValueError):
             jp.parse_item_specs(bad, 3)
+
+
+def test_select_calibration_set_exact():
+    key = {"items": [{"run_id": "r1", "question_id": 1}, {"run_id": "r2", "question_id": 2}]}
+    items = [{"run_id": r, "question_id": q} for r, q in (("r1", 1), ("r1", 2), ("r2", 2), ("r2", 3))]
+    assert [(i["run_id"], i["question_id"]) for i in jp.select_calibration_set(items, key)] == [("r1", 1), ("r2", 2)]
+    with pytest.raises(jp.PanelGuardError):
+        jp.select_calibration_set(items[:1], key)
