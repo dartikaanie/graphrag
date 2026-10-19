@@ -146,3 +146,11 @@ def test_spec_selection_and_cache_key_by_version():
     tasks, _, n_cached = jp.plan_tasks(items, {1: "b"}, done, jp.judge_version_spec("judge-v2.3"))
     assert n_cached == 0 and len(tasks) == 3
     assert tasks[0][2][0]["content"] == v23.SYSTEM_PROMPT
+
+
+def test_example_l_uses_numbers_unrelated_to_calibration_items():
+    # iteration-2 fix: (l) first reused 1.0.1 / 11.0.1 / 1.1.0 from calibration items CAL-016/017/058
+    ex = v23.SYSTEM_PROMPT[v23.SYSTEM_PROMPT.index("(l) A different"):v23.SYSTEM_PROMPT.index("(m) Same")]
+    assert "2.4.0" in ex and "7.3.2" in ex and "2.6.0" in ex
+    for n in ("1.0.1", "11.0.1", "1.1.0"):
+        assert n not in v23.SYSTEM_PROMPT
