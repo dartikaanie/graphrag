@@ -1,0 +1,336 @@
+[judge-version] judge-v2.3 allowed for a calibration run
+[freeze] annotator1.xlsx matches its freeze record (sha256 bff6e290cbd345a13e3630855ea98ed1902a0e8e2304520a95231e85fbe8290b)
+[annotation exclusion] keys: {'calibration': 'verified; its 60 items ARE the run (--calibration-set)'}; {'calibration_set_items': 60}
+
+[plan] judge-v2.3 (parse pv2.3-1, response_format {'type': 'json_object'}): 60 items x 3 judges: 180 calls to make, 0 cached
+[cost] projected $0.4639 (worst case with all retries $1.3917); limit $1.0000
+{
+  "llama": {
+    "n_calls": 60,
+    "input_tokens": 460986,
+    "output_tokens": 120000,
+    "cost_usd": 0.0845
+  },
+  "deepseek": {
+    "n_calls": 60,
+    "input_tokens": 460986,
+    "output_tokens": 120000,
+    "cost_usd": 0.16546
+  },
+  "qwen": {
+    "n_calls": 60,
+    "input_tokens": 460986,
+    "output_tokens": 120000,
+    "cost_usd": 0.21395
+  }
+}
+  A-cc42da2005:47712318 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4673/895
+  A-cc42da2005:47712318 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4782/1059
+  A-cc42da2005:47712318 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4697/1086
+  A-cc42da2005:125143 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4502/1015
+  A-cc42da2005:125143 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4594/809
+  A-cc42da2005:125143 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4526/936
+  A-cc42da2005:65032123 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5212/873
+  A-cc42da2005:65032123 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5353/972
+  A-cc42da2005:65032123 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5246/1021
+  A-cc42da2005:30940698 llama    label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=5005/344
+  A-cc42da2005:30940698 deepseek label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=5196/1019
+  A-cc42da2005:30940698 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5036/891
+  A-cc42da2005:45387122 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4923/920
+  A-cc42da2005:45387122 deepseek label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=5075/1248
+  A-cc42da2005:45387122 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4965/1102
+  A-cc42da2005:65748781 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5072/500
+  A-cc42da2005:65748781 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5222/1018
+  A-cc42da2005:65748781 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5159/948
+  A-cc42da2005:42102028 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5773/596
+  A-cc42da2005:42102028 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5930/976
+  A-cc42da2005:42102028 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5824/742
+  A-cc42da2005:71408390 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4414/516
+  A-cc42da2005:71408390 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4519/981
+  A-cc42da2005:71408390 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4437/1056
+  A-cc42da2005:14610888 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4842/572
+  A-cc42da2005:14610888 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4987/730
+  A-cc42da2005:14610888 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4875/866
+  A-cc42da2005:57331553 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4825/602
+  A-cc42da2005:57331553 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4984/1011
+  A-cc42da2005:57331553 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4864/1135
+  A-cc42da2005:69868179 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5002/563
+  A-cc42da2005:69868179 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5156/1175
+  A-cc42da2005:69868179 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5045/686
+  A-cc42da2005:56467081 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5220/950
+  A-cc42da2005:56467081 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5359/925
+  A-cc42da2005:56467081 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5243/939
+  A-cc42da2005:66767217 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4553/570
+  A-cc42da2005:66767217 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4676/804
+  A-cc42da2005:66767217 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4755/752
+  A-cc42da2005:26179020 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4563/426
+  A-cc42da2005:26179020 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4692/1107
+  A-cc42da2005:26179020 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4590/1037
+  A-cc42da2005:12278877 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4186/636
+  A-cc42da2005:12278877 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4294/1648
+  A-cc42da2005:12278877 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4209/914
+  A-cc42da2005:25665494 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4566/903
+  A-cc42da2005:25665494 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4665/899
+  A-cc42da2005:25665494 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4592/986
+  A-cc42da2005:27612931 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4865/947
+  A-cc42da2005:27612931 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4977/951
+  A-cc42da2005:27612931 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4954/994
+  A-cc42da2005:69993521 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4485/656
+  A-cc42da2005:69993521 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4597/960
+  A-cc42da2005:69993521 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4512/1077
+  A-cc42da2005:12722405 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5099/897
+  A-cc42da2005:12722405 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5230/948
+  A-cc42da2005:12722405 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5178/1031
+  A-cc42da2005:76615231 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4813/1029
+  A-cc42da2005:76615231 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4897/1043
+  A-cc42da2005:76615231 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4837/1187
+  B-347fe4b559:47712318 llama    label=FAKTUAL parse_ok=True finish=stop tokens=6158/640
+  B-347fe4b559:47712318 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6379/866
+  B-347fe4b559:47712318 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6239/742
+  B-347fe4b559:125143 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5196/666
+  B-347fe4b559:125143 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5313/1184
+  B-347fe4b559:125143 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5223/743
+  B-347fe4b559:71829283 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5532/677
+  B-347fe4b559:71829283 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5673/613
+  B-347fe4b559:71829283 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5633/627
+  B-347fe4b559:19951718 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4871/931
+  B-347fe4b559:19951718 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4986/741
+  B-347fe4b559:19951718 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4928/886
+  B-347fe4b559:73145269 llama    label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=6079/638
+  B-347fe4b559:73145269 deepseek label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=6290/972
+  B-347fe4b559:73145269 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6127/767
+  B-347fe4b559:45387122 llama    label=FAKTUAL parse_ok=True finish=stop tokens=6314/1316
+  B-347fe4b559:45387122 deepseek label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=6627/1251
+  B-347fe4b559:45387122 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6413/1132
+  B-347fe4b559:72944746 llama    label=FAKTUAL parse_ok=True finish=stop tokens=7693/373
+  B-347fe4b559:72944746 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=7919/992
+  B-347fe4b559:72944746 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=8406/1110
+  B-347fe4b559:74605353 llama    label=FAKTUAL parse_ok=True finish=stop tokens=6250/558
+  B-347fe4b559:74605353 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6480/807
+  B-347fe4b559:74605353 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6318/1021
+  B-347fe4b559:55892278 llama    label=FAKTUAL parse_ok=True finish=stop tokens=6181/605
+  B-347fe4b559:55892278 deepseek label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=6404/904
+  B-347fe4b559:55892278 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6292/965
+  B-347fe4b559:24615005 llama    label=FAKTUAL parse_ok=True finish=stop tokens=6063/1060
+  B-347fe4b559:24615005 deepseek label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=6213/1041
+  B-347fe4b559:24615005 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6096/970
+  B-347fe4b559:57331553 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5967/687
+  B-347fe4b559:57331553 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6214/898
+  B-347fe4b559:57331553 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6024/951
+  B-347fe4b559:69868179 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5922/1074
+  B-347fe4b559:69868179 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6142/960
+  B-347fe4b559:69868179 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5969/745
+  B-347fe4b559:2157289 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5573/928
+  B-347fe4b559:2157289 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5682/936
+  B-347fe4b559:2157289 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5603/1011
+  B-347fe4b559:60436134 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5437/452
+  B-347fe4b559:60436134 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5613/963
+  B-347fe4b559:60436134 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5532/743
+  B-347fe4b559:26179020 llama    label=FAKTUAL parse_ok=True finish=stop tokens=6032/428
+  B-347fe4b559:26179020 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6328/822
+  B-347fe4b559:26179020 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6076/524
+  B-347fe4b559:12278877 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5688/719
+  B-347fe4b559:12278877 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5836/1162
+  B-347fe4b559:12278877 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5725/1012
+  B-347fe4b559:25665494 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5065/673
+  B-347fe4b559:25665494 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5171/890
+  B-347fe4b559:25665494 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5088/927
+  B-347fe4b559:77482226 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5748/703
+  B-347fe4b559:77482226 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5981/1012
+  B-347fe4b559:77482226 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5791/817
+  B-347fe4b559:4316334 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4961/775
+  B-347fe4b559:4316334 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5109/848
+  B-347fe4b559:4316334 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5057/844
+  B-347fe4b559:76615231 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5843/583
+  B-347fe4b559:76615231 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5992/877
+  B-347fe4b559:76615231 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5887/820
+  B-af190f3c5a:60887798 llama    label=FAKTUAL parse_ok=True finish=stop tokens=7086/604
+  B-af190f3c5a:60887798 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=7272/785
+  B-af190f3c5a:60887798 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=7118/808
+  B-af190f3c5a:71829283 llama    label=ABSTAIN parse_ok=True finish=stop tokens=5183/94
+  B-af190f3c5a:71829283 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=5328/93
+  B-af190f3c5a:71829283 qwen     label=ABSTAIN parse_ok=True finish=stop tokens=5286/78
+  B-af190f3c5a:45387122 llama    label=FAKTUAL parse_ok=True finish=stop tokens=6158/545
+  B-af190f3c5a:45387122 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6470/902
+  B-af190f3c5a:45387122 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6252/877
+  B-af190f3c5a:74605353 llama    label=FAKTUAL parse_ok=True finish=stop tokens=6133/465
+  B-af190f3c5a:74605353 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=6353/123
+  B-af190f3c5a:74605353 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6197/783
+  B-af190f3c5a:55892278 llama    label=ABSTAIN parse_ok=True finish=stop tokens=5844/100
+  B-af190f3c5a:55892278 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=6063/107
+  B-af190f3c5a:55892278 qwen     label=ABSTAIN parse_ok=True finish=stop tokens=5944/82
+  B-af190f3c5a:44558343 llama    label=ABSTAIN parse_ok=True finish=stop tokens=5859/98
+  B-af190f3c5a:44558343 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=6083/108
+  B-af190f3c5a:44558343 qwen     label=ABSTAIN parse_ok=True finish=stop tokens=5932/74
+  B-af190f3c5a:42102028 llama    label=FAKTUAL parse_ok=True finish=stop tokens=7407/548
+  B-af190f3c5a:42102028 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=7610/733
+  B-af190f3c5a:42102028 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=7473/515
+  B-af190f3c5a:71408390 llama    label=ABSTAIN parse_ok=True finish=stop tokens=4597/101
+  B-af190f3c5a:71408390 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=4717/78
+  B-af190f3c5a:71408390 qwen     label=ABSTAIN parse_ok=True finish=stop tokens=4621/82
+  B-af190f3c5a:24615005 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5831/473
+  B-af190f3c5a:24615005 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5983/612
+  B-af190f3c5a:24615005 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5869/654
+  B-af190f3c5a:62574045 llama    label=ABSTAIN parse_ok=True finish=stop tokens=5887/102
+  B-af190f3c5a:62574045 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=6062/79
+  B-af190f3c5a:62574045 qwen     label=ABSTAIN parse_ok=True finish=stop tokens=5928/75
+  B-af190f3c5a:14019246 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5948/1150
+  B-af190f3c5a:14019246 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6144/1090
+  B-af190f3c5a:14019246 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5976/1189
+  B-af190f3c5a:57331553 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5931/541
+  B-af190f3c5a:57331553 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6175/1188
+  B-af190f3c5a:57331553 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5986/687
+  B-af190f3c5a:50061146 llama    label=ABSTAIN parse_ok=True finish=stop tokens=5783/112
+  B-af190f3c5a:50061146 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=5973/99
+  B-af190f3c5a:50061146 qwen     label=ABSTAIN parse_ok=True finish=stop tokens=5864/95
+  B-af190f3c5a:69868179 llama    label=ABSTAIN parse_ok=True finish=stop tokens=5340/111
+  B-af190f3c5a:69868179 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=5501/100
+  B-af190f3c5a:69868179 qwen     label=ABSTAIN parse_ok=True finish=stop tokens=5386/98
+  B-af190f3c5a:67427589 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5578/430
+  B-af190f3c5a:67427589 deepseek label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=5824/895
+  B-af190f3c5a:67427589 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5608/538
+  B-af190f3c5a:26179020 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5968/423
+  B-af190f3c5a:26179020 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6261/902
+  B-af190f3c5a:26179020 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=6012/543
+  B-af190f3c5a:25665494 llama    label=FAKTUAL parse_ok=True finish=stop tokens=4829/344
+  B-af190f3c5a:25665494 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=4933/333
+  B-af190f3c5a:25665494 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=4852/455
+  B-af190f3c5a:4316334 llama    label=ABSTAIN parse_ok=True finish=stop tokens=4709/99
+  B-af190f3c5a:4316334 deepseek label=ABSTAIN parse_ok=True finish=stop tokens=4847/98
+  B-af190f3c5a:4316334 qwen     label=ABSTAIN parse_ok=True finish=stop tokens=4801/96
+  B-af190f3c5a:53432433 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5947/660
+  B-af190f3c5a:53432433 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=6096/922
+  B-af190f3c5a:53432433 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5990/922
+  B-af190f3c5a:76615231 llama    label=FAKTUAL parse_ok=True finish=stop tokens=5705/390
+  B-af190f3c5a:76615231 deepseek label=FAKTUAL parse_ok=True finish=stop tokens=5856/690
+  B-af190f3c5a:76615231 qwen     label=FAKTUAL parse_ok=True finish=stop tokens=5749/442
+
+=== SUMMARY ===
+{
+  "per_judge": {
+    "llama": {
+      "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "n_records": 60,
+      "parse_ok": "60/60",
+      "parse_ok_this_run": "60/60",
+      "finish_reason_this_run": {
+        "stop": 60
+      },
+      "response_models": {
+        "meta-llama/Llama-3.3-70B-Instruct-Turbo": 60
+      },
+      "finish_reason": {
+        "stop": 60
+      },
+      "labels": {
+        "FAKTUAL": 50,
+        "HALUSINASI_PENUH": 2,
+        "ABSTAIN": 8
+      },
+      "unspecified_votes": 0,
+      "final_failures": 0,
+      "reasoning_present": 0,
+      "served_model_mismatch": 0,
+      "normalized_fields": {
+        "severity": 114,
+        "reference_conflict": 114
+      },
+      "prompt_tokens": 328889,
+      "completion_tokens": 36286,
+      "cost_usd_all_records": 0.0445,
+      "cost_usd_this_run": 0.0445,
+      "provider_cost_usd_this_run": 0.0445
+    },
+    "deepseek": {
+      "model": "deepseek-ai/DeepSeek-V3.2",
+      "n_records": 60,
+      "parse_ok": "60/60",
+      "parse_ok_this_run": "60/60",
+      "finish_reason_this_run": {
+        "stop": 60
+      },
+      "response_models": {
+        "deepseek-ai/DeepSeek-V3.2": 60
+      },
+      "finish_reason": {
+        "stop": 60
+      },
+      "labels": {
+        "FAKTUAL": 44,
+        "HALUSINASI_PENUH": 7,
+        "ABSTAIN": 9
+      },
+      "unspecified_votes": 0,
+      "final_failures": 0,
+      "reasoning_present": 0,
+      "served_model_mismatch": 0,
+      "normalized_fields": {
+        "supported_by_context_na_with_context": 53
+      },
+      "prompt_tokens": 339088,
+      "completion_tokens": 48959,
+      "cost_usd_all_records": 0.106767,
+      "cost_usd_this_run": 0.106767,
+      "provider_cost_usd_this_run": 0.07679
+    },
+    "qwen": {
+      "model": "Qwen/Qwen2.5-72B-Instruct",
+      "n_records": 60,
+      "parse_ok": "60/60",
+      "parse_ok_this_run": "60/60",
+      "finish_reason_this_run": {
+        "stop": 60
+      },
+      "response_models": {
+        "Qwen/Qwen2.5-72B-Instruct": 60
+      },
+      "finish_reason": {
+        "stop": 60
+      },
+      "labels": {
+        "FAKTUAL": 52,
+        "ABSTAIN": 8
+      },
+      "unspecified_votes": 0,
+      "final_failures": 0,
+      "reasoning_present": 0,
+      "served_model_mismatch": 0,
+      "normalized_fields": {
+        "supported_by_context_na_with_context": 2
+      },
+      "prompt_tokens": 332815,
+      "completion_tokens": 45836,
+      "cost_usd_all_records": 0.138148,
+      "cost_usd_this_run": 0.138148,
+      "provider_cost_usd_this_run": 0.138148
+    }
+  },
+  "panel_labels_by_run_label": {
+    "A [dev]": {
+      "FAKTUAL": 19,
+      "HALUSINASI_PENUH": 1
+    },
+    "B-plain [dev]": {
+      "FAKTUAL": 19,
+      "HALUSINASI_PENUH": 1
+    },
+    "B-grounded [dev]": {
+      "FAKTUAL": 12,
+      "ABSTAIN": 8
+    }
+  },
+  "unresolved_by_run_label": {
+    "A [dev]": 0,
+    "B-plain [dev]": 0,
+    "B-grounded [dev]": 0
+  },
+  "unspecified_by_run_label": {
+    "A [dev]": 0,
+    "B-plain [dev]": 0,
+    "B-grounded [dev]": 0
+  },
+  "n_panel_incomplete": 0,
+  "n_unanimous": 52,
+  "n_items": 60,
+  "actual_cost_usd_this_run": 0.289416
+}
