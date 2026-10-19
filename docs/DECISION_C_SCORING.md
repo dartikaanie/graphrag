@@ -666,6 +666,37 @@ These are measurement-validity corrections, decided on the design of the instrum
 
 ---
 
+## Amendment 12 (2026-10-19): LLM-as-Judge panel
+
+Amendment 12 – LLM-as-Judge panel.
+(a) The generator for the initial report remains gpt-4o-mini for all conditions.
+(b) The LLM-as-Judge is a fixed panel of three judges from different model families,
+served via DeepInfra: meta-llama/Llama-3.3-70B-Instruct, deepseek-ai/DeepSeek-V3.2
+(non-thinking mode), and Qwen/Qwen2.5-72B-Instruct. gpt-4o-mini is no longer a judge, to
+avoid self-preference bias toward the generator's own outputs (Verga et al., 2024).
+DeepSeek and Qwen families were selected in part because recent evidence shows them to
+agree substantially with expert labels on evidence-based hallucination judgment
+(Zhu et al., 2026) and to be the strongest open-source judge family (Gu et al., 2026).
+(c) All judges use the same frozen judge prompt version, temperature 0, explicit
+max_tokens, and no reasoning/thinking mode.
+(d) Aggregation: ABSTAIN if >=2 judges say ABSTAIN; otherwise the median of ordinal scores
+(FAKTUAL/ABSTAIN = 0, SEBAGIAN = 1, PENUH = 2). The binary hallucination outcome equals a
+2-of-3 majority vote (Gu et al., 2026: majority voting over mean). Missing-judge handling as
+implemented; UNRESOLVED items are reported, never dropped.
+(e) Validation: against the human calibration labels, each judge and the panel are
+reported with raw agreement, Cohen's kappa, hallucination recall, unsafe pass rate and false
+alarm rate (Zhu et al., 2026), with ABSTAIN excluded and counted. The kappa >= 0.6 target
+applies to the panel. Raw agreement is always reported alongside kappa because kappa is
+sensitive to label prevalence (Çetinkaya, 2027). The panel composition is fixed before any
+judge run on calibration items and is not changed based on these results. If the panel
+kappa < 0.6, the existing protocol applies (up to 3 prompt iterations on the dev
+calibration set, applied identically to all three judges).
+(f) Human annotation is done by a single annotator; agreement therefore measures the
+validity of judge labels, not inter-annotator reliability (Çetinkaya, 2027; Zhu et al., 2026).
+(g) This supersedes the earlier choice of Llama as primary and gpt-4o-mini as secondary judge.
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 
