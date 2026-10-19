@@ -8,6 +8,7 @@ Subcommands
     export              stratified sample -> one blind XLSX per annotator + key (outside the repo)
     validate            check a filled XLSX (invalid cells are reported, nothing is written)
     freeze              fix a valid sheet by its SHA-256 (record in the repo, copy outside), Amendment 12
+    export-v2           v2 revision sheet: copy of the frozen v1 sheet + v2_change_reason and read-only dates/flags
     human-kappa         annotator 1 vs annotator 2 on the overlap + adjudication template
     finalize-reference  build the adjudicated reference file (unlocks the calibration judge guard)
     judge-kappa         judge vs human reference, per judge and judge version (Markdown report)
@@ -802,6 +803,118 @@ def assert_annotation_frozen(purpose: str, annotator: str = "annotator1", annota
     return rec
 
 
+# ---------------------------------------------------------------------------
+# v2 revision sheet (guideline v2): a copy of the frozen v1 sheet plus read-only date/flag columns
+# ---------------------------------------------------------------------------
+
+V2_COLUMNS = ["v2_change_reason", "question_date", "reference_date", "time_rule_check"]
+V2_READONLY_COLUMNS = ("question_date", "reference_date", "time_rule_check")
+V2_TIME_RULE_CHECK = {"calibration": ("CAL-034", "CAL-049", "CAL-060")}
+
+
+def v2_sheet_path(purpose: str, annotator: str, annotation_root: Path | None = None) -> Path:
+    return purpose_dir(purpose, annotation_root) / f"{annotator}_v2.xlsx"
+
+
+def v2_manifest_path(purpose: str, annotator: str, annotation_root: Path | None = None) -> Path:
+    return purpose_dir(purpose, annotation_root) / f"{annotator}_v2_export.json"
+
+
+def load_item_dates(key: dict, questions_parquet: str, answers_parquet: str) -> dict:
+    """{item_id: (question_date, reference_date)} as YYYY-MM-DD (UTC) from the SO data; None if not found.
+    The reference is the question's accepted answer (AcceptedAnswerId)."""
+    import duckdb
+
+    qids = sorted({int(k["question_id"]) for k in key["items"]})
+    con = duckdb.connect()
+    q = con.execute(f"""SELECT Id, min(CreationDate), min(AcceptedAnswerId) FROM read_parquet('{questions_parquet}')
+                        WHERE Id IN ({",".join(map(str, qids))}) GROUP BY Id""").fetchall()
+    qdate = {int(i): d for i, d, _ in q}
+    acc = {int(i): int(a) for i, _, a in q if a is not None}
+    a = con.execute(f"""SELECT Id, min(CreationDate) FROM read_parquet('{answers_parquet}')
+                        WHERE Id IN ({",".join(map(str, sorted(set(acc.values()))) or "-1")}) GROUP BY Id""").fetchall()
+    adate = {int(i): d for i, d in a}
+    con.close()
+    fmt = lambda d: d.strftime("%Y-%m-%d") if d is not None else None
+    return {k["item_id"]: (fmt(qdate.get(int(k["question_id"]))),
+                           fmt(adate.get(acc.get(int(k["question_id"]), -1)))) for k in key["items"]}
+
+
+def export_v2_sheet(purpose: str, annotator: str, dates: dict, time_rule_items, annotation_root: Path | None = None,
+                    now: datetime | None = None) -> dict:
+    """Copies the FROZEN v1 sheet (hash = freeze record) to <annotator>_v2.xlsx, appends V2_COLUMNS
+    (v2_change_reason empty; question_date / reference_date / time_rule_check read-only) and writes
+    <annotator>_v2_export.json with the expected read-only values. No label is changed or pre-filled."""
+    from openpyxl import load_workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    frozen = assert_annotation_frozen(purpose, annotator, annotation_root)
+    src = purpose_dir(purpose, annotation_root) / f"{annotator}.xlsx"
+    out, mpath = v2_sheet_path(purpose, annotator, annotation_root), v2_manifest_path(purpose, annotator, annotation_root)
+    if out.exists() or mpath.exists():
+        raise AnnotationError(f"{out.name} or {mpath.name} already exists; the v2 sheet is exported once")
+    flags = set(time_rule_items)
+    wb = load_workbook(src)
+    ws = wb["anotasi"]
+    header = [c.value for c in ws[1]]
+    if header[:len(COLUMNS)] != COLUMNS or len(header) != len(COLUMNS):
+        raise AnnotationError(f"{src.name}: unexpected header {header}")
+    ids = [ws.cell(row=r, column=1).value for r in range(2, ws.max_row + 1) if ws.cell(row=r, column=1).value]
+    if set(flags) - set(ids):
+        raise AnnotationError(f"time_rule_check items not in the sheet: {sorted(set(flags) - set(ids))}")
+    first = len(COLUMNS) + 1
+    for j, name in enumerate(V2_COLUMNS):
+        c = ws.cell(row=1, column=first + j, value=name)
+        c.font, c.fill = Font(bold=True), PatternFill("solid", fgColor="DDDDDD")
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        ws.column_dimensions[c.column_letter].width = 40 if name == "v2_change_reason" else 15
+    expected = {}
+    for r in range(2, ws.max_row + 1):
+        item_id = ws.cell(row=r, column=1).value
+        if not item_id:
+            continue
+        qd, rd = dates.get(item_id, (None, None))
+        flag = "Y" if item_id in flags else None
+        for j, v in enumerate((None, qd, rd, flag)):
+            ws.cell(row=r, column=first + j, value=v).alignment = Alignment(wrap_text=True, vertical="top")
+        expected[item_id] = {"question_date": qd, "reference_date": rd, "time_rule_check": flag}
+    info = wb["petunjuk"]
+    for line in ("LEMBAR V2: pakai docs/ANNOTATION_GUIDELINE_v2.md (aturan waktu, istilah dari penanya, faithfulness "
+                 "lawan halusinasi). Label v1 sudah terisi; ubah hanya item yang perlu dinilai ulang.",
+                 "v2_change_reason: isi hanya pada baris yang labelnya Anda ubah, dengan alasannya.",
+                 "question_date, reference_date, time_rule_check: jangan diubah (diperiksa saat validasi).",
+                 "time_rule_check = Y: periksa ulang item ini dengan aturan waktu; label boleh tetap."):
+        info.append([line])
+    wb.save(out)
+    manifest = {"purpose": purpose, "annotator": annotator, "sheet": out.name,
+                "source_sheet": src.name, "source_sha256": frozen["sha256"], "source_freeze_record": freeze_path(
+                    purpose, annotator, annotation_root).name,
+                "guideline": "docs/ANNOTATION_GUIDELINE_v2.md", "created_at_utc": (now or datetime.now(timezone.utc)).isoformat(),
+                "v2_columns": V2_COLUMNS, "readonly_columns": list(V2_READONLY_COLUMNS),
+                "date_source": "Stack Overflow CreationDate of the question and of its accepted answer (UTC date)",
+                "n_items": len(expected), "n_question_date_missing": sum(1 for e in expected.values() if not e["question_date"]),
+                "n_reference_date_missing": sum(1 for e in expected.values() if not e["reference_date"]),
+                "time_rule_check_items": sorted(flags), "expected_readonly": expected}
+    mpath.write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest
+
+
+def cmd_export_v2(args) -> int:
+    from dotenv import load_dotenv
+    load_dotenv(REPO_ROOT / ".env")
+    key = load_verified_key(args.purpose, key_dir_from(args.key_dir))
+    qp = args.questions_parquet or os.getenv("QUESTIONS_PARQUET")
+    ap = args.answers_parquet or os.getenv("ANSWERS_PARQUET")
+    if not qp or not ap or not Path(qp).exists() or not Path(ap).exists():
+        raise AnnotationError(f"questions/answers parquet not available ({qp!r}, {ap!r})")
+    m = export_v2_sheet(args.purpose, args.annotator, load_item_dates(key, qp, ap),
+                        V2_TIME_RULE_CHECK.get(args.purpose, ()))
+    log(f"Wrote {m['sheet']} ({m['n_items']} items; question_date missing {m['n_question_date_missing']}, "
+        f"reference_date missing {m['n_reference_date_missing']}; time_rule_check {m['time_rule_check_items']}) "
+        f"and {v2_manifest_path(args.purpose, args.annotator).name}")
+    return 0
+
+
 def cmd_freeze(args) -> int:
     rec = freeze_annotation(args.purpose, args.annotator, key_dir_from(args.key_dir))
     log(f"Frozen {rec['file_name']}: sha256 {rec['sha256']}, {rec['item_count']} items, {rec['frozen_at_utc']}; "
@@ -1388,6 +1501,13 @@ def main(argv=None) -> int:
     common(p)
     p.add_argument("--annotator", choices=["annotator1", "annotator2"], default="annotator1")
     p.set_defaults(func=cmd_freeze)
+
+    p = sub.add_parser("export-v2")
+    common(p)
+    p.add_argument("--annotator", choices=["annotator1"], default="annotator1")
+    p.add_argument("--questions-parquet", default=None)
+    p.add_argument("--answers-parquet", default=None)
+    p.set_defaults(func=cmd_export_v2)
 
     p = sub.add_parser("human-kappa")
     common(p)

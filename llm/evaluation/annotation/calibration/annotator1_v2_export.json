@@ -1,0 +1,332 @@
+{
+  "purpose": "calibration",
+  "annotator": "annotator1",
+  "sheet": "annotator1_v2.xlsx",
+  "source_sheet": "annotator1.xlsx",
+  "source_sha256": "bff6e290cbd345a13e3630855ea98ed1902a0e8e2304520a95231e85fbe8290b",
+  "source_freeze_record": "annotator1_freeze.json",
+  "guideline": "docs/ANNOTATION_GUIDELINE_v2.md",
+  "created_at_utc": "2026-10-19T16:03:33.622048+00:00",
+  "v2_columns": [
+    "v2_change_reason",
+    "question_date",
+    "reference_date",
+    "time_rule_check"
+  ],
+  "readonly_columns": [
+    "question_date",
+    "reference_date",
+    "time_rule_check"
+  ],
+  "date_source": "Stack Overflow CreationDate of the question and of its accepted answer (UTC date)",
+  "n_items": 60,
+  "n_question_date_missing": 0,
+  "n_reference_date_missing": 0,
+  "time_rule_check_items": [
+    "CAL-034",
+    "CAL-049",
+    "CAL-060"
+  ],
+  "expected_readonly": {
+    "CAL-001": {
+      "question_date": "2022-03-09",
+      "reference_date": "2022-03-10",
+      "time_rule_check": null
+    },
+    "CAL-002": {
+      "question_date": "2008-09-24",
+      "reference_date": "2008-12-31",
+      "time_rule_check": null
+    },
+    "CAL-003": {
+      "question_date": "2022-03-09",
+      "reference_date": "2022-03-10",
+      "time_rule_check": null
+    },
+    "CAL-004": {
+      "question_date": "2008-09-24",
+      "reference_date": "2008-12-31",
+      "time_rule_check": null
+    },
+    "CAL-005": {
+      "question_date": "2020-11-27",
+      "reference_date": "2020-11-28",
+      "time_rule_check": null
+    },
+    "CAL-006": {
+      "question_date": "2014-10-03",
+      "reference_date": "2014-10-03",
+      "time_rule_check": null
+    },
+    "CAL-007": {
+      "question_date": "2017-12-08",
+      "reference_date": "2017-12-08",
+      "time_rule_check": null
+    },
+    "CAL-008": {
+      "question_date": "2013-01-30",
+      "reference_date": "2013-01-30",
+      "time_rule_check": null
+    },
+    "CAL-009": {
+      "question_date": "2021-11-06",
+      "reference_date": "2021-11-06",
+      "time_rule_check": null
+    },
+    "CAL-010": {
+      "question_date": "2023-07-04",
+      "reference_date": "2023-07-04",
+      "time_rule_check": null
+    },
+    "CAL-011": {
+      "question_date": "2021-03-23",
+      "reference_date": "2021-03-23",
+      "time_rule_check": null
+    },
+    "CAL-012": {
+      "question_date": "2014-10-03",
+      "reference_date": "2014-10-03",
+      "time_rule_check": null
+    },
+    "CAL-013": {
+      "question_date": "2021-11-06",
+      "reference_date": "2021-11-06",
+      "time_rule_check": null
+    },
+    "CAL-014": {
+      "question_date": "2022-11-28",
+      "reference_date": "2022-12-05",
+      "time_rule_check": null
+    },
+    "CAL-015": {
+      "question_date": "2017-02-07",
+      "reference_date": "2017-02-08",
+      "time_rule_check": null
+    },
+    "CAL-016": {
+      "question_date": "2017-07-29",
+      "reference_date": "2017-07-31",
+      "time_rule_check": null
+    },
+    "CAL-017": {
+      "question_date": "2017-07-29",
+      "reference_date": "2017-07-31",
+      "time_rule_check": null
+    },
+    "CAL-018": {
+      "question_date": "2015-06-19",
+      "reference_date": "2015-06-19",
+      "time_rule_check": null
+    },
+    "CAL-019": {
+      "question_date": "2018-04-27",
+      "reference_date": "2018-04-27",
+      "time_rule_check": null
+    },
+    "CAL-020": {
+      "question_date": "2019-04-28",
+      "reference_date": "2019-05-30",
+      "time_rule_check": null
+    },
+    "CAL-021": {
+      "question_date": "2021-05-07",
+      "reference_date": "2021-05-07",
+      "time_rule_check": null
+    },
+    "CAL-022": {
+      "question_date": "2013-11-13",
+      "reference_date": "2013-11-13",
+      "time_rule_check": null
+    },
+    "CAL-023": {
+      "question_date": "2019-06-05",
+      "reference_date": "2019-06-06",
+      "time_rule_check": null
+    },
+    "CAL-024": {
+      "question_date": "2022-07-27",
+      "reference_date": "2022-07-27",
+      "time_rule_check": null
+    },
+    "CAL-025": {
+      "question_date": "2020-02-27",
+      "reference_date": "2020-02-28",
+      "time_rule_check": null
+    },
+    "CAL-026": {
+      "question_date": "2021-11-06",
+      "reference_date": "2021-11-06",
+      "time_rule_check": null
+    },
+    "CAL-027": {
+      "question_date": "2012-09-05",
+      "reference_date": "2012-09-05",
+      "time_rule_check": null
+    },
+    "CAL-028": {
+      "question_date": "2014-07-07",
+      "reference_date": "2014-07-07",
+      "time_rule_check": null
+    },
+    "CAL-029": {
+      "question_date": "2010-01-28",
+      "reference_date": "2010-01-28",
+      "time_rule_check": null
+    },
+    "CAL-030": {
+      "question_date": "2012-09-05",
+      "reference_date": "2012-09-05",
+      "time_rule_check": null
+    },
+    "CAL-031": {
+      "question_date": "2012-10-04",
+      "reference_date": "2012-10-04",
+      "time_rule_check": null
+    },
+    "CAL-032": {
+      "question_date": "2019-08-02",
+      "reference_date": "2019-08-02",
+      "time_rule_check": null
+    },
+    "CAL-033": {
+      "question_date": "2017-12-08",
+      "reference_date": "2017-12-08",
+      "time_rule_check": null
+    },
+    "CAL-034": {
+      "question_date": "2019-04-28",
+      "reference_date": "2019-05-30",
+      "time_rule_check": "Y"
+    },
+    "CAL-035": {
+      "question_date": "2023-07-04",
+      "reference_date": "2023-07-04",
+      "time_rule_check": null
+    },
+    "CAL-036": {
+      "question_date": "2017-06-15",
+      "reference_date": "2017-06-16",
+      "time_rule_check": null
+    },
+    "CAL-037": {
+      "question_date": "2021-11-16",
+      "reference_date": "2021-12-03",
+      "time_rule_check": null
+    },
+    "CAL-038": {
+      "question_date": "2021-01-16",
+      "reference_date": "2021-01-18",
+      "time_rule_check": null
+    },
+    "CAL-039": {
+      "question_date": "2022-07-11",
+      "reference_date": "2022-07-12",
+      "time_rule_check": null
+    },
+    "CAL-040": {
+      "question_date": "2019-08-02",
+      "reference_date": "2019-08-02",
+      "time_rule_check": null
+    },
+    "CAL-041": {
+      "question_date": "2018-11-22",
+      "reference_date": "2018-11-26",
+      "time_rule_check": null
+    },
+    "CAL-042": {
+      "question_date": "2014-09-04",
+      "reference_date": "2014-09-04",
+      "time_rule_check": null
+    },
+    "CAL-043": {
+      "question_date": "2020-06-25",
+      "reference_date": "2020-06-25",
+      "time_rule_check": null
+    },
+    "CAL-044": {
+      "question_date": "2014-10-03",
+      "reference_date": "2014-10-03",
+      "time_rule_check": null
+    },
+    "CAL-045": {
+      "question_date": "2023-11-14",
+      "reference_date": "2023-11-20",
+      "time_rule_check": null
+    },
+    "CAL-046": {
+      "question_date": "2014-09-04",
+      "reference_date": "2014-09-04",
+      "time_rule_check": null
+    },
+    "CAL-047": {
+      "question_date": "2014-09-04",
+      "reference_date": "2014-09-04",
+      "time_rule_check": null
+    },
+    "CAL-048": {
+      "question_date": "2010-11-30",
+      "reference_date": "2010-11-30",
+      "time_rule_check": null
+    },
+    "CAL-049": {
+      "question_date": "2012-12-24",
+      "reference_date": "2012-12-24",
+      "time_rule_check": "Y"
+    },
+    "CAL-050": {
+      "question_date": "2022-11-28",
+      "reference_date": "2022-12-05",
+      "time_rule_check": null
+    },
+    "CAL-051": {
+      "question_date": "2017-02-07",
+      "reference_date": "2017-02-08",
+      "time_rule_check": null
+    },
+    "CAL-052": {
+      "question_date": "2010-11-30",
+      "reference_date": "2010-11-30",
+      "time_rule_check": null
+    },
+    "CAL-053": {
+      "question_date": "2019-08-02",
+      "reference_date": "2019-08-02",
+      "time_rule_check": null
+    },
+    "CAL-054": {
+      "question_date": "2022-04-11",
+      "reference_date": "2023-11-18",
+      "time_rule_check": null
+    },
+    "CAL-055": {
+      "question_date": "2020-03-27",
+      "reference_date": "2020-03-27",
+      "time_rule_check": null
+    },
+    "CAL-056": {
+      "question_date": "2022-04-11",
+      "reference_date": "2023-11-18",
+      "time_rule_check": null
+    },
+    "CAL-057": {
+      "question_date": "2014-07-07",
+      "reference_date": "2014-07-07",
+      "time_rule_check": null
+    },
+    "CAL-058": {
+      "question_date": "2017-07-29",
+      "reference_date": "2017-07-31",
+      "time_rule_check": null
+    },
+    "CAL-059": {
+      "question_date": "2014-12-23",
+      "reference_date": "2015-01-06",
+      "time_rule_check": null
+    },
+    "CAL-060": {
+      "question_date": "2023-07-04",
+      "reference_date": "2023-07-04",
+      "time_rule_check": "Y"
+    }
+  }
+}
