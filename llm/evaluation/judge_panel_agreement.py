@@ -2,8 +2,14 @@
 judge_panel_agreement.py
 ------------------------
 Judge-vs-human agreement for the three panel judges and the panel
-(docs/DECISION_C_SCORING.md, Amendment 12 (e)), on the binary
-"hallucinated" outcome. Reported twice:
+(docs/DECISION_C_SCORING.md, Amendment 12 (e)).
+
+ACCEPTANCE (as pre-registered in Amendment 11): the PANEL's unweighted
+3-category Cohen's kappa (ABSTAIN / hallucinated / not hallucinated) vs the
+human labels, target >= 0.6. It is computed for every judge and the panel.
+
+Supporting statistics (do not decide acceptance), on the binary
+"hallucinated" outcome, reported twice:
   - ABSTAIN excluded: items that either side labels ABSTAIN are left out;
   - ABSTAIN counted:  ABSTAIN counts as "not hallucinated" on both sides.
 Per rater (llama, deepseek, qwen, panel) vs the human, each with counts x/n:
@@ -37,7 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from judge_binary import (BOOTSTRAP_RESAMPLES, CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED,  # noqa: E402
+from judge_binary import (BOOTSTRAP_RESAMPLES, CATEGORIES, CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED,  # noqa: E402
                           CATEGORY_NOT_HALLUCINATED, bootstrap_kappa_ci, category_of, cohen_kappa, confusion_matrix)
 from judge_panel_aggregate import panel_category  # noqa: E402
 
@@ -97,6 +103,22 @@ def binary_metrics(rater_labels: list, human_labels: list, n_resamples: int = BO
     }
 
 
+def three_category(rater: dict, human: dict, n_resamples: int = BOOTSTRAP_RESAMPLES) -> dict:
+    """Unweighted 3-category kappa (ABSTAIN / NOT_HALLUCINATED / HALLUCINATED) on items both label."""
+    a, b, n_missing = [], [], 0
+    for i, h in sorted(human.items()):
+        r = rater.get(i)
+        if h is None or r is None:
+            n_missing += 1
+            continue
+        a.append(r)
+        b.append(h)
+    return {"n": len(a), "n_missing": n_missing,
+            "raw_agreement": _frac(sum(1 for x, y in zip(a, b) if x == y), len(a)),
+            **_kappa(a, b, CATEGORIES, n_resamples),
+            "confusion_human_rows": confusion_matrix(b, a, CATEGORIES)}
+
+
 def abstain_agreement(rater: dict, human: dict, n_resamples: int = BOOTSTRAP_RESAMPLES) -> dict:
     a, b, n_missing = [], [], 0
     for i, h in sorted(human.items()):
@@ -116,8 +138,10 @@ def abstain_agreement(rater: dict, human: dict, n_resamples: int = BOOTSTRAP_RES
 def agreement_report(human: dict, raters: dict, conditions: dict, n_resamples: int = BOOTSTRAP_RESAMPLES) -> dict:
     """human: {item_id: category | None}; raters: {rater: {item_id: category | None}};
     conditions: {item_id: run_label}."""
-    out = {"vs_human": {}, "abstain_agreement": {}, "pairwise_judges": {}, "n_per_condition": {}}
+    out = {"three_category": {}, "vs_human": {}, "abstain_agreement": {}, "pairwise_judges": {},
+           "n_per_condition": {}}
     for name, labels in raters.items():
+        out["three_category"][name] = three_category(labels, human, n_resamples)
         out["vs_human"][name] = {}
         for mode in MODES:
             a, b, counts = binary_pairs(labels, human, mode)
@@ -139,11 +163,13 @@ def agreement_report(human: dict, raters: dict, conditions: dict, n_resamples: i
             "human_labels": dict(Counter(human[i] for i in ids if human[i] is not None)),
             **{f"n_{r}_usable": sum(1 for i in ids if raters[r].get(i) is not None) for r in raters},
         }
-    panel = out["vs_human"].get("panel", {})
+    k3 = out["three_category"].get("panel", {}).get("kappa")
     out["acceptance"] = {
-        "rule": f"panel binary kappa >= {ACCEPTANCE_KAPPA} (Amendment 12 (e)); per-judge results are informational",
-        **{mode: {"kappa": panel.get(mode, {}).get("kappa"),
-                  "meets_target": (panel.get(mode, {}).get("kappa") or -1) >= ACCEPTANCE_KAPPA} for mode in MODES},
+        "rule": f"panel 3-category kappa (ABSTAIN / hallucinated / not hallucinated) >= {ACCEPTANCE_KAPPA}, as "
+                "pre-registered in Amendment 11 (Amendment 12 (e)); binary metrics and per-judge results are "
+                "supporting statistics and do not decide",
+        "panel_kappa_3cat": k3,
+        "meets_target": k3 is not None and k3 >= ACCEPTANCE_KAPPA,
     }
     return out
 
@@ -158,10 +184,25 @@ def _ci(ci) -> str:
 
 def report_markdown(purpose: str, rep: dict) -> str:
     lines = [f"# Panel agreement report -- {purpose} set", "",
-             f"Generated: {datetime.now(timezone.utc).isoformat()}. Binary outcome (hallucinated yes/no). Unweighted "
-             "Cohen's kappa, 95% CI = percentile bootstrap (2,000 resamples, fixed seed). Target (Amendment 12 (e)): "
-             f"panel kappa >= {ACCEPTANCE_KAPPA}. Per-judge rows are informational; the panel composition is fixed. "
-             "Confusion matrices: rows = human, columns = judge.", ""]
+             f"Generated: {datetime.now(timezone.utc).isoformat()}. Unweighted Cohen's kappa, 95% CI = percentile "
+             "bootstrap (2,000 resamples, fixed seed). Confusion matrices: rows = human, columns = judge. "
+             "The panel composition is fixed; per-judge rows are informational.", "",
+             "## Acceptance: 3-category kappa (ABSTAIN / hallucinated / not hallucinated)", "",
+             f"Rule (Amendment 11, Amendment 12 (e)): {rep['acceptance']['rule']}.", "",
+             f"**Panel 3-category kappa = {rep['acceptance']['panel_kappa_3cat']}; target met: "
+             f"{rep['acceptance']['meets_target']}.**", "",
+             "| rater | n | missing | raw agreement | 3-category kappa | 95% CI |", "|---|---|---|---|---|---|"]
+    for name, r in rep["three_category"].items():
+        lines.append(f"| {name} | {r['n']} | {r['n_missing']} | {_fmt(r['raw_agreement'])} | {r['kappa']} | "
+                     f"{_ci(r['kappa_ci95'])} |")
+    lines.append("")
+    for name, r in rep["three_category"].items():
+        m = r["confusion_human_rows"]
+        lines += [f"{name}:", "", "| human \\ judge | " + " | ".join(CATEGORIES) + " |", "|---|---|---|---|"]
+        for row in CATEGORIES:
+            lines.append(f"| {row} | " + " | ".join(str(m[row][c]) for c in CATEGORIES) + " |")
+        lines.append("")
+    lines += ["# Supporting statistics (do not decide acceptance)", ""]
     for mode in MODES:
         title = "ABSTAIN excluded" if mode == "abstain_excluded" else "ABSTAIN counted as not hallucinated"
         lines += [f"## Judge vs human -- {title}", "",
@@ -240,7 +281,9 @@ def main(argv=None) -> int:
     out.write_text(report_markdown(args.purpose, rep))
     out.with_suffix(".json").write_text(json.dumps(rep, indent=2, default=str) + "\n")
     for name, by_mode in rep["vs_human"].items():
-        print(f"{name}: kappa excl={by_mode['abstain_excluded']['kappa']} counted={by_mode['abstain_counted']['kappa']}")
+        print(f"{name}: 3-category kappa={rep['three_category'][name]['kappa']} | binary kappa "
+              f"excl={by_mode['abstain_excluded']['kappa']} counted={by_mode['abstain_counted']['kappa']}")
+    print(f"Acceptance (panel 3-category kappa >= {ACCEPTANCE_KAPPA}): {rep['acceptance']['meets_target']}")
     print(f"Report -> {out}")
     return 0
 

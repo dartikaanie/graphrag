@@ -48,12 +48,30 @@ def test_report_structure_and_acceptance():
     assert set(rep["vs_human"]) == set(ag.RATERS)
     assert set(rep["vs_human"]["panel"]) == set(ag.MODES)
     assert rep["vs_human"]["panel"]["abstain_excluded"]["kappa"] == 1.0
-    assert rep["acceptance"]["abstain_excluded"]["meets_target"] is True
+    assert rep["three_category"]["panel"]["kappa"] == 1.0 and rep["three_category"]["panel"]["n"] == 6
+    assert rep["acceptance"]["panel_kappa_3cat"] == 1.0 and rep["acceptance"]["meets_target"] is True
+    assert rep["three_category"]["qwen"]["kappa"] < 1.0
     assert set(rep["pairwise_judges"]) == {"llama_vs_deepseek", "llama_vs_qwen", "deepseek_vs_qwen"}
     assert rep["abstain_agreement"]["panel"]["n_abstain_human"] == 1
     assert rep["n_per_condition"]["A"]["n_items"] == 3 and rep["n_per_condition"]["A"]["n_human_labelled"] == 2
     md = ag.report_markdown("calibration", rep)
     assert "ABSTAIN excluded" in md and "ABSTAIN counted" in md and "unsafe pass" in md
+    assert md.index("3-category kappa") < md.index("Supporting statistics")
+
+
+def test_three_category_kappa_and_acceptance_decided_by_it():
+    # binary (ABSTAIN excluded) agreement is perfect, but the panel calls the human ABSTAIN item NOT_HALLUCINATED
+    human = {"i1": H, "i2": N, "i3": A, "i4": H, "i5": N}
+    panel = {"i1": H, "i2": N, "i3": N, "i4": H, "i5": N}
+    rep = ag.agreement_report(human, {"panel": panel}, {i: "A" for i in human}, n_resamples=0)
+    assert rep["vs_human"]["panel"]["abstain_excluded"]["kappa"] == 1.0
+    t = rep["three_category"]["panel"]
+    assert t["raw_agreement"]["x"] == 4 and t["n"] == 5
+    assert t["confusion_human_rows"][A][N] == 1
+    from judge_binary import cohen_kappa, CATEGORIES
+    expected = cohen_kappa([panel[i] for i in sorted(human)], [human[i] for i in sorted(human)], CATEGORIES)
+    assert t["kappa"] == pytest.approx(expected, abs=1e-4) and t["kappa"] < 1.0
+    assert rep["acceptance"]["panel_kappa_3cat"] == t["kappa"]
 
 
 def test_raters_from_records_join_through_key():

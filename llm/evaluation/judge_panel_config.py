@@ -15,10 +15,9 @@ Model verification (2026-10-19, `client.models.list()` + live test calls):
   - deepseek-ai/DeepSeek-V3.2 and Qwen/Qwen2.5-72B-Instruct are listed under
     these exact ids.
   - meta-llama/Llama-3.3-70B-Instruct is NOT listed; DeepInfra lists only
-    meta-llama/Llama-3.3-70B-Instruct-Turbo (FP8). A request with the bare id
-    is served by the -Turbo model (response.model), as already recorded in
-    judge_clients.py on 2026-10-05. expected_served_model records this and
-    every record is checked against it.
+    meta-llama/Llama-3.3-70B-Instruct-Turbo (FP8). The panel requests that
+    explicit id (decision 2026-10-19); every record is checked against
+    expected_served_model and flagged if another model answers.
   - DeepSeek-V3.2 thinking: DeepInfra controls reasoning with the request
     parameter `reasoning_effort` (docs.deepinfra.com/chat/reasoning; "none"
     disables it). Test calls: "high" -> reasoning_content of 1,061 chars;
@@ -68,10 +67,10 @@ class PanelJudge:
 
 PANEL_JUDGES: tuple[PanelJudge, ...] = (
     PanelJudge(
-        judge_id="llama", model="meta-llama/Llama-3.3-70B-Instruct", family="Llama (Meta)",
+        judge_id="llama", model="meta-llama/Llama-3.3-70B-Instruct-Turbo", family="Llama (Meta)",
         price_per_m_input=0.10, price_per_m_output=0.32,
         expected_served_model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        precision_note="DeepInfra serves only the FP8 -Turbo variant for this id (verified 2026-10-05 and 2026-10-19)",
+        precision_note="served by DeepInfra in FP8 quantization (-Turbo; the only Llama-3.3-70B variant listed)",
     ),
     PanelJudge(
         judge_id="deepseek", model="deepseek-ai/DeepSeek-V3.2", family="DeepSeek",

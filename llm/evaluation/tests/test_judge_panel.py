@@ -63,11 +63,12 @@ def _rec(judge_id, client):
 
 def test_panel_config():
     assert PANEL_ID == "panel-v1" and len(PANEL_JUDGES) == 3
-    assert [j.model for j in PANEL_JUDGES] == ["meta-llama/Llama-3.3-70B-Instruct", "deepseek-ai/DeepSeek-V3.2",
+    assert [j.model for j in PANEL_JUDGES] == ["meta-llama/Llama-3.3-70B-Instruct-Turbo", "deepseek-ai/DeepSeek-V3.2",
                                                 "Qwen/Qwen2.5-72B-Instruct"]
     assert all(j.base_url == "https://api.deepinfra.com/v1/openai" for j in PANEL_JUDGES)
     assert "gpt-4o-mini" not in {j.model for j in PANEL_JUDGES}
     assert JUDGES_BY_ID["deepseek"].extra_body == {"reasoning_effort": "none"}
+    assert all(j.expected_served_model == j.model for j in PANEL_JUDGES)
     assert TEMPERATURE == 0.0 and MAX_TOKENS == 2000 and PROMPT_VERSION == "judge-v2.2"
 
 
@@ -217,6 +218,23 @@ def test_confirmation_items_excluded(tmp_path):
     excl, run_file = _excl(tmp_path, [], [{"run_id": "t1", "question_id": 5}], cal_file=False)
     kept, counts = jp.apply_exclusions([{"run_id": "t1", "question_id": 5, "source_file": run_file}], excl, False)
     assert kept == [] and counts["excluded_annotation_items"] == 1
+
+
+def test_summary_counts_unspecified_and_failures():
+    items = [{**ITEM, "item_id": f"r:{q}", "question_id": q, "run_label": lab} for q, lab in ((1, "A"), (2, "B-plain"))]
+    base = {"panel_id": PANEL_ID, "prompt_version": PROMPT_VERSION, "parse_ok": True, "call_failed": False}
+    recs = [{**base, "item_id": "r:1", "judge_model": j.model, "label": "HALUSINASI_SEVERITY_UNSPECIFIED",
+             "judge_id": j.judge_id} for j in PANEL_JUDGES[:2]]
+    recs.append({**base, "item_id": "r:1", "judge_model": PANEL_JUDGES[2].model, "label": "HALUSINASI_PENUH",
+                 "judge_id": "qwen"})
+    recs.append({**base, "item_id": "r:2", "judge_model": PANEL_JUDGES[0].model, "label": "FAKTUAL",
+                 "judge_id": "llama"})
+    panel = jp.build_panel_records(items, recs)
+    s = jp.summarize(recs, panel, [])
+    assert s["per_judge"]["llama"]["unspecified_votes"] == 1 and s["per_judge"]["qwen"]["unspecified_votes"] == 0
+    assert s["unspecified_by_run_label"] == {"A": 1, "B-plain": 0}
+    assert s["unresolved_by_run_label"] == {"A": 0, "B-plain": 1}
+    assert {k: v["final_failures"] for k, v in s["per_judge"].items()} == {"llama": 0, "deepseek": 1, "qwen": 1}
 
 
 def test_parse_item_specs():

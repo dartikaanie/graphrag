@@ -671,8 +671,8 @@ These are measurement-validity corrections, decided on the design of the instrum
 Amendment 12 – LLM-as-Judge panel.
 (a) The generator for the initial report remains gpt-4o-mini for all conditions.
 (b) The LLM-as-Judge is a fixed panel of three judges from different model families,
-served via DeepInfra: meta-llama/Llama-3.3-70B-Instruct, deepseek-ai/DeepSeek-V3.2
-(non-thinking mode), and Qwen/Qwen2.5-72B-Instruct. gpt-4o-mini is no longer a judge, to
+served via DeepInfra: meta-llama/Llama-3.3-70B-Instruct-Turbo (served by DeepInfra in FP8
+quantization), deepseek-ai/DeepSeek-V3.2 (non-thinking mode), and Qwen/Qwen2.5-72B-Instruct. gpt-4o-mini is no longer a judge, to
 avoid self-preference bias toward the generator's own outputs (Verga et al., 2024).
 DeepSeek and Qwen families were selected in part because recent evidence shows them to
 agree substantially with expert labels on evidence-based hallucination judgment
@@ -685,8 +685,11 @@ max_tokens, and no reasoning/thinking mode.
 implemented; UNRESOLVED items are reported, never dropped.
 (e) Validation: against the human calibration labels, each judge and the panel are
 reported with raw agreement, Cohen's kappa, hallucination recall, unsafe pass rate and false
-alarm rate (Zhu et al., 2026), with ABSTAIN excluded and counted. The kappa >= 0.6 target
-applies to the panel. Raw agreement is always reported alongside kappa because kappa is
+alarm rate (Zhu et al., 2026), with ABSTAIN excluded and counted. Acceptance is decided by the
+panel's 3-category Cohen's kappa (ABSTAIN / hallucinated / not hallucinated) against the human
+labels, target >= 0.6, as pre-registered in Amendment 11. Binary kappa (ABSTAIN excluded and
+ABSTAIN counted), raw agreement, hallucination recall, unsafe pass rate and false alarm rate are
+reported as supporting statistics and do not decide acceptance. Raw agreement is always reported alongside kappa because kappa is
 sensitive to label prevalence (Çetinkaya, 2027). The panel composition is fixed before any
 judge run on calibration items and is not changed based on these results. If the panel
 kappa < 0.6, the existing protocol applies (up to 3 prompt iterations on the dev

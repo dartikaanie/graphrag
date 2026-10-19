@@ -57,7 +57,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from judge_binary import derive_hallucinated  # noqa: E402
-from judge_panel_aggregate import UNRESOLVED, aggregate_labels  # noqa: E402
+from judge_panel_aggregate import UNRESOLVED, UNSPECIFIED, aggregate_labels  # noqa: E402
 from judge_panel_config import (MAX_RETRIES, MAX_TOKENS, PANEL_ID, PANEL_JUDGES, TEMPERATURE,  # noqa: E402
                                 PanelJudge, judge_cost_usd, panel_public_view)
 from judge_prompt_v2_2 import (BLINDING_VERSION, PARSE_VERSION, PROMPT_VERSION, _load_json,  # noqa: E402
@@ -390,8 +390,14 @@ def summarize(judge_records: list[dict], panel_records: list[dict], new_records:
         new = [r for r in new_records if r["judge_model"] == j.model]
         per_judge[j.judge_id] = {
             "model": j.model, "n_records": len(rs), "parse_ok": f"{sum(1 for r in rs if r.get('parse_ok'))}/{len(rs)}",
+            "parse_ok_this_run": f"{sum(1 for r in new if r.get('parse_ok'))}/{len(new)}",
+            "finish_reason_this_run": dict(Counter(r.get("finish_reason") for r in new)),
+            "response_models": dict(Counter(r.get("response_model") for r in rs + new)),
             "finish_reason": dict(Counter(r.get("finish_reason") for r in rs)),
             "labels": dict(Counter(r.get("label") for r in rs)),
+            "unspecified_votes": sum(1 for r in rs if r.get("label") == UNSPECIFIED),
+            # items still without a usable result from this judge after this run (in <out>_failures.jsonl)
+            "final_failures": sum(1 for p in panel_records if p["judge_labels"].get(j.judge_id) is None),
             "reasoning_present": sum(1 for r in rs if r.get("reasoning_present")),
             "served_model_mismatch": sum(1 for r in rs if r.get("served_model_mismatch")),
             "normalized_fields": dict(Counter(f for r in rs for f in (r.get("normalized_fields") or []))),
@@ -408,6 +414,7 @@ def summarize(judge_records: list[dict], panel_records: list[dict], new_records:
         "per_judge": per_judge,
         "panel_labels_by_run_label": {k: dict(v) for k, v in by_cond.items()},
         "unresolved_by_run_label": {k: v.get(UNRESOLVED, 0) for k, v in by_cond.items()},
+        "unspecified_by_run_label": {k: v.get(UNSPECIFIED, 0) for k, v in by_cond.items()},
         "n_panel_incomplete": sum(1 for p in panel_records if p["panel_incomplete"]),
         "n_unanimous": sum(1 for p in panel_records if p["unanimous"]),
         "n_items": len(panel_records),
