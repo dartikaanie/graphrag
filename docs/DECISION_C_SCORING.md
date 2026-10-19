@@ -703,6 +703,32 @@ is kept unchanged so that judges and the annotator see identical input.
 
 ---
 
+## Amendment 13 (2026-10-19): stricter acceptance for judge iterations after judge-v2.2
+
+**Status: confirmed by the author.** Written after the first panel run against the human labels (judge-v2.2, panel-v1, run 35fab00) and BEFORE any further judge run (judge-v2.3 or later) on calibration data.
+
+### Finding (iteration 1)
+- Panel 3-category κ = 0.551 (95% CI 0.329–0.731), below the 0.6 target. The 3-category κ was dominated by ABSTAIN agreement (8/8 human ABSTAIN items matched, ABSTAIN κ = 1.0), while hallucination detection was poor: panel binary κ (ABSTAIN excluded) = 0.195, hallucination recall 2/14, unsafe pass rate 12/14.
+- A judge version could therefore come close to the 3-category target while still passing most hallucinated answers as not hallucinated.
+
+### Change: acceptance criterion for every later iteration (judge-v2.3, v2.4, v2.5)
+A judge version is accepted only if BOTH hold, for the panel against the frozen human labels on the 60 calibration items:
+1. the panel's unweighted 3-category Cohen's κ (ABSTAIN / hallucinated / not hallucinated) ≥ 0.6 (unchanged, Amendment 11 / Amendment 12 (e)); AND
+2. the panel's binary Cohen's κ (hallucinated vs not), ABSTAIN excluded, ≥ 0.4.
+
+Raw agreement, binary κ with ABSTAIN counted, hallucination recall, unsafe pass rate and false alarm rate remain supporting statistics, reported as before, and do not decide acceptance. If no version meets both conditions within the revision limit (Amendment 11, change 3), the existing fallback applies: freeze the version with the highest panel 3-category κ among those run, and report both κ values and the limitation.
+
+### This makes the criterion stricter, not looser
+Condition 1 is unchanged. Condition 2 is added. Every version that passes the new criterion also passes the old one, and some versions that pass the old one fail the new one. No result already obtained changes status: judge-v2.2 fails under both criteria.
+
+### Recorded before any further judge run
+This amendment is committed before any judge-v2.3 prompt is written into the repository, before any further judge call on calibration items, and before any judge run on the confirmation set or the official test sample. The panel composition (Amendment 12 (b)), the frozen human labels (annotator1_freeze.json, sha256 bff6e290…8290b) and blind-v3 are unchanged.
+
+### Justification
+The 0.4 threshold is the conventional lower bound of "moderate" agreement (Landis & Koch, 1977); it is set to require that the panel detects hallucinations better than chance by a non-trivial margin, which the 3-category κ alone does not guarantee when ABSTAIN items are easy to agree on. The threshold was chosen on the basis of iteration 1's structure (ABSTAIN-dominated κ), not tuned to a value that any future version is known to reach.
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 
