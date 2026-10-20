@@ -60,7 +60,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from judge_binary import derive_hallucinated  # noqa: E402
 from llm import archive_paths  # noqa: E402
 from judge_panel_aggregate import UNRESOLVED, UNSPECIFIED, aggregate_labels  # noqa: E402
-from judge_panel_config import (MAX_RETRIES, PANEL_ID, PANEL_JUDGES, SCREENING_BY_ID,  # noqa: E402
+from judge_panel_config import (MAX_RETRIES, PANEL_ID, PANEL_JUDGES, PANELS, SCREENING_BY_ID,  # noqa: E402
                                 SCREENING_PANEL_ID, PanelJudge, judge_cost_usd, panel_public_view)
 from judge_prompt_v2_2 import _load_json  # noqa: E402
 
@@ -397,10 +397,16 @@ def project_cost(tasks: list[tuple], done_records: list[dict], max_tokens: int |
             measured_in[r["messages_sha256"]] = max(measured_in.get(r["messages_sha256"], 0), r["prompt_tokens"])
     n_measured = 0
     mean_out = {}
+    out_basis = {}
     for j in judges or PANEL_JUDGES:
-        outs = [r["completion_tokens"] for r in done_records
-                if r.get("judge_model") == j.model and r.get("completion_tokens") is not None]
-        mean_out[j.judge_id] = (sum(outs) / len(outs)) if outs else max_tokens
+        for source, recs in (("mean of completed records", done_records), ("mean of basis records", basis_records or [])):
+            outs = [r["completion_tokens"] for r in recs
+                    if r.get("judge_model") == j.model and r.get("completion_tokens") is not None]
+            if outs:
+                mean_out[j.judge_id], out_basis[j.judge_id] = sum(outs) / len(outs), source
+                break
+        else:
+            mean_out[j.judge_id], out_basis[j.judge_id] = max_tokens, "max_tokens (upper bound)"
     for item, judge, messages in tasks:
         sha = _messages_sha256(messages)
         n_measured += sha in measured_in
@@ -415,8 +421,7 @@ def project_cost(tasks: list[tuple], done_records: list[dict], max_tokens: int |
     return {"per_judge": {k: {**v, "input_tokens": round(v["input_tokens"]), "output_tokens": round(v["output_tokens"]),
                               "cost_usd": round(v["cost_usd"], 5)} for k, v in per_judge.items()},
             "total_usd": round(total, 5), "worst_case_with_retries_usd": round(total * (1 + MAX_RETRIES), 5),
-            "output_token_basis": {k: ("mean of completed records" if v != max_tokens else "max_tokens (upper bound)")
-                                   for k, v in mean_out.items()},
+            "output_token_basis": out_basis,
             "input_token_basis": f"{n_measured}/{len(tasks)} calls measured (same messages in basis records), "
                                  f"rest estimated from length"}
 
@@ -542,7 +547,7 @@ class BudgetGuard:
 
 def run_tasks(tasks: list[tuple], prepared_by_item: dict, clients: dict, out: Path, concurrency: int,
               sleep=time.sleep, spec: JudgeVersionSpec | None = None, panel_id: str = PANEL_ID,
-              budget: BudgetGuard | None = None) -> list[dict]:
+              budget: BudgetGuard | None = None, record_extra: dict | None = None) -> list[dict]:
     """Item-major submission, so an item's three judges run concurrently (bounded by `concurrency`). With a
     budget guard, a call that could push the spend over the cap is not made (counted in budget.n_skipped)."""
     new = []
@@ -556,6 +561,8 @@ def run_tasks(tasks: list[tuple], prepared_by_item: dict, clients: dict, out: Pa
                            spec=spec, panel_id=panel_id)
         if budget:
             budget.settle(held, rec.get("estimated_cost_usd"))
+        if record_extra:  # e.g. the frozen configuration a panel-v2 record was produced under
+            rec.update(record_extra)
         return rec
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -584,6 +591,66 @@ def make_clients(judges=None) -> dict:
     return clients
 
 
+def panel_v2_registry_gate(run_files: list[str], purpose: str, spec, projection: dict, log=print) -> dict:
+    """Amendment 14 (draft) gate for a panel-v2 judging run (alpha stage 2 or official): judge-v2.3 only; every run
+    file registered with the matching status (test sample -> 'official', dev -> 'dev-stage2'); the registry budget
+    set and the projected cost (with retries for safety: the worst case is reported, the projection is enforced)
+    within the remaining DeepInfra budget. Returns what the run records and registers."""
+    from judge_versions import PURPOSE_OFFICIAL
+    from llm import run_registry as rr
+
+    if spec.prompt_version != "judge-v2.3":
+        raise PanelGuardError(f"panel-v2 runs use judge-v2.3 only (got {spec.prompt_version})")
+    status = rr.STATUS_OFFICIAL if purpose == PURPOSE_OFFICIAL else rr.STATUS_DEV_STAGE2
+    reg = rr.load()
+    try:
+        entries = rr.assert_reportable(run_files, (status,), reg=reg)
+    except rr.RegistryError as e:
+        raise PanelGuardError(f"run files must be registered as {status!r} first "
+                              f"(python3 -m llm.run_registry register --status {status} <file>): {e}")
+    remaining = rr.deepinfra_remaining(reg)
+    if remaining is None:
+        raise PanelGuardError("no DeepInfra budget set (python3 -m llm.run_registry set-budget <USD>)")
+    if projection["total_usd"] > remaining:
+        raise PanelGuardError(f"projected ${projection['total_usd']:.4f} exceeds the remaining DeepInfra budget "
+                              f"${remaining:.4f} (spent ${rr.deepinfra_spent(reg):.4f})")
+    log(f"[registry] {len(entries)} {status} run(s); DeepInfra budget remaining ${remaining:.4f}, projected "
+        f"${projection['total_usd']:.4f}")
+    frozen = rr.frozen_params_hash()
+    return {"status": status, "input_run_ids": [e["run_id"] for e in entries], "remaining_before_usd": remaining,
+            "record_extra": {"frozen_params_hash": frozen, "amendment": "Amendment 14", "registry_status": status}}
+
+
+def register_judge_run(gate: dict, out: Path, panel_path, panel_view: dict, cost: float, started: str, n_items: int,
+                       log=print) -> None:
+    """Records the spend in the DeepInfra ledger and registers the judge run (same status as its inputs)."""
+    from llm import archive_paths
+    from llm import run_registry as rr
+
+    rr.record_deepinfra_spend(f"{gate['status']} judging {out.name}", cost)
+    files = {"output": archive_paths.repo_rel(archive_paths.canonical(out))}
+    if panel_path:
+        files["panel"] = archive_paths.repo_rel(archive_paths.canonical(panel_path))
+    run_id = f"{out.stem}@{started[:19]}"
+    try:
+        rr.register({"run_id": run_id, "status": gate["status"], "kind": "judge", "condition": None,
+                     "grounding": None, "alpha": None, "n": n_items, "seed": None, "generator": None,
+                     "judge_config": panel_view, "commit": _git_head(), "created_at": started, "files": files,
+                     "cost_usd": cost, "cost_source": "sum of estimated_cost_usd of this run's records",
+                     "notes": f"inputs: {gate['input_run_ids']}",
+                     "frozen_params_hash": gate["record_extra"]["frozen_params_hash"]})
+        log(f"[registry] judge run {run_id} registered ({gate['status']}); spend ${cost:.4f} recorded")
+    except rr.RegistryError as e:
+        log(f"[WARN] judge run not registered: {e}")
+
+
+def _git_head() -> str | None:
+    import subprocess
+    r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).resolve().parents[2],
+                       capture_output=True, text=True)
+    return r.stdout.strip() or None
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run-files", nargs="+", required=True)
@@ -610,12 +677,20 @@ def main(argv=None) -> int:
                              "parser and blinding; requires --calibration-set and --screening-rule; no panel file")
     parser.add_argument("--screening-rule", default=None,
                         help="The pre-registered eligibility rule (Markdown); its SHA-256 is recorded in the history")
+    parser.add_argument("--panel", choices=sorted(PANELS), default=PANEL_ID,
+                        help="Panel composition (default %(default)s); panel-v2 = Amendment 14 draft")
+    parser.add_argument("--official", action="store_true",
+                        help="Official test-sample run files (Amendment 14): requires --panel panel-v2, judge-v2.3, "
+                             "the Amendment 14 approval flag, registered 'official' runs and the registry budget")
     parser.add_argument("--token-basis", nargs="+", default=None,
                         help="Stored judge outputs whose prompt_tokens (same messages_sha256) feed the cost projection")
     args = parser.parse_args(argv)
 
     screening = None
-    judges, panel_id = PANEL_JUDGES, PANEL_ID
+    judges, panel_id = PANELS[args.panel], args.panel
+    if args.screen_judge and args.panel != PANEL_ID:
+        log("[ERROR] --screen-judge runs one candidate judge, not a panel; leave --panel at its default")
+        return 1
     if args.screen_judge:
         if not args.calibration_set or not args.screening_rule or not Path(args.screening_rule).is_file():
             log("[ERROR] --screen-judge needs --calibration-set and an existing --screening-rule file")
@@ -647,7 +722,8 @@ def main(argv=None) -> int:
     from annotation_tool import AnnotationError, assert_annotation_frozen, load_verified_key
     frozen = None
     try:
-        version_purpose = check_run_allowed(spec.prompt_version, args.run_files, log)
+        version_purpose = check_run_allowed(spec.prompt_version, args.run_files, log, official=args.official,
+                                            panel_id=None if args.screen_judge else panel_id)
         if args.calibration_set:
             if args.allow_unannotated_calibration or args.question_ids or args.items:
                 raise PanelGuardError("--calibration-set takes no override and no item selection")
@@ -703,6 +779,13 @@ def main(argv=None) -> int:
     if projection["total_usd"] > args.max_cost_usd:
         log(f"[ABORT] projected cost ${projection['total_usd']:.4f} exceeds --max-cost-usd {args.max_cost_usd}")
         return 2
+    registry_gate = None
+    if panel_id == "panel-v2" and not args.screen_judge:
+        try:
+            registry_gate = panel_v2_registry_gate(args.run_files, version_purpose, spec, projection, log)
+        except PanelGuardError as e:
+            log(f"[ERROR] {e}")
+            return 1
     if args.dry_run:
         return 0
 
@@ -712,7 +795,7 @@ def main(argv=None) -> int:
                          lambda msgs: measured.get(_messages_sha256(msgs))
                          or sum(len(m["content"]) for m in msgs) / CHARS_PER_TOKEN_EST)
     new = run_tasks(tasks, prepared_by_item, make_clients(judges), out, concurrency, spec=spec, panel_id=panel_id,
-                    budget=budget) if tasks else []
+                    budget=budget, record_extra=registry_gate and registry_gate["record_extra"]) if tasks else []
     if budget.n_skipped:
         log(f"[BUDGET] {budget.n_skipped} call(s) not made: they could have pushed the spend over "
             f"--max-cost-usd {args.max_cost_usd}")
@@ -740,7 +823,12 @@ def main(argv=None) -> int:
         "calibration_set": args.calibration_set, "annotation_freeze": frozen,
         "annotation_exclusion": {"keys": excl["keys"], **excl_counts}, "version_purpose": version_purpose,
         "n_calls": len(new), "n_cached": n_cached, "actual_cost_usd": summary["actual_cost_usd_this_run"],
+        "official": args.official, "registry_gate": registry_gate and {k: v for k, v in registry_gate.items()
+                                                                      if k != "record_extra"},
     })
+    if registry_gate:
+        register_judge_run(registry_gate, out, panel_path, panel_public_view(spec, judges, panel_id),
+                           summary["actual_cost_usd_this_run"], started, len(items), log)
     return 0
 
 

@@ -133,7 +133,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llm.client_factory import get_llm_client
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_base_messages
-from llm.record_schema import latency_fields, new_run_id, record_header
+from llm.record_schema import answer_timing, latency_fields, new_run_id, record_header
 from llm.common.provenance import run_provenance  # noqa: E402
 from llm.sample_split import SampleMismatchError, verify_sample
 
@@ -375,7 +375,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             try:
                 t_generation_start = time.time()
                 call_result = call_llm_fn(llm_client, messages, model)
-                generation_latency = time.time() - t_generation_start
+                t_answer_end = time.time()  # end of retrieval + generation (evaluation steps excluded)
+                generation_latency = t_answer_end - t_generation_start
                 llm_answer = call_result["content"]
             except Exception as e:
                 log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
@@ -391,6 +392,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 "question_id": qid,
                 **record_header(run_id, "A"),
                 **latency_fields(None, generation_latency, total_latency),
+                **answer_timing(t_query_start, t_answer_end),
                 "title": row["Title"],
                 "tags": row["Tags"],
                 "n_tokens": int(row["n_tokens"]),

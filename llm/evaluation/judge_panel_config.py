@@ -108,6 +108,13 @@ SCREENING_CANDIDATES: tuple[PanelJudge, ...] = (
 )
 SCREENING_BY_ID = {j.judge_id: j for j in SCREENING_CANDIDATES}
 
+# panel-v2 (Amendment 14 DRAFT, pending the author's approval): Llama-3.3 and DeepSeek-V3.2 as in panel-v1, and
+# Qwen3-235B-A22B-Instruct-2507 (non-thinking by design; JSON mode as for every judge) in place of Qwen2.5-72B.
+# Same prompt (judge-v2.3), parser (pv2.3-1), blinding (blind-v3), temperature 0, max_tokens 2000, 2-of-3 aggregation.
+PANEL_V2_ID = "panel-v2"
+PANEL_V2_JUDGES: tuple[PanelJudge, ...] = (PANEL_JUDGES[0], PANEL_JUDGES[1], SCREENING_BY_ID["qwen3-235b"])
+PANELS = {PANEL_ID: PANEL_JUDGES, PANEL_V2_ID: PANEL_V2_JUDGES}
+
 JUDGES_BY_ID = {j.judge_id: j for j in PANEL_JUDGES}
 JUDGES_BY_MODEL = {j.model: j for j in PANEL_JUDGES}
 

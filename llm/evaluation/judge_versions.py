@@ -31,6 +31,11 @@ MAX_REVISIONS = 3
 CALIBRATION_ALLOWED = ("judge-v2.2", "judge-v2.3", "judge-v2.4", "judge-v2.5")  # base + at most 3 revisions
 # Set to (<frozen version>,) in the same commit that fills in Amendment 11's Record -- never before.
 OFFICIAL_ALLOWED: tuple = ()
+# Amendment 14 (draft): official runs use the frozen panel without a human-agreement gate. Both values are set in
+# the commit that approves Amendment 14 (AMENDMENT14_COMMIT = that commit's subject line or id, OFFICIAL_ALLOWED =
+# ("judge-v2.3",)); until then every official judging run is refused.
+AMENDMENT14_APPROVED: bool = False
+OFFICIAL_PANEL = "panel-v2"
 
 PURPOSE_CALIBRATION, PURPOSE_OFFICIAL, PURPOSE_DEVELOPMENT = "calibration", "official", "development"
 
@@ -104,13 +109,26 @@ def check_version(version: str, purpose: str, log_path: Path = REVISION_LOG,
                                 f"at most {MAX_REVISIONS} are allowed (Amendment 11)")
 
 
-def check_run_allowed(version: str, run_files: list[str], log=print) -> str:
-    """The runner's guard: returns the purpose, or raises JudgeVersionError."""
+def check_run_allowed(version: str, run_files: list[str], log=print, official: bool = False,
+                      panel_id: str | None = None) -> str:
+    """The runner's guard: returns the purpose, or raises JudgeVersionError. `official` is the runner's explicit
+    --official flag (Amendment 14): required for test-sample files, refused for any other files."""
     purpose = run_purpose(run_files)
     frozen = None
+    if official and purpose != PURPOSE_OFFICIAL:
+        raise JudgeVersionError(f"--official given, but the run files are a {purpose} run, not test-sample runs")
     if purpose == PURPOSE_OFFICIAL:
-        from annotation_tool import frozen_judge_version
-        frozen = frozen_judge_version()
+        if panel_id is not None:  # the panel runner: Amendment 14 path
+            if not official:
+                raise JudgeVersionError("test-sample run files need the explicit --official flag (Amendment 14)")
+            if not AMENDMENT14_APPROVED:
+                raise JudgeVersionError("Amendment 14 is not approved yet (judge_versions.AMENDMENT14_APPROVED); "
+                                        "official judging is refused")
+            if panel_id != OFFICIAL_PANEL:
+                raise JudgeVersionError(f"official runs use {OFFICIAL_PANEL}, not {panel_id}")
+        else:
+            from annotation_tool import frozen_judge_version
+            frozen = frozen_judge_version()
     check_version(version, purpose, frozen_in_record=frozen)
     log(f"[judge-version] {version} allowed for a {purpose} run")
     return purpose

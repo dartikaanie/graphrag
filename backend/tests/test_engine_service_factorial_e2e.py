@@ -181,8 +181,9 @@ def _run_and_collect(params: dict, run_fn, cond, run_label: str, stale_path: Pat
     # record schema r2 + provenance (llm/record_schema.py, llm/common/provenance.py)
     condition = output_records[0]["condition"]
     assert {r["run_id"] for r in output_records} == {manifest["run_id"]} == {state["run_id"]}, run_label
-    assert manifest["record_schema_version"] == "r2" and manifest["run_ids_in_output"] == [state["run_id"]]
-    assert all(r["record_schema_version"] == "r2" and r["total_latency_sec"] is not None for r in output_records)
+    assert manifest["record_schema_version"] == "r3" and manifest["run_ids_in_output"] == [state["run_id"]]
+    assert all(r["record_schema_version"] == "r3" and r["total_latency_sec"] is not None
+               and r["end_to_end_latency_sec"] is not None for r in output_records)
     prov = manifest["provenance"]
     assert prov["sample_ids"]["n_checked"] == 2 and prov["sample_ids"]["split"] == "test", run_label
     if condition in ("B", "C", "D"):

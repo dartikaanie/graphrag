@@ -19,8 +19,12 @@ def test_b_record_has_r2_fields(tiny_corpus, minilm, monkeypatch, tmp_path):
                             "ViewCount": 1, "Score": 1}])
     rec = b.process_sample(sample, None, lambda c, m, mo: {"content": "ok [SO-520]"}, minilm, kg, None, 5, "fake",
                            tmp_path / "o.jsonl", run_id=RUN_ID)[0]
-    assert (rec["run_id"], rec["condition"], rec["record_schema_version"]) == (RUN_ID, "B", "r2")
+    assert (rec["run_id"], rec["condition"], rec["record_schema_version"]) == (RUN_ID, "B", "r3")
     for key in ("retrieval_latency_sec", "generation_latency_sec", "total_latency_sec"):
         assert isinstance(rec[key], float) and rec[key] >= 0, key
     assert rec["total_latency_sec"] >= rec["retrieval_latency_sec"] + rec["generation_latency_sec"] - 1e-3
+    # schema r3: end-to-end timing around retrieval + generation (NF3)
+    assert rec["answer_started_at_utc"] <= rec["answer_finished_at_utc"]
+    assert rec["retrieval_latency_sec"] + rec["generation_latency_sec"] - 2e-3 <= rec["end_to_end_latency_sec"] \
+        <= rec["total_latency_sec"] + 1e-3
     assert {"answer_id", "question_id", "is_accepted", "score"} <= set(rec["retrieved_context"][0])

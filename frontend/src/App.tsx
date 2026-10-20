@@ -4,6 +4,7 @@ import { HomePage } from '@/pages/HomePage'
 import { MethodologyPage } from '@/pages/MethodologyPage'
 import { MetricsReferencePage } from '@/pages/MetricsReferencePage'
 import { ProcessPage } from '@/pages/ProcessPage'
+import { ReportPage } from '@/pages/ReportPage'
 import { QuestionListPage } from '@/pages/QuestionListPage'
 import { QuestionDetailPage } from '@/pages/QuestionDetailPage'
 import { AnswerListPage } from '@/pages/AnswerListPage'
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/methodology" element={<MethodologyPage />} />
         <Route path="/process" element={<ProcessPage />} />
+        <Route path="/report" element={<ReportPage />} />
         <Route path="/docs/metrics" element={<MetricsReferencePage />} />
         <Route path="/questions" element={<QuestionListPage />} />
         <Route path="/questions/:id" element={<QuestionDetailPage />} />

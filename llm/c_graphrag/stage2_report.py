@@ -57,7 +57,8 @@ OUTPUT (llm/c_graphrag/results/stage2/)
   DRAFTS for the researcher to review and commit by hand:
     * the Outcome section text for docs/DECISION_C_SCORING.md
     * the new official_params block (status "locked")
-  The script never edits the decision record or official_params.json.
+  The script never edits the decision record; it writes official_params.json
+  only with the explicit --apply flag (Amendment 14 draft, plan step 6).
 
 CARA PAKAI (dari root repo)
 ------------------------------------------------------------
@@ -264,12 +265,13 @@ def load_judgments(judge_files: list[Path], runs: dict, judge_version: str) -> d
 # Metrics
 # ---------------------------------------------------------------------
 
-def counts(records: list[dict]) -> dict:
-    cats = Counter(category_of(r) for r in records)
+def counts(records: list[dict], category=None, severity=None) -> dict:
+    category, severity = category or category_of, severity or severity_of
+    cats = Counter(category(r) for r in records)
     h, n_ok, ab = cats[CATEGORY_HALLUCINATED], cats[CATEGORY_NOT_HALLUCINATED], cats[CATEGORY_ABSTAIN]
     claims = [c for r in records for c in (r.get("claims") or [])]
     n_unver = sum(1 for c in claims if str(c.get("verdict", "")).upper() == "UNVERIFIABLE")
-    sev = Counter(severity_of(r) for r in records if category_of(r) == CATEGORY_HALLUCINATED)
+    sev = Counter(severity(r) for r in records if category(r) == CATEGORY_HALLUCINATED)
     return {
         "n": len(records), "n_abstain": ab, "n_not_hallucinated": n_ok, "n_hallucinated": h,
         "hallucination_count_excl_abstain": h, "n_excl_abstain": h + n_ok,
@@ -281,14 +283,84 @@ def counts(records: list[dict]) -> dict:
     }
 
 
-def stage2_metrics(judged: dict, alphas=STAGE2_ALPHAS) -> tuple[dict, dict]:
+def stage2_metrics(judged: dict, alphas=STAGE2_ALPHAS, category=None, severity=None) -> tuple[dict, dict]:
     """(pooled metrics per alpha, per-(alpha, grounding) metrics)."""
-    pooled = {a: counts([r for g in ("on", "off") for r in judged[(a, g)].values()]) for a in alphas}
-    per_run = {f"{a}|{g}": counts(list(judged[(a, g)].values())) for a in alphas for g in ("on", "off")}
+    pooled = {a: counts([r for g in ("on", "off") for r in judged[(a, g)].values()], category, severity) for a in alphas}
+    per_run = {f"{a}|{g}": counts(list(judged[(a, g)].values()), category, severity)
+               for a in alphas for g in ("on", "off")}
     return pooled, per_run
 
 
+# ---------------------------------------------------------------------
+# Panel label (Amendment 14 draft (g)): the stage-2 selection uses the panel-v2 label, recomputed with the frozen
+# 2-of-3 aggregation from the three per-judge records; every judge must have a usable record (else re-judge).
+# ---------------------------------------------------------------------
+
+PANEL_ID = "panel-v2"
+PANEL_PROMPT_VERSION = "judge-v2.3"
+
+
+def load_panel_judgments(judge_files: list[Path], runs: dict, prompt_version: str = PANEL_PROMPT_VERSION,
+                         panel_id: str = PANEL_ID) -> tuple[dict, dict]:
+    """({(alpha, grounding): {qid: panel record}}, {judge_id: {(alpha, grounding): {qid: judge record}}})."""
+    from judge_panel_aggregate import aggregate_labels
+    from judge_panel_config import PANELS
+    from llm import archive_paths
+
+    judge_ids = [j.judge_id for j in PANELS[panel_id]]
+    by_path = {str(archive_paths.canonical(info["path"])): key for key, info in runs.items()}
+    per_judge = {j: {key: {} for key in runs} for j in judge_ids}
+    for jf in judge_files:
+        for r in _read_jsonl(archive_paths.resolve(jf)):
+            if r.get("panel_id") != panel_id or r.get("judge_id") not in per_judge:
+                continue
+            key = by_path.get(str(archive_paths.canonical(r.get("source_file", ""))))
+            if key is None:
+                continue
+            if r.get("prompt_version") != prompt_version:
+                raise Stage2Error(f"{jf}: record with prompt_version {r.get('prompt_version')!r} != {prompt_version!r}")
+            qid = int(r["question_id"])
+            if qid in per_judge[r["judge_id"]][key]:
+                raise Stage2Error(f"duplicate {r['judge_id']} record for alpha={key[0]}, grounding={key[1]}, q{qid}")
+            per_judge[r["judge_id"]][key][qid] = r
+    panel = {key: {} for key in runs}
+    for key, info in runs.items():
+        for j in judge_ids:
+            recs = per_judge[j][key]
+            missing = info["question_ids"] - set(recs)
+            bad = [q for q, r in recs.items() if is_unusable(r)]
+            if missing or bad:
+                raise Stage2Error(f"alpha={key[0]}, grounding={key[1]}: judge {j} has {len(missing)} missing and "
+                                  f"{len(bad)} unusable records -- re-judge (the runner retries failures) before stage 2")
+        for qid in sorted(info["question_ids"]):
+            agg = aggregate_labels({j: per_judge[j][key][qid]["label"] for j in judge_ids}, panel_id)
+            panel[key][qid] = {"question_id": qid, **agg}
+    return panel, per_judge
+
+
+def _panel_category(r: dict):
+    from judge_panel_aggregate import panel_category
+    return panel_category(r["panel_label"])
+
+
+def _panel_severity(r: dict):
+    return {"HALUSINASI_PENUH": "PENUH", "HALUSINASI_SEBAGIAN": "SEBAGIAN"}.get(r["panel_label"], "UNSPECIFIED")
+
+
 SELECTION_RECORD_PATH = "docs/DECISION_C_SCORING.md#amendment-10-2026-10-18-trust-ablation-on-the-official-evaluation"
+
+
+def apply_official_params(official: dict, commit: str, path: Path | None = None) -> Path:
+    """--apply: writes the selected official parameters (alpha* / alpha_abl) to official_params.json, which
+    unlocks Condition C on the test sample (official_params.check_c_test_run)."""
+    from official_params import OFFICIAL_PARAMS_PATH, STATUS_PENDING
+    path = Path(path or OFFICIAL_PARAMS_PATH)
+    current = json.loads(path.read_text())
+    if current.get("status") != STATUS_PENDING:
+        raise Stage2Error(f"{path.name} status is {current.get('status')!r}, not {STATUS_PENDING!r}: already applied")
+    out = {**official, "selection_record": {**official["selection_record"], "commit": commit}}
+    path.write_text(json.dumps(out, indent=2) + "\n")
+    return path
 
 
 def draft_official_params(selection: dict, alphas=STAGE2_ALPHAS) -> dict:
@@ -340,7 +412,7 @@ def build_markdown(pooled, per_run, selection, runs, judge_version, judge_files,
               "```markdown",
               f"- Stage 1 of record: Amendment 9 recheck (trustScore {TRUST_SCORE_VERSION}, answerable-only expansion), "
               f"top_two = {list(STAGE2_ALPHAS)}.",
-              f"- Stage 2: {judge_version} (primary judge), pooled grounding on + off, n = "
+              f"- Stage 2: {judge_version}, pooled grounding on + off, n = "
               f"{next(iter(pooled.values()))['n']} answers per alpha.",
               *[f"  - alpha = {a}: hallucination rate excl. ABSTAIN {m['rate_excl_abstain']} "
                 f"({m['hallucination_count_excl_abstain']}/{m['n_excl_abstain']}); incl. ABSTAIN "
@@ -359,24 +431,44 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Stage-2 report for the C retrieval v3 alpha selection (no API calls).")
     p.add_argument("--run-files", nargs="+", required=True)
     p.add_argument("--judge-files", nargs="+", required=True)
-    p.add_argument("--judge-version", required=True, help="Frozen judge version from Amendment 4 (e.g. judge-v2.1)")
+    p.add_argument("--judge-version", required=True, help="Frozen judge version (Amendment 14 draft: judge-v2.3)")
+    p.add_argument("--panel", choices=[PANEL_ID], default=None,
+                   help="Select with the panel label (Amendment 14 (g)); --judge-files = judge_panel.py --out file(s)")
+    p.add_argument("--apply", action="store_true",
+                   help="Also write alpha*/alpha_abl to official_params.json (unlocks C on the test sample)")
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from llm import run_registry
     run_registry.add_cli_flag(p)
     args = p.parse_args()
     try:
         runs = load_runs([Path(f) for f in args.run_files])
-        judged = load_judgments([Path(f) for f in args.judge_files], runs, args.judge_version)
+        per_judge = None
+        if args.panel:
+            judged, per_judge = load_panel_judgments([Path(f) for f in args.judge_files], runs, args.judge_version,
+                                                     args.panel)
+        else:
+            judged = load_judgments([Path(f) for f in args.judge_files], runs, args.judge_version)
         # Stage-2 inputs must also be registered as "dev-stage2" (results/run_registry.json; Amendment 14)
         run_registry.assert_reportable([*args.run_files, *args.judge_files], (run_registry.STATUS_DEV_STAGE2,),
                                        args.include_archived)
     except (Stage2Error, run_registry.RegistryError) as e:
         print(f"[STOP] {e}")
         return 1
-    pooled, per_run = stage2_metrics(judged)
+    if args.panel:
+        pooled, per_run = stage2_metrics(judged, category=_panel_category, severity=_panel_severity)
+        per_judge_metrics = {j: stage2_metrics(recs)[0] for j, recs in per_judge.items()}
+    else:
+        pooled, per_run = stage2_metrics(judged)
+        per_judge_metrics = {}
     selection = select_stage2_winner(pooled)
     official = draft_official_params(selection)
-    md = build_markdown(pooled, per_run, selection, runs, args.judge_version, args.judge_files, official)
+    label = f"{args.judge_version}, {args.panel} PANEL label" if args.panel else f"{args.judge_version} (primary)"
+    md = build_markdown(pooled, per_run, selection, runs, label, args.judge_files, official)
+    if per_judge_metrics:
+        md += "\n## Per judge (reported alongside; not the selection label)\n\n| judge | alpha | rate excl. ABSTAIN | ABSTAIN rate | rate incl. ABSTAIN |\n|---|---|---|---|---|\n"
+        md += "\n".join(f"| {j} | {a} | {m['rate_excl_abstain']} ({m['hallucination_count_excl_abstain']}/{m['n_excl_abstain']}) | "
+                        f"{m['abstain_rate']} | {m['rate_incl_abstain']} |" for j, pm in per_judge_metrics.items()
+                        for a, m in pm.items()) + "\n"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     stem = OUT_DIR / f"stage2_report_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     Path(f"{stem}.md").write_text(md)
@@ -384,8 +476,20 @@ def main() -> int:
         "judge_version": args.judge_version, "pooled": {str(a): m for a, m in pooled.items()},
         "per_run": per_run, "selection": selection, "draft_official_params": official,
         "runs": {f"{a}|{g}": str(i["path"]) for (a, g), i in runs.items()},
-        "judge_files": [str(j) for j in args.judge_files],
+        "judge_files": [str(j) for j in args.judge_files], "panel": args.panel,
+        "per_judge_pooled": {j: {str(a): m for a, m in pm.items()} for j, pm in per_judge_metrics.items()},
+        "tie_rule_used": selection.get("reasoning"),
     }, indent=2, default=str))
+    if args.apply:
+        import subprocess
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[2],
+                                capture_output=True, text=True).stdout.strip()
+        try:
+            print(f"[apply] {apply_official_params(official, commit)} <- alpha*={official['alpha_primary']}, "
+                  f"alpha_abl={official['alpha_ablation']} (commit {commit[:7]})")
+        except Stage2Error as e:
+            print(f"[STOP] {e}")
+            return 1
     print(md)
     print(f"Report: {stem}.md / .json")
     return 0

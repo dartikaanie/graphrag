@@ -11,6 +11,7 @@ import type {
   TagListResponse,
 } from '@/types/api'
 import type { GraphData } from '@/types/graph'
+import type { Report, ReportItem, ReportItemRow } from '@/types/report'
 import type { RunCreateParams, RunResultDetail, RunState } from '@/types/run'
 import type { HistoryBatchesResponse, HistoryListResponse } from '@/types/history'
 import type { JudgeAvailableInput, JudgeEvaluationSummary, JudgeRun, JudgeRunCreateParams } from '@/types/judge'
@@ -1004,5 +1005,37 @@ export function useRefreshProcessLive() {
   return useMutation({
     mutationFn: () => apiPost<LiveResponse>('/api/process/live/refresh'),
     onSuccess: (data) => queryClient.setQueryData(['process-live'], data),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// End-to-end official report (Amendment 14 draft, plan step 9): read-only, no API calls to any model.
+// mock=true serves synthetic walkthrough data (meta.mock = true on every response).
+// ---------------------------------------------------------------------------
+
+export function useReport(mock: boolean) {
+  return useQuery({
+    queryKey: ['report', mock],
+    queryFn: () => apiGet<Report>('/api/report', mock ? { mock: 'true' } : {}),
+  })
+}
+
+export function useReportItems(runId: string | null, mock: boolean) {
+  return useQuery({
+    queryKey: ['report-items', runId, mock],
+    queryFn: () =>
+      apiGet<{ run_id: string; items: ReportItemRow[] }>('/api/report/items', { run_id: runId ?? '', ...(mock ? { mock: 'true' } : {}) }),
+    enabled: !!runId,
+  })
+}
+
+export function useReportItem(runId: string | null, questionId: number | null, mock: boolean) {
+  return useQuery({
+    queryKey: ['report-item', runId, questionId, mock],
+    queryFn: () =>
+      apiGet<ReportItem>('/api/report/item', {
+        run_id: runId ?? '', question_id: questionId ?? 0, ...(mock ? { mock: 'true' } : {}),
+      }),
+    enabled: !!runId && questionId !== null,
   })
 }

@@ -169,7 +169,7 @@ from llm.common.leakage import (LEGACY_CONTEXT, MODE_THREAD, LeakageContext, add
                                 assert_no_leakage, build_exclusion, config_leakage_key, leakage_mode_from_args)
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_lightrag_messages
-from llm.record_schema import latency_fields, new_run_id, record_header
+from llm.record_schema import answer_timing, latency_fields, new_run_id, record_header
 from llm.common.provenance import fetch_trust_score_version, run_provenance  # noqa: E402
 from llm.sample_split import SampleMismatchError, verify_sample
 
@@ -674,7 +674,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 try:
                     t_generation_start = time.time()
                     call_result = call_llm_fn(llm_client, messages, model)
-                    generation_latency = time.time() - t_generation_start
+                    t_answer_end = time.time()  # end of retrieval + generation (evaluation steps excluded)
+                    generation_latency = t_answer_end - t_generation_start
                     llm_answer = call_result["content"]
                 except Exception as e:
                     log(f"      [{i+1}/{total}] Id={qid} [FAIL] API error: {e}")
@@ -721,6 +722,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "n_context_items_used": len(retrieved),
                     "require_grounding": require_grounding,
                     **latency_fields(retrieval_latency, generation_latency, total_latency),
+                    **answer_timing(t_query_start, t_answer_end),
                     "llm_answer": llm_answer,
                     "llm_model": model,
                     "cosine_similarity": similarity,

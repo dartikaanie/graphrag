@@ -31,7 +31,7 @@ def _sample():
 
 def _check_header(rec, condition, retrieval_is_none):
     assert rec["run_id"] == RUN_ID and rec["condition"] == condition
-    assert rec["record_schema_version"] == RECORD_SCHEMA_VERSION == "r2"
+    assert rec["record_schema_version"] == RECORD_SCHEMA_VERSION == "r3"
     for key in ("generation_latency_sec", "total_latency_sec"):
         assert isinstance(rec[key], float) and rec[key] >= 0, key
     if retrieval_is_none:
@@ -40,9 +40,32 @@ def _check_header(rec, condition, retrieval_is_none):
         assert isinstance(rec["retrieval_latency_sec"], float)
         assert rec["total_latency_sec"] >= rec["retrieval_latency_sec"]
     assert rec["total_latency_sec"] >= rec["generation_latency_sec"]
+    _check_r3_timing(rec)
     # old fields stay
     for key in ("question_id", "llm_answer", "cosine_similarity", "config", "config_hash", "request_params"):
         assert key in rec, key
+
+
+def _check_r3_timing(rec):
+    """Schema r3: per-answer end-to-end timing around retrieval + generation (NF3)."""
+    from datetime import datetime
+    start, end = (datetime.fromisoformat(rec[k]) for k in ("answer_started_at_utc", "answer_finished_at_utc"))
+    assert start.utcoffset().total_seconds() == 0 and end >= start
+    e2e = rec["end_to_end_latency_sec"]
+    assert isinstance(e2e, float) and abs(e2e - (end - start).total_seconds()) < 2e-3
+    assert e2e >= rec["generation_latency_sec"] - 1e-3
+    if rec["retrieval_latency_sec"] is not None:
+        assert e2e >= rec["retrieval_latency_sec"] + rec["generation_latency_sec"] - 2e-3
+    assert e2e <= rec["total_latency_sec"] + 1e-3
+
+
+def _slow_similarity(m, x, y):
+    """An evaluation step that takes 50 ms (busy wait: time.sleep is patched)."""
+    import time
+    t = time.time()
+    while time.time() - t < 0.05:
+        pass
+    return 0.5
 
 
 @pytest.fixture
@@ -60,7 +83,7 @@ def test_condition_a_record_and_manifest(tmp_path, quiet):
     assert json.loads(out.read_text().splitlines()[0])["run_id"] == RUN_ID
     m = json.loads(write_manifest(out, run_id=RUN_ID, run_label="A", config={}, started_at_utc="t0",
                                   finished_at_utc="t1", item_counts={}).read_text())
-    assert m["run_id"] == RUN_ID and m["record_schema_version"] == "r2" and m["run_ids_in_output"] == [RUN_ID]
+    assert m["run_id"] == RUN_ID and m["record_schema_version"] == "r3" and m["run_ids_in_output"] == [RUN_ID]
 
 
 def test_run_id_defaults_to_a_fresh_uuid(tmp_path, quiet):
@@ -121,3 +144,11 @@ def test_d_queries_return_is_accepted_without_extra_query():
     for fn in (d.retrieve_low_level, d.retrieve_high_level):
         src = inspect.getsource(fn)
         assert "a.isAccepted AS is_accepted" in src and src.count("session.run(") == 1, fn.__name__
+
+
+def test_end_to_end_latency_excludes_evaluation_steps(tmp_path, quiet, monkeypatch):
+    """end_to_end_latency_sec ends when the generator returns; the cosine-similarity evaluation is not in it
+    (total_latency_sec, schema r2, still is)."""
+    monkeypatch.setattr(a, "compute_similarity", _slow_similarity)
+    rec = a.process_sample(_sample(), None, _fake_llm, None, "fake", tmp_path / "a.jsonl", run_id=RUN_ID)[0]
+    assert rec["total_latency_sec"] - rec["end_to_end_latency_sec"] >= 0.04

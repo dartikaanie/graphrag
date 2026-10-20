@@ -72,3 +72,46 @@ def test_deepinfra_spend_and_remaining_budget(reg_path):
     rr.record_deepinfra_spend("alpha stage 2", 1.2, run_id="x")
     assert rr.deepinfra_spent() == pytest.approx(1.241)
     assert rr.deepinfra_remaining() == pytest.approx(4.759)
+
+
+def _gen_file(tmp_path, cfg, n):
+    import json
+    p = tmp_path / "condition_c_x.jsonl"
+    p.write_text("".join(json.dumps({"question_id": i, "config": cfg, "config_hash": "h",
+                                     "usage_full": {"prompt_tokens": 1000, "completion_tokens": 300},
+                                     "answer_started_at_utc": "2026-10-20T00:00:00.000+00:00",
+                                     "answer_finished_at_utc": "2026-10-20T00:00:05.000+00:00",
+                                     "end_to_end_latency_sec": 5.0}) + "\n"
+                         for i in range(n)))
+    return p
+
+
+STAGE2_CFG = {"condition": "C", "provider": "openai", "model": "gpt-4o-mini", "seed": 42, "oversample_pool": 1536,
+              "sample_split": "dev", "n_sample": 50, "top_k": 5, "leakage": "dup+neardup0.95",
+              "c_retrieval_version": "v3", "n_anchor": 3, "n_semantic_expansion": 3, "expansion_require_answer": True,
+              "fusion_mode": "trust_weighted", "alpha": 0.25, "require_grounding": True}
+
+
+def test_generation_entry_checks_the_frozen_config(tmp_path, reg_path):
+    e = rr.generation_entry(_gen_file(tmp_path, STAGE2_CFG, 50), "dev-stage2")
+    assert e["status"] == "dev-stage2" and e["alpha"] == 0.25 and e["n"] == 50
+    assert e["cost_usd"] == pytest.approx(50 * (1000 * 0.15 + 300 * 0.60) / 1e6)
+    assert e["frozen_params_hash"]
+    with pytest.raises(rr.RegistryError, match="leakage"):
+        rr.generation_entry(_gen_file(tmp_path, {**STAGE2_CFG, "leakage": "thread"}, 50), "dev-stage2")
+    with pytest.raises(rr.RegistryError, match="condition/alpha"):
+        rr.generation_entry(_gen_file(tmp_path, {**STAGE2_CFG, "alpha": 0.5}, 50), "dev-stage2")
+    with pytest.raises(rr.RegistryError, match="sample_split"):  # a dev run cannot be registered as official
+        rr.generation_entry(_gen_file(tmp_path, STAGE2_CFG, 50), "official")
+    official = {k: v for k, v in STAGE2_CFG.items() if k != "sample_split"} | {"n_sample": 384}
+    assert rr.generation_entry(_gen_file(tmp_path, official, 384), "official")["status"] == "official"
+
+
+def test_runs_without_r3_timing_are_refused(tmp_path, reg_path):
+    import json
+    p = _gen_file(tmp_path, STAGE2_CFG, 50)
+    lines = [json.loads(x) for x in p.read_text().splitlines()]
+    del lines[3]["end_to_end_latency_sec"]
+    p.write_text("".join(json.dumps(x) + "\n" for x in lines))
+    with pytest.raises(rr.RegistryError, match="end-to-end timing"):
+        rr.generation_entry(p, "dev-stage2")

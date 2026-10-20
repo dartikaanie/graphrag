@@ -160,3 +160,122 @@ def record_deepinfra_spend(label: str, cost_usd: float, run_id: str | None = Non
         "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     save(reg, path)
     return reg
+
+
+# ---------------------------------------------------------------------------
+# Registration of new runs (Amendment 14 draft, plan step 7a)
+# ---------------------------------------------------------------------------
+
+FROZEN_PARAMS_JSON = REPO_ROOT / "results" / "frozen_parameters.json"
+GEN_PRICE_PER_M = (0.15, 0.60)  # gpt-4o-mini input / output, USD
+
+
+def frozen_params_hash() -> str:
+    """Hash of the frozen parameter table (llm/frozen_parameters.py) the run is checked against."""
+    return json.loads(FROZEN_PARAMS_JSON.read_text())["table_hash"]
+
+
+def expected_generation_config(status: str, condition: str) -> dict:
+    """The frozen values a generation run's config must carry (official_run_matrix + Amendments 8/9)."""
+    from llm import official_run_matrix as orm
+    exp = {"provider": orm.PROVIDER, "model": orm.MODEL, "seed": orm.SEED, "oversample_pool": orm.OVERSAMPLE_POOL,
+           "sample_split": "test" if status == STATUS_OFFICIAL else "dev",
+           "n_sample": orm.N_SAMPLE if status == STATUS_OFFICIAL else 50}
+    if condition in ("B", "C", "D"):
+        exp.update(top_k=orm.TOP_K, leakage=orm.LEAKAGE_MODE)
+    if condition == "C":
+        exp.update(c_retrieval_version="v3", n_anchor=orm.N_ANCHOR, n_semantic_expansion=orm.N_SEMANTIC_EXPANSION,
+                   expansion_require_answer=True, fusion_mode="trust_weighted")
+    return exp
+
+
+def generation_entry(run_file, status: str) -> dict:
+    """A registry entry for a generation run, after checking its config against the frozen values."""
+    if status not in (STATUS_OFFICIAL, STATUS_DEV_STAGE2):
+        raise RegistryError(f"new runs are registered as {STATUS_OFFICIAL!r} or {STATUS_DEV_STAGE2!r}")
+    path = archive_paths.resolve(run_file)
+    recs = [json.loads(line) for line in open(path) if line.strip()]
+    if not recs:
+        raise RegistryError(f"{path}: empty run file")
+    cfg = recs[0].get("config") or {}
+    if len({json.dumps(r.get("config"), sort_keys=True) for r in recs}) != 1:
+        raise RegistryError(f"{path.name}: records carry more than one config")
+    cond = cfg.get("condition")
+    exp = expected_generation_config(status, cond)
+    defaults = {"sample_split": "test"}  # keys left out of a config when at their default (config_hash stability)
+    wrong = {k: (cfg.get(k, defaults.get(k)), v) for k, v in exp.items() if cfg.get(k, defaults.get(k)) != v}
+    if cond == "B" and not str(cfg.get("corpus", "")).startswith("kg_answers"):
+        wrong["corpus"] = (cfg.get("corpus"), "kg_answers_*")
+    if status == STATUS_DEV_STAGE2 and (cond != "C" or cfg.get("alpha") not in (0.25, 0.0)):
+        wrong["condition/alpha"] = ((cond, cfg.get("alpha")), "C with alpha 0.25 or 0")
+    if wrong:
+        raise RegistryError(f"{path.name}: config differs from the frozen values (got, expected): {wrong}")
+    no_timing = sum(1 for r in recs if r.get("end_to_end_latency_sec") is None or r.get("answer_started_at_utc") is None)
+    if no_timing:
+        raise RegistryError(f"{path.name}: {no_timing} records without per-answer end-to-end timing (record schema "
+                            "r3; NF3 cannot be computed) -- generate with the current code")
+    if len(recs) != exp["n_sample"]:
+        raise RegistryError(f"{path.name}: {len(recs)} records, expected {exp['n_sample']}")
+    manifest_path = path.with_name(path.name + ".manifest.json")
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    tin = sum((r.get("usage_full") or {}).get("prompt_tokens", 0) for r in recs)
+    tout = sum((r.get("usage_full") or {}).get("completion_tokens", 0) for r in recs)
+    rel = archive_paths.repo_rel(archive_paths.canonical(path))
+    files = {"output": rel}
+    if manifest_path.exists():
+        files["manifest"] = rel + ".manifest.json"
+    return {
+        "run_id": f"{path.stem}", "status": status, "kind": "generation", "condition": cond,
+        "grounding": cfg.get("require_grounding"), "alpha": cfg.get("alpha"), "n": len(recs), "seed": cfg.get("seed"),
+        "generator": cfg.get("model"), "judge_config": None,
+        "commit": ((manifest.get("git") or {}).get("commit_sha") or "")[:7] or None,
+        "created_at": manifest.get("started_at_utc"), "files": files,
+        "cost_usd": round((tin * GEN_PRICE_PER_M[0] + tout * GEN_PRICE_PER_M[1]) / 1e6, 6),
+        "cost_source": f"usage_full ({tin} in, {tout} out) at gpt-4o-mini list price",
+        "notes": "", "config_hash": recs[0].get("config_hash"), "frozen_params_hash": frozen_params_hash(),
+        "git_dirty": (manifest.get("git") or {}).get("dirty"),
+    }
+
+
+def set_budget(usd: float, who: str = "author", path: Path | None = None) -> dict:
+    reg = load(path)
+    reg["budget"] = {"deepinfra_budget_usd": float(usd), "set_by": who,
+                     "set_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    save(reg, path)
+    return reg
+
+
+def main(argv=None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="results/run_registry.json: budget, registration, overview")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    b = sub.add_parser("set-budget", help="Set the DeepInfra budget (USD) the judging guard enforces")
+    b.add_argument("usd", type=float)
+    r = sub.add_parser("register", help="Register generation run file(s) after checking them against the frozen values")
+    r.add_argument("--status", choices=[STATUS_OFFICIAL, STATUS_DEV_STAGE2], required=True)
+    r.add_argument("run_files", nargs="+")
+    sub.add_parser("show", help="Counts, budget and spend")
+    args = ap.parse_args(argv)
+    if args.cmd == "set-budget":
+        reg = set_budget(args.usd)
+        print(f"DeepInfra budget ${args.usd:.2f}; spent ${deepinfra_spent(reg):.4f}; remaining ${deepinfra_remaining(reg):.4f}")
+    elif args.cmd == "register":
+        for f in args.run_files:
+            try:
+                e = generation_entry(f, args.status)
+                register(e)
+                print(f"[registered] {e['run_id']} ({e['status']}, {e['condition']}, grounding {e['grounding']}, "
+                      f"alpha {e['alpha']}, n {e['n']}, ${e['cost_usd']:.4f})")
+            except RegistryError as err:
+                print(f"[REFUSED] {err}")
+                return 2
+    else:
+        reg = load()
+        print({s: sum(1 for x in reg["runs"] if x["status"] == s) for s in STATUSES}, "budget", reg.get("budget"),
+              "spent", deepinfra_spent(reg), "remaining", deepinfra_remaining(reg))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
