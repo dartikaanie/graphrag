@@ -1,0 +1,142 @@
+[screening] Qwen/Qwen3-32B; rule amendment14_draft.md sha256 62569fc9bb115639...
+[judge-version] judge-v2.3 allowed for a calibration run
+[freeze] annotator1.xlsx matches its freeze record (sha256 bff6e290cbd345a13e3630855ea98ed1902a0e8e2304520a95231e85fbe8290b)
+[annotation exclusion] keys: {'calibration': 'verified; its 60 items ARE the run (--calibration-set)'}; {'calibration_set_items': 60}
+
+[plan] judge-v2.3 (parse pv2.3-1, response_format {'type': 'json_object'}): 60 items x 1 judges: 60 calls to make, 0 cached
+[cost] input basis: 60/60 calls measured (same messages in basis records), rest estimated from length
+[cost] projected $0.0608 (worst case with all retries $0.1823); limit $0.1000
+{
+  "qwen3-32b": {
+    "n_calls": 60,
+    "input_tokens": 339654,
+    "output_tokens": 120000,
+    "cost_usd": 0.06077
+  }
+}
+  A-cc42da2005:47712318 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4701/1049
+  A-cc42da2005:125143 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4530/1070
+  A-cc42da2005:65032123 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5250/966
+  A-cc42da2005:30940698 qwen3-32b label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=5040/640
+  A-cc42da2005:45387122 qwen3-32b label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=4969/1053
+  A-cc42da2005:65748781 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5163/1047
+  A-cc42da2005:42102028 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5828/979
+  A-cc42da2005:71408390 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4441/1126
+  A-cc42da2005:14610888 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4879/1092
+  A-cc42da2005:57331553 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4868/1115
+  A-cc42da2005:69868179 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5049/1184
+  A-cc42da2005:56467081 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5247/986
+  A-cc42da2005:66767217 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4759/1017
+  A-cc42da2005:26179020 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4594/686
+  A-cc42da2005:12278877 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4213/932
+  A-cc42da2005:25665494 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4596/818
+  A-cc42da2005:27612931 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4958/976
+  A-cc42da2005:69993521 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4516/1072
+  A-cc42da2005:12722405 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5182/930
+  A-cc42da2005:76615231 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4841/1091
+  B-347fe4b559:47712318 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=6243/1096
+  B-347fe4b559:125143 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5227/995
+  B-347fe4b559:71829283 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5637/832
+  B-347fe4b559:19951718 qwen3-32b label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=4932/895
+  B-347fe4b559:73145269 qwen3-32b label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=6131/777
+  B-347fe4b559:45387122 qwen3-32b label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=6417/820
+  B-347fe4b559:72944746 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=8410/911
+  B-347fe4b559:74605353 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=6322/792
+  B-347fe4b559:55892278 qwen3-32b label=HALUSINASI_PENUH parse_ok=True finish=stop tokens=6296/728
+  B-347fe4b559:24615005 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=6100/934
+  B-347fe4b559:57331553 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=6028/974
+  B-347fe4b559:69868179 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5973/1082
+  B-347fe4b559:2157289 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5607/1101
+  B-347fe4b559:60436134 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5536/739
+  B-347fe4b559:26179020 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=6080/449
+  B-347fe4b559:12278877 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5729/646
+  B-347fe4b559:25665494 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5092/1143
+  B-347fe4b559:77482226 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5795/1016
+  B-347fe4b559:4316334 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5061/691
+  B-347fe4b559:76615231 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5891/1138
+  B-af190f3c5a:60887798 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=7122/432
+  B-af190f3c5a:71829283 qwen3-32b label=ABSTAIN parse_ok=True finish=stop tokens=5290/89
+  B-af190f3c5a:45387122 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=6256/914
+  B-af190f3c5a:74605353 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=6201/1028
+  B-af190f3c5a:55892278 qwen3-32b label=ABSTAIN parse_ok=True finish=stop tokens=5948/89
+  B-af190f3c5a:44558343 qwen3-32b label=ABSTAIN parse_ok=True finish=stop tokens=5936/91
+  B-af190f3c5a:42102028 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=7477/694
+  B-af190f3c5a:71408390 qwen3-32b label=ABSTAIN parse_ok=True finish=stop tokens=4625/100
+  B-af190f3c5a:24615005 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5873/521
+  B-af190f3c5a:62574045 qwen3-32b label=ABSTAIN parse_ok=True finish=stop tokens=5932/90
+  B-af190f3c5a:14019246 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5980/1148
+  B-af190f3c5a:57331553 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5990/1075
+  B-af190f3c5a:50061146 qwen3-32b label=ABSTAIN parse_ok=True finish=stop tokens=5868/88
+  B-af190f3c5a:69868179 qwen3-32b label=ABSTAIN parse_ok=True finish=stop tokens=5390/95
+  B-af190f3c5a:67427589 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5612/973
+  B-af190f3c5a:26179020 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=6016/453
+  B-af190f3c5a:25665494 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=4856/460
+  B-af190f3c5a:4316334 qwen3-32b label=ABSTAIN parse_ok=True finish=stop tokens=4805/99
+  B-af190f3c5a:53432433 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5994/957
+  B-af190f3c5a:76615231 qwen3-32b label=FAKTUAL parse_ok=True finish=stop tokens=5753/460
+
+=== SUMMARY ===
+{
+  "per_judge": {
+    "qwen3-32b": {
+      "model": "Qwen/Qwen3-32B",
+      "n_records": 60,
+      "parse_ok": "60/60",
+      "parse_ok_this_run": "60/60",
+      "finish_reason_this_run": {
+        "stop": 60
+      },
+      "response_models": {
+        "Qwen/Qwen3-32B": 60
+      },
+      "finish_reason": {
+        "stop": 60
+      },
+      "labels": {
+        "FAKTUAL": 46,
+        "HALUSINASI_PENUH": 6,
+        "ABSTAIN": 8
+      },
+      "unspecified_votes": 0,
+      "final_failures": 0,
+      "reasoning_present": 0,
+      "served_model_mismatch": 0,
+      "normalized_fields": {
+        "severity_on_non_error": 41,
+        "cited_item_not_offered": 4,
+        "cited_item_supports_without_citation": 4,
+        "supported_by_context_na_with_context": 75
+      },
+      "prompt_tokens": 333055,
+      "completion_tokens": 47444,
+      "cost_usd_all_records": 0.039929,
+      "cost_usd_this_run": 0.039929,
+      "provider_cost_usd_this_run": 0.039929
+    }
+  },
+  "panel_labels_by_run_label": {
+    "A [dev]": {
+      "UNRESOLVED": 20
+    },
+    "B-plain [dev]": {
+      "UNRESOLVED": 20
+    },
+    "B-grounded [dev]": {
+      "UNRESOLVED": 20
+    }
+  },
+  "unresolved_by_run_label": {
+    "A [dev]": 20,
+    "B-plain [dev]": 20,
+    "B-grounded [dev]": 20
+  },
+  "unspecified_by_run_label": {
+    "A [dev]": 0,
+    "B-plain [dev]": 0,
+    "B-grounded [dev]": 0
+  },
+  "n_panel_incomplete": 0,
+  "n_unanimous": 0,
+  "n_items": 60,
+  "actual_cost_usd_this_run": 0.039929
+}

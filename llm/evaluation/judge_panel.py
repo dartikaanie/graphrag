@@ -60,8 +60,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from judge_binary import derive_hallucinated  # noqa: E402
 from llm import archive_paths  # noqa: E402
 from judge_panel_aggregate import UNRESOLVED, UNSPECIFIED, aggregate_labels  # noqa: E402
-from judge_panel_config import (MAX_RETRIES, PANEL_ID, PANEL_JUDGES, PanelJudge, judge_cost_usd,  # noqa: E402
-                                panel_public_view)
+from judge_panel_config import (MAX_RETRIES, PANEL_ID, PANEL_JUDGES, SCREENING_BY_ID,  # noqa: E402
+                                SCREENING_PANEL_ID, PanelJudge, judge_cost_usd, panel_public_view)
 from judge_prompt_v2_2 import _load_json  # noqa: E402
 
 log = print
@@ -314,12 +314,12 @@ def call_judge(client, judge: PanelJudge, messages: list[dict], has_context: boo
 
 
 def judge_record(item: dict, judge: PanelJudge, messages: list[dict], prepared: dict, client,
-                 sleep=time.sleep, spec: JudgeVersionSpec | None = None) -> dict:
+                 sleep=time.sleep, spec: JudgeVersionSpec | None = None, panel_id: str = PANEL_ID) -> dict:
     spec = spec or judge_version_spec(DEFAULT_JUDGE_VERSION)
     out = call_judge(client, judge, messages, prepared["has_context"], prepared["offered_items"], sleep=sleep,
                      spec=spec)
     rec = {
-        "panel_id": PANEL_ID, "item_id": item["item_id"], "run_id": item["run_id"],
+        "panel_id": panel_id, "item_id": item["item_id"], "run_id": item["run_id"],
         "question_id": item["question_id"], "condition": item["condition"], "run_label": item["run_label"],
         "config_hash": item.get("config_hash"), "source_file": item["source_file"],
         "judge_id": judge.judge_id, "judge_model": judge.model, "provider": judge.provider,
@@ -383,18 +383,28 @@ def panel_path_of(out: Path) -> Path:
 # Cost
 # ---------------------------------------------------------------------------
 
-def project_cost(tasks: list[tuple], done_records: list[dict], max_tokens: int | None = None) -> dict:
-    """tasks: [(item, judge, messages)]. Input tokens are estimated from the message length; output tokens are
-    the mean completion tokens of this judge's completed records, or MAX_TOKENS (upper bound) when none."""
+def project_cost(tasks: list[tuple], done_records: list[dict], max_tokens: int | None = None, judges=None,
+                 basis_records: list[dict] | None = None) -> dict:
+    """tasks: [(item, judge, messages)]. Input tokens: the actual prompt tokens recorded for the identical messages
+    (same messages_sha256) in `basis_records`, largest over the recorded judges, else estimated from the message
+    length. Output tokens: the mean completion tokens of this judge's completed records, or MAX_TOKENS (upper
+    bound) when none."""
     max_tokens = max_tokens or judge_version_spec(DEFAULT_JUDGE_VERSION).max_tokens
     per_judge = defaultdict(lambda: {"n_calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0})
+    measured_in = {}
+    for r in basis_records or []:
+        if r.get("messages_sha256") and r.get("prompt_tokens"):
+            measured_in[r["messages_sha256"]] = max(measured_in.get(r["messages_sha256"], 0), r["prompt_tokens"])
+    n_measured = 0
     mean_out = {}
-    for j in PANEL_JUDGES:
+    for j in judges or PANEL_JUDGES:
         outs = [r["completion_tokens"] for r in done_records
                 if r.get("judge_model") == j.model and r.get("completion_tokens") is not None]
         mean_out[j.judge_id] = (sum(outs) / len(outs)) if outs else max_tokens
     for item, judge, messages in tasks:
-        tin = sum(len(m["content"]) for m in messages) / CHARS_PER_TOKEN_EST
+        sha = _messages_sha256(messages)
+        n_measured += sha in measured_in
+        tin = measured_in.get(sha) or sum(len(m["content"]) for m in messages) / CHARS_PER_TOKEN_EST
         tout = mean_out[judge.judge_id]
         p = per_judge[judge.judge_id]
         p["n_calls"] += 1
@@ -406,34 +416,37 @@ def project_cost(tasks: list[tuple], done_records: list[dict], max_tokens: int |
                               "cost_usd": round(v["cost_usd"], 5)} for k, v in per_judge.items()},
             "total_usd": round(total, 5), "worst_case_with_retries_usd": round(total * (1 + MAX_RETRIES), 5),
             "output_token_basis": {k: ("mean of completed records" if v != max_tokens else "max_tokens (upper bound)")
-                                   for k, v in mean_out.items()}}
+                                   for k, v in mean_out.items()},
+            "input_token_basis": f"{n_measured}/{len(tasks)} calls measured (same messages in basis records), "
+                                 f"rest estimated from length"}
 
 
 # ---------------------------------------------------------------------------
 # Panel
 # ---------------------------------------------------------------------------
 
-def build_panel_records(items: list[dict], judge_records: list[dict], prompt_version: str = DEFAULT_JUDGE_VERSION) -> list[dict]:
+def build_panel_records(items: list[dict], judge_records: list[dict], prompt_version: str = DEFAULT_JUDGE_VERSION,
+                        judges=None, panel_id: str = PANEL_ID) -> list[dict]:
     """One panel record per item. A judge without a usable record (none, or parse failure) counts as missing."""
     by = {}
     for r in judge_records:
-        if r.get("panel_id") == PANEL_ID and r.get("prompt_version") == prompt_version:
+        if r.get("panel_id") == panel_id and r.get("prompt_version") == prompt_version:
             by[(r["item_id"], r["judge_model"])] = r
     out = []
     for it in items:
         labels = {}
-        for j in PANEL_JUDGES:
+        for j in judges or PANEL_JUDGES:
             r = by.get((it["item_id"], j.model))
             labels[j.judge_id] = r["label"] if r and r.get("parse_ok") and not r.get("call_failed") else None
         out.append({"item_id": it["item_id"], "run_id": it["run_id"], "question_id": it["question_id"],
                     "condition": it["condition"], "run_label": it["run_label"], "prompt_version": prompt_version,
-                    **aggregate_labels(labels, PANEL_ID)})
+                    **aggregate_labels(labels, panel_id)})
     return out
 
 
-def summarize(judge_records: list[dict], panel_records: list[dict], new_records: list[dict]) -> dict:
+def summarize(judge_records: list[dict], panel_records: list[dict], new_records: list[dict], judges=None) -> dict:
     per_judge = {}
-    for j in PANEL_JUDGES:
+    for j in judges or PANEL_JUDGES:
         rs = [r for r in judge_records if r["judge_model"] == j.model]
         new = [r for r in new_records if r["judge_model"] == j.model]
         per_judge[j.judge_id] = {
@@ -475,7 +488,7 @@ def summarize(judge_records: list[dict], panel_records: list[dict], new_records:
 # ---------------------------------------------------------------------------
 
 def plan_tasks(items: list[dict], bodies_text: dict, done: set,
-               spec: JudgeVersionSpec | None = None) -> tuple[list[tuple], dict, int]:
+               spec: JudgeVersionSpec | None = None, judges=None) -> tuple[list[tuple], dict, int]:
     """[(item, judge, messages)] for every (item, judge) not in the cache; {item_id: prepared}; n cached."""
     from _judge_common import html_to_text
     from llm_judge_hallucination_v2_2 import has_context_for
@@ -488,7 +501,7 @@ def plan_tasks(items: list[dict], bodies_text: dict, done: set,
         body = bodies_text.get(it["question_id"]) or "[question body not found in parquet]"
         messages = spec.build_messages(it["title"], body, it["tags"], html_to_text(it["ground_truth_answer_html"]),
                                   it["candidate"], prepared=prepared)
-        for j in PANEL_JUDGES:
+        for j in judges or PANEL_JUDGES:
             if (it["item_id"], j.model, spec.prompt_version) in done:
                 n_cached += 1
             else:
@@ -496,18 +509,59 @@ def plan_tasks(items: list[dict], bodies_text: dict, done: set,
     return tasks, prepared_by_item, n_cached
 
 
+class BudgetGuard:
+    """Runtime spend cap: a call starts only if the spend so far, plus the worst case of every call in flight,
+    plus the worst case of this call (all retries at max_tokens) stays within max_cost_usd."""
+
+    def __init__(self, max_cost_usd: float | None, max_tokens: int, input_tokens_of):
+        self.max_cost_usd, self.max_tokens, self.input_tokens_of = max_cost_usd, max_tokens, input_tokens_of
+        self.spent = self.reserved = 0.0
+        self.n_skipped = 0
+        self._lock = threading.Lock()
+
+    def worst_case(self, judge: PanelJudge, messages: list[dict]) -> float:
+        tin = self.input_tokens_of(messages)
+        return (1 + MAX_RETRIES) * (tin / 1e6 * judge.price_per_m_input + self.max_tokens / 1e6 * judge.price_per_m_output)
+
+    def reserve(self, judge, messages) -> float | None:
+        if self.max_cost_usd is None:
+            return 0.0
+        w = self.worst_case(judge, messages)
+        with self._lock:
+            if self.spent + self.reserved + w > self.max_cost_usd:
+                self.n_skipped += 1
+                return None
+            self.reserved += w
+            return w
+
+    def settle(self, reserved: float, cost: float | None) -> None:
+        with self._lock:
+            self.reserved -= reserved
+            self.spent += cost or 0.0
+
+
 def run_tasks(tasks: list[tuple], prepared_by_item: dict, clients: dict, out: Path, concurrency: int,
-              sleep=time.sleep, spec: JudgeVersionSpec | None = None) -> list[dict]:
-    """Item-major submission, so an item's three judges run concurrently (bounded by `concurrency`)."""
+              sleep=time.sleep, spec: JudgeVersionSpec | None = None, panel_id: str = PANEL_ID,
+              budget: BudgetGuard | None = None) -> list[dict]:
+    """Item-major submission, so an item's three judges run concurrently (bounded by `concurrency`). With a
+    budget guard, a call that could push the spend over the cap is not made (counted in budget.n_skipped)."""
     new = []
 
     def _one(task):
         it, j, messages = task
-        return judge_record(it, j, messages, prepared_by_item[it["item_id"]], clients[j.judge_id], sleep=sleep,
-                            spec=spec)
+        held = budget.reserve(j, messages) if budget else 0.0
+        if held is None:
+            return None
+        rec = judge_record(it, j, messages, prepared_by_item[it["item_id"]], clients[j.judge_id], sleep=sleep,
+                           spec=spec, panel_id=panel_id)
+        if budget:
+            budget.settle(held, rec.get("estimated_cost_usd"))
+        return rec
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         for rec in pool.map(_one, tasks):
+            if rec is None:
+                continue
             usable = rec["parse_ok"] and not rec["call_failed"]
             append_jsonl(out if usable else failures_path_of(out), rec)
             new.append(rec)
@@ -516,13 +570,13 @@ def run_tasks(tasks: list[tuple], prepared_by_item: dict, clients: dict, out: Pa
     return new
 
 
-def make_clients() -> dict:
+def make_clients(judges=None) -> dict:
     from dotenv import load_dotenv
     from openai import OpenAI
 
     load_dotenv(Path(__file__).resolve().parents[2] / ".env")
     clients = {}
-    for j in PANEL_JUDGES:
+    for j in judges or PANEL_JUDGES:
         key = os.getenv(j.api_key_env)
         if not key:
             raise RuntimeError(f"{j.api_key_env} not set (repo-root .env)")
@@ -551,7 +605,26 @@ def main(argv=None) -> int:
     parser.add_argument("--calibration-set", action="store_true",
                         help="Judge exactly the 60 human-labelled calibration items (Amendment 12). Requires the "
                              "frozen annotation sheet (hash = freeze record) and the finalized reference; no override")
+    parser.add_argument("--screen-judge", choices=sorted(SCREENING_BY_ID), default=None,
+                        help="Amendment 14 screening: run ONE candidate judge (not the panel) with the frozen prompt, "
+                             "parser and blinding; requires --calibration-set and --screening-rule; no panel file")
+    parser.add_argument("--screening-rule", default=None,
+                        help="The pre-registered eligibility rule (Markdown); its SHA-256 is recorded in the history")
+    parser.add_argument("--token-basis", nargs="+", default=None,
+                        help="Stored judge outputs whose prompt_tokens (same messages_sha256) feed the cost projection")
     args = parser.parse_args(argv)
+
+    screening = None
+    judges, panel_id = PANEL_JUDGES, PANEL_ID
+    if args.screen_judge:
+        if not args.calibration_set or not args.screening_rule or not Path(args.screening_rule).is_file():
+            log("[ERROR] --screen-judge needs --calibration-set and an existing --screening-rule file")
+            return 1
+        judges, panel_id = (SCREENING_BY_ID[args.screen_judge],), SCREENING_PANEL_ID
+        rule = Path(args.screening_rule)
+        screening = {"judge_id": args.screen_judge, "model": judges[0].model, "rule_path": str(rule),
+                     "rule_sha256": hashlib.sha256(rule.read_bytes()).hexdigest()}
+        log(f"[screening] {judges[0].model}; rule {rule.name} sha256 {screening['rule_sha256'][:16]}...")
 
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parents[2] / ".env")
@@ -618,10 +691,12 @@ def main(argv=None) -> int:
         log(f"[ERROR] {len(missing_bodies)} question bodies not found in the parquet; refusing")
         return 1
     done_records = [r for r in done_records if r.get("prompt_version") == spec.prompt_version]
-    tasks, prepared_by_item, n_cached = plan_tasks(items, bodies, done, spec)
-    projection = project_cost(tasks, done_records, spec.max_tokens)
+    tasks, prepared_by_item, n_cached = plan_tasks(items, bodies, done, spec, judges)
+    basis = [r for f in (args.token_basis or []) for r in read_jsonl(archive_paths.resolve(f))]
+    projection = project_cost(tasks, done_records, spec.max_tokens, judges, basis)
     log(f"\n[plan] {spec.prompt_version} (parse {spec.parse_version}, response_format {spec.response_format}): "
-        f"{len(items)} items x {len(PANEL_JUDGES)} judges: {len(tasks)} calls to make, {n_cached} cached")
+        f"{len(items)} items x {len(judges)} judges: {len(tasks)} calls to make, {n_cached} cached")
+    log(f"[cost] input basis: {projection['input_token_basis']}")
     log(f"[cost] projected ${projection['total_usd']:.4f} (worst case with all retries "
         f"${projection['worst_case_with_retries_usd']:.4f}); limit ${args.max_cost_usd:.4f}")
     log(json.dumps(projection["per_judge"], indent=2))
@@ -632,22 +707,35 @@ def main(argv=None) -> int:
         return 0
 
     started = datetime.now(timezone.utc).isoformat()
-    new = run_tasks(tasks, prepared_by_item, make_clients(), out, concurrency, spec=spec) if tasks else []
+    measured = {r["messages_sha256"]: r["prompt_tokens"] for r in basis if r.get("messages_sha256") and r.get("prompt_tokens")}
+    budget = BudgetGuard(args.max_cost_usd, spec.max_tokens,
+                         lambda msgs: measured.get(_messages_sha256(msgs))
+                         or sum(len(m["content"]) for m in msgs) / CHARS_PER_TOKEN_EST)
+    new = run_tasks(tasks, prepared_by_item, make_clients(judges), out, concurrency, spec=spec, panel_id=panel_id,
+                    budget=budget) if tasks else []
+    if budget.n_skipped:
+        log(f"[BUDGET] {budget.n_skipped} call(s) not made: they could have pushed the spend over "
+            f"--max-cost-usd {args.max_cost_usd}")
     judge_records = read_jsonl(out)
     item_ids = {it["item_id"] for it in items}
-    panel = build_panel_records(items, [r for r in judge_records if r["item_id"] in item_ids], spec.prompt_version)
-    panel_path = panel_path_of(out)
-    with open(panel_path, "w", encoding="utf-8") as f:
-        for p in panel:
-            f.write(json.dumps(p) + "\n")
+    panel = build_panel_records(items, [r for r in judge_records if r["item_id"] in item_ids], spec.prompt_version,
+                                judges, panel_id)
+    panel_path = None
+    if screening is None:  # a single screened judge is not a panel: no panel file
+        panel_path = panel_path_of(out)
+        with open(panel_path, "w", encoding="utf-8") as f:
+            for p in panel:
+                f.write(json.dumps(p) + "\n")
     summary = summarize([r for r in judge_records if r["item_id"] in item_ids
-                         and r.get("prompt_version") == spec.prompt_version], panel, new)
+                         and r.get("prompt_version") == spec.prompt_version], panel, new, judges)
     log(f"\n=== SUMMARY ===\n{json.dumps(summary, indent=2)}")
     append_manifest("judge_panel_run_history.jsonl", {
         "run_started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
         "run_files": args.run_files, "question_ids_given": bool(args.question_ids), "items_given": args.items,
         "n_items": len(items),
-        "out": str(out), "panel_out": str(panel_path), "panel": panel_public_view(spec), "concurrency": concurrency,
+        "out": str(out), "panel_out": str(panel_path) if panel_path else None,
+        "panel": panel_public_view(spec, judges, panel_id), "concurrency": concurrency, "screening": screening,
+        "token_basis": args.token_basis, "budget_calls_skipped": budget.n_skipped,
         "max_cost_usd": args.max_cost_usd, "projection": projection, "calibration_guard": guard,
         "calibration_set": args.calibration_set, "annotation_freeze": frozen,
         "annotation_exclusion": {"keys": excl["keys"], **excl_counts}, "version_purpose": version_purpose,

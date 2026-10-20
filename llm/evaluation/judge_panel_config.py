@@ -85,6 +85,29 @@ PANEL_JUDGES: tuple[PanelJudge, ...] = (
     ),
 )
 
+# Amendment 14 (draft) screening candidates for the panel's Qwen seat (reports/amendment14_draft.md, "Qwen judge
+# eligibility rule"). Screened one at a time with judge_panel.py --screen-judge on the 60 calibration items; prices
+# from the DeepInfra model listing (api.deepinfra.com/models/list), checked 2026-10-19. Not panel members until the
+# rule has selected one.
+SCREENING_PANEL_ID = "screening-a14"
+SCREENING_CANDIDATES: tuple[PanelJudge, ...] = (
+    PanelJudge(
+        judge_id="qwen3-235b", model="Qwen/Qwen3-235B-A22B-Instruct-2507", family="Qwen (Alibaba)",
+        price_per_m_input=0.09, price_per_m_output=0.55,
+        expected_served_model="Qwen/Qwen3-235B-A22B-Instruct-2507",
+        precision_note="FP8 on DeepInfra; non-thinking model by design (Instruct-2507)",
+    ),
+    PanelJudge(
+        judge_id="qwen3-32b", model="Qwen/Qwen3-32B", family="Qwen (Alibaba)",
+        price_per_m_input=0.08, price_per_m_output=0.28,
+        expected_served_model="Qwen/Qwen3-32B",
+        # hybrid thinking model: both switches are sent; criterion (3) checks every response
+        extra_body={"reasoning_effort": "none", "chat_template_kwargs": {"enable_thinking": False}},
+        precision_note="FP8 on DeepInfra; hybrid thinking model, thinking disabled per request",
+    ),
+)
+SCREENING_BY_ID = {j.judge_id: j for j in SCREENING_CANDIDATES}
+
 JUDGES_BY_ID = {j.judge_id: j for j in PANEL_JUDGES}
 JUDGES_BY_MODEL = {j.model: j for j in PANEL_JUDGES}
 
@@ -95,11 +118,11 @@ def judge_cost_usd(judge: PanelJudge, prompt_tokens: int | None, completion_toke
     return round(prompt_tokens / 1e6 * judge.price_per_m_input + completion_tokens / 1e6 * judge.price_per_m_output, 8)
 
 
-def panel_public_view(spec=None) -> dict:
+def panel_public_view(spec=None, judges=None, panel_id: str | None = None) -> dict:
     """The panel configuration as recorded in manifests (no keys). `spec`: judge_panel.JudgeVersionSpec of the run
     (default: the judge-v2.2 values above)."""
     return {
-        "panel_id": PANEL_ID, "provider": PROVIDER, "base_url": BASE_URL,
+        "panel_id": panel_id or PANEL_ID, "provider": PROVIDER, "base_url": BASE_URL,
         "prompt_version": spec.prompt_version if spec else JUDGE_PROMPT_VERSION,
         "parse_version": spec.parse_version if spec else None,
         "response_format": spec.response_format if spec else None,
@@ -109,5 +132,5 @@ def panel_public_view(spec=None) -> dict:
                     "expected_served_model": j.expected_served_model, "extra_body": j.extra_body,
                     "thinking_disabled": j.thinking_disabled, "price_per_m_input": j.price_per_m_input,
                     "price_per_m_output": j.price_per_m_output, "precision_note": j.precision_note}
-                   for j in PANEL_JUDGES],
+                   for j in (judges or PANEL_JUDGES)],
     }

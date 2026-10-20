@@ -24,12 +24,14 @@ def amap():
 def test_every_archived_file_exists_and_its_original_is_gone(amap):
     for orig, new in amap["files"].items():
         assert (REPO_ROOT / new).is_file(), new
-        assert not (REPO_ROOT / orig).exists(), f"{orig} is still at its original path"
+        # append-only run histories restart at the original path after the archive (new runs); nothing else may
+        if "run_history" not in orig:
+            assert not (REPO_ROOT / orig).exists(), f"{orig} is still at its original path"
         assert new.split("/")[1] == "_archive" and new.split("/")[2] == TAG and new.endswith("/" + orig)
 
 
 def test_resolve_and_canonical_round_trip(amap):
-    for orig, new in list(amap["files"].items())[:50]:
+    for orig, new in [(o, n) for o, n in amap["files"].items() if not (REPO_ROOT / o).exists()][:50]:
         assert archive_paths.resolve(orig) == REPO_ROOT / new
         assert archive_paths.resolve(REPO_ROOT / orig) == REPO_ROOT / new
         assert archive_paths.canonical(REPO_ROOT / new) == REPO_ROOT / orig
@@ -100,3 +102,10 @@ def test_archived_registry_entries_point_at_real_files():
         for path in r["files"].values():
             assert archive_paths.resolve(path).is_file(), (r["run_id"], path)
     assert run_registry.runs(reg=reg) == [r for r in reg["runs"] if r["status"] == run_registry.STATUS_OFFICIAL]
+
+
+def test_repo_relative_path_resolves_from_a_subfolder(monkeypatch, amap):
+    orig = next(o for o in amap["files"] if o.startswith("llm/evaluation/results/"))
+    monkeypatch.chdir(REPO_ROOT / "llm" / "evaluation")
+    assert archive_paths.resolve(orig) == REPO_ROOT / amap["files"][orig]
+    assert archive_paths.resolve("results/" + orig.rsplit("/", 1)[1]) == REPO_ROOT / amap["files"][orig]

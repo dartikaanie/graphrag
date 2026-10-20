@@ -1,0 +1,906 @@
+{
+  "screened_judge": "qwen3-235b",
+  "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+  "annotation_freeze": "bff6e290cbd345a13e3630855ea98ed1902a0e8e2304520a95231e85fbe8290b",
+  "criteria": {
+    "c1_not_degenerate": {
+      "pass": true,
+      "hallucinated": 14,
+      "non_abstain": 50,
+      "share": 0.28,
+      "threshold": 0.05,
+      "categories": {
+        "NOT_HALLUCINATED": 36,
+        "ABSTAIN": 10,
+        "HALLUCINATED": 14
+      }
+    },
+    "c2_no_candidate_as_reference_quote": {
+      "pass": false,
+      "violations": 2,
+      "n_quotes": 115,
+      "quotes_in_neither_text": 50,
+      "violating_items": {
+        "CAL-033": [
+          "Traditional macros are very hard to support well in the tooling",
+          "Traditional macros are very hard to support well in the tooling"
+        ]
+      }
+    },
+    "c3_clean_parse_no_reasoning": {
+      "pass": true,
+      "usable": 60,
+      "expected": 60,
+      "reasoning_present": 0,
+      "think_blocks": 0,
+      "first_attempt_parse_or_call_failures": 0
+    },
+    "served_model_mismatch": 0,
+    "valid": true,
+    "eligible": false
+  },
+  "cost_usd": 0.053759,
+  "latency_s": {
+    "p50": 48.254,
+    "p95": 74.091,
+    "n": 60
+  },
+  "agreement_vs_frozen_v1": {
+    "qwen3-235b": {
+      "kappa_3cat": 0.4237,
+      "kappa_binary_excl": 0.1748,
+      "recall_excl": {
+        "x": 6,
+        "n": 15,
+        "rate": 0.4
+      },
+      "false_alarm_excl": {
+        "x": 8,
+        "n": 35,
+        "rate": 0.2286
+      },
+      "per_condition_recall": {
+        "A [dev]": "1/8",
+        "B-grounded [dev]": "1/1",
+        "B-plain [dev]": "4/6"
+      }
+    },
+    "llama (stored)": {
+      "kappa_3cat": 0.529,
+      "kappa_binary_excl": 0.1796,
+      "recall_excl": {
+        "x": 2,
+        "n": 15,
+        "rate": 0.1333
+      },
+      "false_alarm_excl": {
+        "x": 0,
+        "n": 37,
+        "rate": 0.0
+      },
+      "per_condition_recall": {
+        "A [dev]": "1/8",
+        "B-grounded [dev]": "0/1",
+        "B-plain [dev]": "1/6"
+      }
+    },
+    "deepseek (stored)": {
+      "kappa_3cat": 0.5655,
+      "kappa_binary_excl": 0.3289,
+      "recall_excl": {
+        "x": 5,
+        "n": 15,
+        "rate": 0.3333
+      },
+      "false_alarm_excl": {
+        "x": 2,
+        "n": 36,
+        "rate": 0.0556
+      },
+      "per_condition_recall": {
+        "A [dev]": "1/8",
+        "B-grounded [dev]": "1/1",
+        "B-plain [dev]": "3/6"
+      }
+    },
+    "qwen (stored)": {
+      "kappa_3cat": 0.4417,
+      "kappa_binary_excl": 0.0,
+      "recall_excl": {
+        "x": 0,
+        "n": 15,
+        "rate": 0.0
+      },
+      "false_alarm_excl": {
+        "x": 0,
+        "n": 37,
+        "rate": 0.0
+      },
+      "per_condition_recall": {
+        "A [dev]": "0/8",
+        "B-grounded [dev]": "0/1",
+        "B-plain [dev]": "0/6"
+      }
+    },
+    "panel": {
+      "kappa_3cat": 0.5655,
+      "kappa_binary_excl": 0.3289,
+      "recall_excl": {
+        "x": 5,
+        "n": 15,
+        "rate": 0.3333
+      },
+      "false_alarm_excl": {
+        "x": 2,
+        "n": 36,
+        "rate": 0.0556
+      },
+      "per_condition_recall": {
+        "A [dev]": "1/8",
+        "B-grounded [dev]": "1/1",
+        "B-plain [dev]": "3/6"
+      }
+    }
+  },
+  "panel_v2": {
+    "members": [
+      "llama (stored)",
+      "deepseek (stored)",
+      "qwen3-235b"
+    ],
+    "labels": {
+      "FAKTUAL": 44,
+      "ABSTAIN": 9,
+      "HALUSINASI_PENUH": 7
+    },
+    "unresolved": 0,
+    "incomplete": 0,
+    "fleiss_3cat_complete": {
+      "kappa": 0.6461171183822499,
+      "n": 60
+    },
+    "fleiss_binary_excl": {
+      "kappa": 0.38377268058883995,
+      "n": 50
+    }
+  },
+  "agreement_report": {
+    "three_category": {
+      "qwen3-235b": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 41,
+          "n": 60,
+          "rate": 0.6833
+        },
+        "kappa": 0.4237,
+        "kappa_ci95": [
+          0.1824,
+          0.6238
+        ],
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_HALLUCINATED": 0,
+            "HALLUCINATED": 0
+          },
+          "NOT_HALLUCINATED": {
+            "ABSTAIN": 2,
+            "NOT_HALLUCINATED": 27,
+            "HALLUCINATED": 8
+          },
+          "HALLUCINATED": {
+            "ABSTAIN": 0,
+            "NOT_HALLUCINATED": 9,
+            "HALLUCINATED": 6
+          }
+        }
+      },
+      "llama (stored)": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 47,
+          "n": 60,
+          "rate": 0.7833
+        },
+        "kappa": 0.529,
+        "kappa_ci95": [
+          0.3137,
+          0.7156
+        ],
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_HALLUCINATED": 0,
+            "HALLUCINATED": 0
+          },
+          "NOT_HALLUCINATED": {
+            "ABSTAIN": 0,
+            "NOT_HALLUCINATED": 37,
+            "HALLUCINATED": 0
+          },
+          "HALLUCINATED": {
+            "ABSTAIN": 0,
+            "NOT_HALLUCINATED": 13,
+            "HALLUCINATED": 2
+          }
+        }
+      },
+      "deepseek (stored)": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 47,
+          "n": 60,
+          "rate": 0.7833
+        },
+        "kappa": 0.5655,
+        "kappa_ci95": [
+          0.3424,
+          0.7576
+        ],
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_HALLUCINATED": 0,
+            "HALLUCINATED": 0
+          },
+          "NOT_HALLUCINATED": {
+            "ABSTAIN": 1,
+            "NOT_HALLUCINATED": 34,
+            "HALLUCINATED": 2
+          },
+          "HALLUCINATED": {
+            "ABSTAIN": 0,
+            "NOT_HALLUCINATED": 10,
+            "HALLUCINATED": 5
+          }
+        }
+      },
+      "qwen (stored)": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 45,
+          "n": 60,
+          "rate": 0.75
+        },
+        "kappa": 0.4417,
+        "kappa_ci95": [
+          0.2241,
+          0.6324
+        ],
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_HALLUCINATED": 0,
+            "HALLUCINATED": 0
+          },
+          "NOT_HALLUCINATED": {
+            "ABSTAIN": 0,
+            "NOT_HALLUCINATED": 37,
+            "HALLUCINATED": 0
+          },
+          "HALLUCINATED": {
+            "ABSTAIN": 0,
+            "NOT_HALLUCINATED": 15,
+            "HALLUCINATED": 0
+          }
+        }
+      },
+      "panel": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 47,
+          "n": 60,
+          "rate": 0.7833
+        },
+        "kappa": 0.5655,
+        "kappa_ci95": [
+          0.3424,
+          0.7576
+        ],
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_HALLUCINATED": 0,
+            "HALLUCINATED": 0
+          },
+          "NOT_HALLUCINATED": {
+            "ABSTAIN": 1,
+            "NOT_HALLUCINATED": 34,
+            "HALLUCINATED": 2
+          },
+          "HALLUCINATED": {
+            "ABSTAIN": 0,
+            "NOT_HALLUCINATED": 10,
+            "HALLUCINATED": 5
+          }
+        }
+      }
+    },
+    "vs_human": {
+      "qwen3-235b": {
+        "abstain_excluded": {
+          "n": 50,
+          "raw_agreement": {
+            "x": 33,
+            "n": 50,
+            "rate": 0.66
+          },
+          "kappa": 0.1748,
+          "kappa_ci95": [
+            -0.1039,
+            0.4518
+          ],
+          "hallucination_recall": {
+            "x": 6,
+            "n": 15,
+            "rate": 0.4
+          },
+          "unsafe_pass_rate": {
+            "x": 9,
+            "n": 15,
+            "rate": 0.6
+          },
+          "false_alarm_rate": {
+            "x": 8,
+            "n": 35,
+            "rate": 0.2286
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 27,
+              "HALLUCINATED": 8
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 9,
+              "HALLUCINATED": 6
+            }
+          },
+          "n_abstain_excluded": 10
+        },
+        "abstain_counted": {
+          "n": 60,
+          "raw_agreement": {
+            "x": 43,
+            "n": 60,
+            "rate": 0.7167
+          },
+          "kappa": 0.2273,
+          "kappa_ci95": [
+            -0.0606,
+            0.4894
+          ],
+          "hallucination_recall": {
+            "x": 6,
+            "n": 15,
+            "rate": 0.4
+          },
+          "unsafe_pass_rate": {
+            "x": 9,
+            "n": 15,
+            "rate": 0.6
+          },
+          "false_alarm_rate": {
+            "x": 8,
+            "n": 45,
+            "rate": 0.1778
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 37,
+              "HALLUCINATED": 8
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 9,
+              "HALLUCINATED": 6
+            }
+          }
+        }
+      },
+      "llama (stored)": {
+        "abstain_excluded": {
+          "n": 52,
+          "raw_agreement": {
+            "x": 39,
+            "n": 52,
+            "rate": 0.75
+          },
+          "kappa": 0.1796,
+          "kappa_ci95": [
+            0.0,
+            0.4091
+          ],
+          "hallucination_recall": {
+            "x": 2,
+            "n": 15,
+            "rate": 0.1333
+          },
+          "unsafe_pass_rate": {
+            "x": 13,
+            "n": 15,
+            "rate": 0.8667
+          },
+          "false_alarm_rate": {
+            "x": 0,
+            "n": 37,
+            "rate": 0.0
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 37,
+              "HALLUCINATED": 0
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 13,
+              "HALLUCINATED": 2
+            }
+          },
+          "n_abstain_excluded": 8
+        },
+        "abstain_counted": {
+          "n": 60,
+          "raw_agreement": {
+            "x": 47,
+            "n": 60,
+            "rate": 0.7833
+          },
+          "kappa": 0.1875,
+          "kappa_ci95": [
+            0.0,
+            0.4141
+          ],
+          "hallucination_recall": {
+            "x": 2,
+            "n": 15,
+            "rate": 0.1333
+          },
+          "unsafe_pass_rate": {
+            "x": 13,
+            "n": 15,
+            "rate": 0.8667
+          },
+          "false_alarm_rate": {
+            "x": 0,
+            "n": 45,
+            "rate": 0.0
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 45,
+              "HALLUCINATED": 0
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 13,
+              "HALLUCINATED": 2
+            }
+          }
+        }
+      },
+      "deepseek (stored)": {
+        "abstain_excluded": {
+          "n": 51,
+          "raw_agreement": {
+            "x": 39,
+            "n": 51,
+            "rate": 0.7647
+          },
+          "kappa": 0.3289,
+          "kappa_ci95": [
+            0.0445,
+            0.5995
+          ],
+          "hallucination_recall": {
+            "x": 5,
+            "n": 15,
+            "rate": 0.3333
+          },
+          "unsafe_pass_rate": {
+            "x": 10,
+            "n": 15,
+            "rate": 0.6667
+          },
+          "false_alarm_rate": {
+            "x": 2,
+            "n": 36,
+            "rate": 0.0556
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 34,
+              "HALLUCINATED": 2
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 10,
+              "HALLUCINATED": 5
+            }
+          },
+          "n_abstain_excluded": 9
+        },
+        "abstain_counted": {
+          "n": 60,
+          "raw_agreement": {
+            "x": 48,
+            "n": 60,
+            "rate": 0.8
+          },
+          "kappa": 0.3514,
+          "kappa_ci95": [
+            0.0551,
+            0.625
+          ],
+          "hallucination_recall": {
+            "x": 5,
+            "n": 15,
+            "rate": 0.3333
+          },
+          "unsafe_pass_rate": {
+            "x": 10,
+            "n": 15,
+            "rate": 0.6667
+          },
+          "false_alarm_rate": {
+            "x": 2,
+            "n": 45,
+            "rate": 0.0444
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 43,
+              "HALLUCINATED": 2
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 10,
+              "HALLUCINATED": 5
+            }
+          }
+        }
+      },
+      "qwen (stored)": {
+        "abstain_excluded": {
+          "n": 52,
+          "raw_agreement": {
+            "x": 37,
+            "n": 52,
+            "rate": 0.7115
+          },
+          "kappa": 0.0,
+          "kappa_ci95": [
+            0.0,
+            0.0
+          ],
+          "hallucination_recall": {
+            "x": 0,
+            "n": 15,
+            "rate": 0.0
+          },
+          "unsafe_pass_rate": {
+            "x": 15,
+            "n": 15,
+            "rate": 1.0
+          },
+          "false_alarm_rate": {
+            "x": 0,
+            "n": 37,
+            "rate": 0.0
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 37,
+              "HALLUCINATED": 0
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 15,
+              "HALLUCINATED": 0
+            }
+          },
+          "n_abstain_excluded": 8
+        },
+        "abstain_counted": {
+          "n": 60,
+          "raw_agreement": {
+            "x": 45,
+            "n": 60,
+            "rate": 0.75
+          },
+          "kappa": 0.0,
+          "kappa_ci95": [
+            0.0,
+            0.0
+          ],
+          "hallucination_recall": {
+            "x": 0,
+            "n": 15,
+            "rate": 0.0
+          },
+          "unsafe_pass_rate": {
+            "x": 15,
+            "n": 15,
+            "rate": 1.0
+          },
+          "false_alarm_rate": {
+            "x": 0,
+            "n": 45,
+            "rate": 0.0
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 45,
+              "HALLUCINATED": 0
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 15,
+              "HALLUCINATED": 0
+            }
+          }
+        }
+      },
+      "panel": {
+        "abstain_excluded": {
+          "n": 51,
+          "raw_agreement": {
+            "x": 39,
+            "n": 51,
+            "rate": 0.7647
+          },
+          "kappa": 0.3289,
+          "kappa_ci95": [
+            0.0445,
+            0.5995
+          ],
+          "hallucination_recall": {
+            "x": 5,
+            "n": 15,
+            "rate": 0.3333
+          },
+          "unsafe_pass_rate": {
+            "x": 10,
+            "n": 15,
+            "rate": 0.6667
+          },
+          "false_alarm_rate": {
+            "x": 2,
+            "n": 36,
+            "rate": 0.0556
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 34,
+              "HALLUCINATED": 2
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 10,
+              "HALLUCINATED": 5
+            }
+          },
+          "n_abstain_excluded": 9
+        },
+        "abstain_counted": {
+          "n": 60,
+          "raw_agreement": {
+            "x": 48,
+            "n": 60,
+            "rate": 0.8
+          },
+          "kappa": 0.3514,
+          "kappa_ci95": [
+            0.0551,
+            0.625
+          ],
+          "hallucination_recall": {
+            "x": 5,
+            "n": 15,
+            "rate": 0.3333
+          },
+          "unsafe_pass_rate": {
+            "x": 10,
+            "n": 15,
+            "rate": 0.6667
+          },
+          "false_alarm_rate": {
+            "x": 2,
+            "n": 45,
+            "rate": 0.0444
+          },
+          "confusion_human_rows": {
+            "NOT_HALLUCINATED": {
+              "NOT_HALLUCINATED": 43,
+              "HALLUCINATED": 2
+            },
+            "HALLUCINATED": {
+              "NOT_HALLUCINATED": 10,
+              "HALLUCINATED": 5
+            }
+          }
+        }
+      }
+    },
+    "abstain_agreement": {
+      "qwen3-235b": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 58,
+          "n": 60,
+          "rate": 0.9667
+        },
+        "kappa": 0.8696,
+        "kappa_ci95": [
+          0.6429,
+          1.0
+        ],
+        "n_abstain_human": 8,
+        "n_abstain_rater": 10,
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_ABSTAIN": 0
+          },
+          "NOT_ABSTAIN": {
+            "ABSTAIN": 2,
+            "NOT_ABSTAIN": 50
+          }
+        }
+      },
+      "llama (stored)": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 60,
+          "n": 60,
+          "rate": 1.0
+        },
+        "kappa": 1.0,
+        "kappa_ci95": [
+          1.0,
+          1.0
+        ],
+        "n_abstain_human": 8,
+        "n_abstain_rater": 8,
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_ABSTAIN": 0
+          },
+          "NOT_ABSTAIN": {
+            "ABSTAIN": 0,
+            "NOT_ABSTAIN": 52
+          }
+        }
+      },
+      "deepseek (stored)": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 59,
+          "n": 60,
+          "rate": 0.9833
+        },
+        "kappa": 0.9315,
+        "kappa_ci95": [
+          0.7429,
+          1.0
+        ],
+        "n_abstain_human": 8,
+        "n_abstain_rater": 9,
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_ABSTAIN": 0
+          },
+          "NOT_ABSTAIN": {
+            "ABSTAIN": 1,
+            "NOT_ABSTAIN": 51
+          }
+        }
+      },
+      "qwen (stored)": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 60,
+          "n": 60,
+          "rate": 1.0
+        },
+        "kappa": 1.0,
+        "kappa_ci95": [
+          1.0,
+          1.0
+        ],
+        "n_abstain_human": 8,
+        "n_abstain_rater": 8,
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_ABSTAIN": 0
+          },
+          "NOT_ABSTAIN": {
+            "ABSTAIN": 0,
+            "NOT_ABSTAIN": 52
+          }
+        }
+      },
+      "panel": {
+        "n": 60,
+        "n_missing": 0,
+        "raw_agreement": {
+          "x": 59,
+          "n": 60,
+          "rate": 0.9833
+        },
+        "kappa": 0.9315,
+        "kappa_ci95": [
+          0.7429,
+          1.0
+        ],
+        "n_abstain_human": 8,
+        "n_abstain_rater": 9,
+        "confusion_human_rows": {
+          "ABSTAIN": {
+            "ABSTAIN": 8,
+            "NOT_ABSTAIN": 0
+          },
+          "NOT_ABSTAIN": {
+            "ABSTAIN": 1,
+            "NOT_ABSTAIN": 51
+          }
+        }
+      }
+    },
+    "pairwise_judges": {},
+    "n_per_condition": {
+      "A [dev]": {
+        "n_items": 20,
+        "n_human_labelled": 20,
+        "human_labels": {
+          "NOT_HALLUCINATED": 12,
+          "HALLUCINATED": 8
+        },
+        "n_qwen3-235b_usable": 20,
+        "n_llama (stored)_usable": 20,
+        "n_deepseek (stored)_usable": 20,
+        "n_qwen (stored)_usable": 20,
+        "n_panel_usable": 20
+      },
+      "B-grounded [dev]": {
+        "n_items": 20,
+        "n_human_labelled": 20,
+        "human_labels": {
+          "ABSTAIN": 8,
+          "NOT_HALLUCINATED": 11,
+          "HALLUCINATED": 1
+        },
+        "n_qwen3-235b_usable": 20,
+        "n_llama (stored)_usable": 20,
+        "n_deepseek (stored)_usable": 20,
+        "n_qwen (stored)_usable": 20,
+        "n_panel_usable": 20
+      },
+      "B-plain [dev]": {
+        "n_items": 20,
+        "n_human_labelled": 20,
+        "human_labels": {
+          "HALLUCINATED": 6,
+          "NOT_HALLUCINATED": 14
+        },
+        "n_qwen3-235b_usable": 20,
+        "n_llama (stored)_usable": 20,
+        "n_deepseek (stored)_usable": 20,
+        "n_qwen (stored)_usable": 20,
+        "n_panel_usable": 20
+      }
+    },
+    "acceptance": {
+      "rule": "panel 3-category kappa (ABSTAIN / hallucinated / not hallucinated) >= 0.6 (Amendment 11, 12 (e)) AND panel binary kappa, ABSTAIN excluded, >= 0.4 (Amendment 13); the other binary metrics and per-judge results are supporting statistics",
+      "panel_kappa_3cat": 0.5655,
+      "meets_3cat": false,
+      "panel_kappa_binary_abstain_excluded": 0.3289,
+      "meets_binary": false,
+      "meets_target": false
+    }
+  }
+}

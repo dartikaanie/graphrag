@@ -60,18 +60,26 @@ def _abs(p) -> Path:
     return p if p.is_absolute() else (Path.cwd() / p)
 
 
-def repo_rel(p) -> str | None:
-    """Repo-relative POSIX path of `p` (relative paths are taken against the
-    cwd, then against the repo root), or None if outside the repo."""
+def _rel_candidates(p) -> list[str]:
+    """Repo-relative POSIX readings of `p`: against the cwd, then (for a
+    relative path) against the repo root."""
     candidates = [_abs(p)]
     if not Path(p).is_absolute():
         candidates.append(REPO_ROOT / p)
+    out = []
     for c in candidates:
         try:
-            return Path(*_normalise(c).relative_to(REPO_ROOT).parts).as_posix()
+            out.append(Path(*_normalise(c).relative_to(REPO_ROOT).parts).as_posix())
         except ValueError:
             continue
-    return None
+    return out
+
+
+def repo_rel(p) -> str | None:
+    """Repo-relative POSIX path of `p` (relative paths are taken against the
+    cwd, then against the repo root), or None if outside the repo."""
+    rels = _rel_candidates(p)
+    return rels[0] if rels else None
 
 
 def _normalise(p: Path) -> Path:
@@ -84,15 +92,13 @@ def _normalise(p: Path) -> Path:
 
 
 def archived(p) -> Path | None:
-    rel = repo_rel(p)
-    if rel is None:
-        return None
     files, dirs = _maps()
-    if rel in files:
-        return REPO_ROOT / files[rel]
-    for orig, new in dirs.items():
-        if rel == orig or rel.startswith(orig + "/"):
-            return REPO_ROOT / new / rel[len(orig):].lstrip("/") if rel != orig else REPO_ROOT / new
+    for rel in _rel_candidates(p):
+        if rel in files:
+            return REPO_ROOT / files[rel]
+        for orig, new in dirs.items():
+            if rel == orig or rel.startswith(orig + "/"):
+                return REPO_ROOT / new / rel[len(orig):].lstrip("/") if rel != orig else REPO_ROOT / new
     return None
 
 

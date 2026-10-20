@@ -1,0 +1,54 @@
+{
+  "source": "results/panel_calibration_judge-v2.3.jsonl",
+  "method": "judge_screening.quote_check (criterion (2) of the eligibility rule)",
+  "judges": {
+    "deepseek": {
+      "model": "deepseek-ai/DeepSeek-V3.2",
+      "usable_records": 60,
+      "n_quotes": 112,
+      "violations": 1,
+      "affected_items": 1,
+      "violating_items": {
+        "CAL-033": [
+          "Traditional macros are very hard to support well in the tooling"
+        ]
+      },
+      "quotes_in_neither_text": 32
+    },
+    "llama": {
+      "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "usable_records": 60,
+      "n_quotes": 0,
+      "violations": 0,
+      "affected_items": 0,
+      "violating_items": {},
+      "quotes_in_neither_text": 0
+    },
+    "qwen": {
+      "model": "Qwen/Qwen2.5-72B-Instruct",
+      "usable_records": 60,
+      "n_quotes": 75,
+      "violations": 8,
+      "affected_items": 4,
+      "violating_items": {
+        "CAL-005": [
+          "Using Lucene.Net for implementing full-text search in your ASP.NET Core application is a feasible approach",
+          "Create a console application or a background service in your ASP.NET Core application to read the JSON files",
+          "When indexing, make sure to store the index in a filesystem location that can be accessed by your ASP.NET Core application"
+        ],
+        "CAL-007": [
+          "Debugging code with macros can be more complicated because the debugger may show the generated code rather than the original code the developer wrote.",
+          "Tools like linters, formatters, and IDE features like quick fixes may not understand macros well. As a result, macros can lead to inconsistent coding styles and unoptimized code."
+        ],
+        "CAL-041": [
+          "System.Data.Entity.Database.SetInitializer(new MigrateDatabaseToLatestVersion<ApplicationDbContext, Migrations.Configuration>());",
+          "AutomaticMigrationsEnabled = false;"
+        ],
+        "CAL-057": [
+          "It\u2019s good practice to use virtual environments for your projects to manage dependencies."
+        ]
+      },
+      "quotes_in_neither_text": 13
+    }
+  }
+}
