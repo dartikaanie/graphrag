@@ -1243,6 +1243,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                             f"{expansion_log['n_expansion_requested']} Question expansion ber-answer.")
 
                 if retrieval_only:
+                    log(f"      [latency] cond=C Id={qid} retrieval_sec={retrieval_latency:.3f} total_sec=NA")
                     record = {
                         "question_id": qid, **record_header(run_id, "C"),
                         "title": row["Title"], "tags": row["Tags"],
@@ -1305,6 +1306,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
                 similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
                 total_latency = time.time() - t_query_start
+                # one machine-readable line per answered question in the run's file log (llm/latency_report.py): retrieval =
+                # question in -> context ready; total = question in -> generator returned (== end_to_end_latency_sec)
+                log(f"      [latency] cond=C Id={qid} retrieval_sec={retrieval_latency:.3f} total_sec={t_answer_end - t_query_start:.3f}")
 
                 view_count = row.get("ViewCount")
                 question_score = row.get("Score")

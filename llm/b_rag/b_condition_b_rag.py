@@ -651,6 +651,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
             if require_citation:
                 has_citation, cited_ids, has_valid_citation, valid_ids = extract_citations(llm_answer, retrieved)
             total_latency = time.time() - t_query_start
+            # one machine-readable line per answered question in the run's file log (llm/latency_report.py): retrieval =
+            # question in -> context ready; total = question in -> generator returned (== end_to_end_latency_sec)
+            log(f"      [latency] cond=B Id={qid} retrieval_sec={retrieval_latency:.3f} total_sec={t_answer_end - t_query_start:.3f}")
 
             view_count = row.get("ViewCount")
             question_score = row.get("Score")

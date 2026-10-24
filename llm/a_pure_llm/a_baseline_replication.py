@@ -387,6 +387,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
             similarity = compute_similarity(embed_model, llm_answer, row["AcceptedAnswerBody"])
             total_latency = time.time() - t_query_start
+            # one machine-readable line per answered question in the run's file log (llm/latency_report.py): retrieval =
+            # question in -> context ready; total = question in -> generator returned (== end_to_end_latency_sec)
+            log(f"      [latency] cond=A Id={qid} retrieval_sec=NA total_sec={t_answer_end - t_query_start:.3f}")
 
             record = {
                 "question_id": qid,
