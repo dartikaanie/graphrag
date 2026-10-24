@@ -176,6 +176,7 @@ from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_rag_messages
 from llm.record_schema import answer_timing, latency_fields, new_run_id, record_header
 from llm.common.provenance import run_provenance  # noqa: E402
+from llm.common import item_provenance as iprov  # per-item retrieval provenance (provenance_version v2)
 from llm.sample_split import SampleMismatchError, verify_sample
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, sama dgn Kondisi A
@@ -430,6 +431,20 @@ def build_or_load_faiss_index(chunk_df: pd.DataFrame, embed_model, cache_dir: Pa
     return index, chunk_df.reset_index(drop=True)
 
 
+def add_vector_only_provenance(results: list[dict]) -> list[dict]:
+    """Per-item provenance for B (llm/common/item_provenance.py): B is flat dense
+    retrieval, so every item is `vector_only` -- no hop, no KG edge, no anchor, no
+    trust weight (all explicit None), and the path is just the retrieved Answer.
+    Fields B already wrote (score, is_accepted, ...) are untouched."""
+    for rank, r in enumerate(results, start=1):
+        r.update(iprov.provenance_fields(source_stage=iprov.STAGE_VECTOR, hop=None,
+                                         path=iprov.vector_only_path(r["answer_id"]), rank=rank,
+                                         via_question_id=r["question_id"]))
+        r.update({"source_stage": iprov.STAGE_VECTOR, "hop": None, "rel_type": None, "trust_weight": None})
+        r.setdefault("is_accepted", None)
+    return results
+
+
 def retrieve_context(embed_model, index, meta_df: pd.DataFrame, query_text: str, top_k: int):
     """Retrieve top_k chunk paling mirip (cosine similarity) untuk 1 query."""
     import faiss
@@ -450,7 +465,7 @@ def retrieve_context(embed_model, index, meta_df: pd.DataFrame, query_text: str,
             "chunk_text": row["chunk_text"],
             "score": float(score),
         })
-    return results
+    return add_vector_only_provenance(results)
 
 
 def retrieve_full_candidate_ids(embed_model, index, meta_df: pd.DataFrame, query_text: str, pool_k: int) -> list:
@@ -493,7 +508,7 @@ def retrieve_context_kg(embed_model, kg: KGAnswerIndex, query_text: str, top_k: 
             "score": score,
             "is_accepted": bool(d["is_accepted"]),
         })
-    return results
+    return add_vector_only_provenance(results)
 
 
 def retrieve_full_candidate_ids_kg(kg: KGAnswerIndex, query_emb: np.ndarray, pool_k: int, exclusion) -> list:
@@ -653,6 +668,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 "accepted_answer_id": int(row["AcceptedAnswerId"]),
                 "ground_truth_answer": row["AcceptedAnswerBody"],
                 "retrieved_context": retrieved,  # utk RAGAS (context precision/recall) nanti
+                "provenance_version": iprov.PROVENANCE_VERSION,
                 # Same field name/meaning as Condition C/D: actual number of
                 # context items sent to the LLM, == len(retrieved_context)
                 # (B's FAISS top-k retrieval already caps at top_k directly).
