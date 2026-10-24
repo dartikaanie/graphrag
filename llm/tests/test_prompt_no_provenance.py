@@ -16,8 +16,8 @@ SENTINEL_ALT_NODE_ID = 123456789
 
 
 def _full_item(question_id: int, text: str) -> dict:
-    path = ip.two_hop_path(SENTINEL_NODE_ID, question_id, 555, "TAG_COOCCUR", 0.8123, "HAS_ANSWER", 0.7)
-    alt = {"path": ip.one_hop_path(SENTINEL_ALT_NODE_ID, 555, "HAS_ANSWER", 0.4), "source_stage": "graph_traversal",
+    path = ip.two_hop_path(SENTINEL_NODE_ID, question_id, 555, "TAG_COOCCUR", "HAS_ANSWER")
+    alt = {"path": ip.one_hop_path(SENTINEL_ALT_NODE_ID, 555, "HAS_ANSWER"), "source_stage": "graph_traversal",
            "hop": 1, "rel_type": "HAS_ANSWER", "combined_score": 0.31}
     return {"question_id": question_id, "answer_id": 555, "chunk_text": text,
             "trust_weight": 0.5681, "combined_score": 0.6543, "hop": 2, "rel_type": "TAG_COOCCUR->HAS_ANSWER",

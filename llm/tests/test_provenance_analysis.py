@@ -27,8 +27,8 @@ LEGACY = [
 
 
 def _v2():
-    paths = [ip.one_hop_path(900, 101, "HAS_ANSWER", 0.5), ip.two_hop_path(901, 12, 102, "TAG_COOCCUR", 0.4, "HAS_ANSWER", 0.7),
-             ip.semantic_path(12, 13, 103, 0.6, "HAS_ANSWER", 0.2)]
+    paths = [ip.one_hop_path(900, 101, "HAS_ANSWER"), ip.two_hop_path(901, 12, 102, "TAG_COOCCUR", "HAS_ANSWER"),
+             ip.semantic_path(12, 13, 103, "HAS_ANSWER")]
     return [{**legacy, **ip.provenance_fields(source_stage=legacy["source_stage"], hop=legacy["hop"], path=path, rank=i,
                                               via_question_id=legacy["question_id"])}
             for i, (legacy, path) in enumerate(zip(LEGACY, paths), start=1)]
