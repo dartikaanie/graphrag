@@ -523,10 +523,8 @@ def _candidate_path(c: dict) -> list:
 def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
                      top_k: int, token_chunk_limit: int) -> list:
     """PROVENANCE (capture only): items carry `path`, `anchor_id`, `alt_paths`,
-    `via_question_id`, `rank` and `trust_weight`. `trust_weight` is the KG edge
-    weight of the path (low-level: the HAS_* edge; high-level: r2.weight *
-    r3.weight, as in C) recorded for AUDIT ONLY -- D's ranking, as ever, uses
-    relevance_score alone and nothing here feeds into it. D has no community
+    `via_question_id` and `rank`. `trust_weight` is always None: D does not use
+    trust weighting (its ranking uses relevance_score alone). D has no community
     ids: LightRAG's entity/community extraction is not part of this adaptation
     (see the module docstring). `alt_paths`: other paths to the same answer
     that lost the dedup (highest relevance_score wins, a tie goes to the one
@@ -580,7 +578,7 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
             "question_id": int(c["via_question_id"]),
             "answer_id": int(c["answer_id"]),
             "chunk_text": doc_text,
-            "trust_weight": None if c.get("edge_weight") is None else round(float(c["edge_weight"]), 4),
+            "trust_weight": None,  # D does not use trust weighting; never recorded (provenance v2 briefly recorded it)
             "relevance_score": round(float(c["relevance_score"] or 0.0), 4),
             "hop": c["hop"],
             "rel_type": c.get("rel_type"),

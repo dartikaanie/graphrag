@@ -23,9 +23,9 @@ ONE = lambda: _item("graph_traversal", 1, ip.one_hop_path(10, 100, "HAS_ACCEPTED
 TWO = lambda: _item("graph_traversal", 2, ip.two_hop_path(10, 20, 200, "TAG_COOCCUR", 0.6, "HAS_ANSWER", 0.9))
 SEM = lambda: _item("semantic_expansion", "semantic", ip.semantic_path(20, 30, 300, 0.71, "HAS_ANSWER", 0.8),
                     rel_type="HAS_ANSWER", seed_similarity=0.71)
-LOW = lambda: _item("low_level", 1, ip.one_hop_path(10, 100, "HAS_ANSWER", 0.9))
+LOW = lambda: _item("low_level", 1, ip.one_hop_path(10, 100, "HAS_ANSWER", 0.9), trust_weight=None)
 HIGH = lambda: _item("high_level", 2, ip.two_hop_path(10, 20, 200, "EMBED_SIM", 0.4, "HAS_ANSWER", 0.9),
-                     rel_type="EMBED_SIM")
+                     rel_type="EMBED_SIM", trust_weight=None)
 VEC = lambda: _item("vector_only", None, ip.vector_only_path(400), question_id=40, trust_weight=None, rel_type=None)
 VEC_FIX = lambda: {**VEC(), "via_question_id": 40}
 
@@ -79,6 +79,13 @@ def test_semantic_requires_similarity_and_seed():
     item = SEM()
     item["path"][0]["edge_weight_to_next"] = None
     assert ip.validate_item(item)
+
+
+@pytest.mark.parametrize("make", [LOW, HIGH])
+def test_d_stages_reject_a_trust_weight(make):
+    item = make()
+    item["trust_weight"] = 0.3
+    assert any("trust_weight" in e for e in ip.validate_item(item))
 
 
 def test_vector_only_rejects_trust_weight_and_anchor():

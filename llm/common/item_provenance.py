@@ -24,8 +24,8 @@ relevance_score / combined_score / sim / sim_norm / final_score / alpha):
                       <score key>: value}
     seed_similarity   semantic_expansion only: cosine between seed and the
                       expanded Question (== the SEMANTIC_SIM step's weight)
-    trust_weight      edge weight for the item (B: None; D: audit only, see
-                      llm/d_lightrag/d_lightrag.py -- never used for D's ranking)
+    trust_weight      edge weight for the item (C only; None for B, which has no edge,
+                      and for D, which does not use trust weighting)
 
 Path shapes (node_type Q = Question, A = Answer):
 
@@ -272,11 +272,11 @@ def validate_item(item: dict) -> list[str]:
     errs += _check_path_shape(path, stage, hop, item["answer_id"], "")
     if errs:
         return errs
+    if stage in (STAGE_VECTOR, STAGE_LOW, STAGE_HIGH) and item["trust_weight"] is not None:
+        errs.append(f"{stage} trust_weight must be None (B has no edge; D does not use trust weighting)")
     if stage == STAGE_VECTOR:
         if item["anchor_id"] is not None:
             errs.append("vector_only anchor_id must be None")
-        if item["trust_weight"] is not None:
-            errs.append("vector_only trust_weight must be None")
     else:
         if item["anchor_id"] != path[0]["node_id"]:
             errs.append(f"anchor_id {item['anchor_id']} != path[0].node_id {path[0]['node_id']}")

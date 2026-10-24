@@ -4,7 +4,7 @@
   (llm/common/item_provenance.ADDED_ITEM_KEYS, rank, trust_weight), equal what
   the code BEFORE provenance returned on the same candidates.
 * Provenance: low-level = anchor -> answer, high-level = anchor -> q2 -> answer,
-  trust_weight is the path's edge weight (audit only), alt_paths keep the paths
+  trust_weight is None (D does not use trust weighting), alt_paths keep the paths
   (incl. other anchors) that lost the dedup.
 * retrieve_high_level() keeps its Cypher's row set/order/LIMIT while collecting
   the anchors that reached each row.
@@ -49,7 +49,7 @@ def test_low_level_item_path_is_anchor_to_answer():
     assert item["source_stage"] == "low_level" and item["hop"] == 1
     assert [s["node_id"] for s in item["path"]] == [200, 2001] == [item["anchor_id"], item["answer_id"]]
     assert item["path"][0]["edge_type_to_next"] == "HAS_ANSWER"
-    assert item["trust_weight"] == 0.8 and item["relevance_score"] == 0.85
+    assert item["trust_weight"] is None and item["relevance_score"] == 0.85
 
 
 def test_high_level_item_path_is_anchor_q2_answer_and_rel_type_is_unchanged():
@@ -58,7 +58,7 @@ def test_high_level_item_path_is_anchor_q2_answer_and_rel_type_is_unchanged():
         ("Question", 100, "TAG_COOCCUR"), ("Question", 300, "HAS_ANSWER"), ("Answer", 3001, None)]
     assert item["rel_type"] == "TAG_COOCCUR"                      # D's rel_type stays the r2 type only
     assert item["path"][0]["edge_weight_to_next"] == 0.7 and item["path"][1]["edge_weight_to_next"] == 0.8
-    assert item["trust_weight"] == round(0.7 * 0.8, 4)
+    assert item["trust_weight"] is None
 
 
 def test_other_anchor_behind_the_same_high_level_row_is_an_alt_path():
@@ -73,12 +73,9 @@ def test_dedup_loser_is_kept_as_alt_path():
     assert [(a["source_stage"], a["hop"], a["relevance_score"]) for a in item["alt_paths"]] == [("high_level", 2, 0.4)]
 
 
-def test_trust_weight_does_not_influence_the_ranking():
-    low, high = pf.low_candidates(), pf.high_candidates()
-    base = [i["answer_id"] for i in dl.fuse_dual_level(low, high, 5, 400)]
-    for c in low + high:
-        c["edge_weight"] = 1.0 - (c.get("edge_weight") or 0.0)      # invert every trust weight
-    assert [i["answer_id"] for i in dl.fuse_dual_level(low, high, 5, 400)] == base
+def test_trust_weight_is_never_recorded_for_d():
+    for case in CASES:
+        assert all(i["trust_weight"] is None for i in _fuse(case))
 
 
 def test_candidates_from_older_callers_still_fuse():

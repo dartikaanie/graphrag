@@ -5,8 +5,7 @@
    exactly the rows (same order) the pre-provenance Cypher returns -- the old
    query text is kept below, verbatim from commit 6af872f.
 2. Every fused item validates against the schema and every edge of every path
-   (incl. alt_paths) exists in Neo4j with the recorded weight; the recorded
-   trust_weight equals the product of the KG edge weights.
+   (incl. alt_paths) exists in Neo4j; trust_weight is None.
 
 Needs Neo4j only (anchors come from the C snapshot fixture; no FAISS). Opt-in:
 GRAPHRAG_INTEGRATION=1."""
@@ -97,9 +96,7 @@ def test_retrieval_rows_identical_to_pre_provenance_queries_and_provenance_is_va
             assert ip.validate_item_in_kg(item, lookup) == [], (qid, item["answer_id"])
             stats["low" if item["source_stage"] == "low_level" else "high"] += 1
             stats["alt_paths"] += len(item["alt_paths"])
-            weights = [s["edge_weight_to_next"] for s in item["path"][:-1]]
-            expected = weights[0] if len(weights) == 1 else weights[0] * weights[1]
-            assert item["trust_weight"] == round(expected, 4)
+            assert item["trust_weight"] is None
     with capsys.disabled():
         print(f"\n[live provenance D] {stats}")
     assert stats["low"] + stats["high"] > 0
