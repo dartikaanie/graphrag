@@ -68,6 +68,7 @@ def take_snapshot(n_dev: int = N_DEV, leakage_mode: str | None = None,
     from sentence_transformers import SentenceTransformer
 
     import c_graphrag as cg
+    from llm.common import item_provenance as ip
 
     cg.log = lambda *a, **k: None
     qp, ap = os.environ["QUESTIONS_PARQUET"], os.environ["ANSWERS_PARQUET"]
@@ -117,7 +118,10 @@ def take_snapshot(n_dev: int = N_DEV, leakage_mode: str | None = None,
                 "question_id": r["question_id"],
                 "embed_query_texts_sha256": [_sha(t) for t in texts_by_q.get(r["question_id"], [])],
                 "first_embed_query_text": (texts_by_q.get(r["question_id"]) or [None])[0],
-                "retrieved": [{k: v for k, v in item.items() if k != "chunk_text"} | {"chunk_text_sha256": _sha(item["chunk_text"])}
+                # items as they were before per-item provenance (llm/common/item_provenance.py): the
+                # provenance keys are additive, so the pre-provenance fixtures are compared without them
+                "retrieved": [{k: v for k, v in ip.legacy_view(item, drop_rank=label.startswith("v2")).items()
+                               if k != "chunk_text"} | {"chunk_text_sha256": _sha(item["chunk_text"])}
                               for item in r["retrieved_context"]],
                 "candidate_pool_size": r["candidate_pool_size"],
                 **({"anchor_question_ids": r["anchor_question_ids"],

@@ -1,0 +1,272 @@
+{
+ "v2_trust_weighted": {
+  "items": [
+   {
+    "answer_id": 1001,
+    "chunk_text": "Q: anchor one\nA: accepted answer of 100",
+    "combined_score": 0.97,
+    "hop": 1,
+    "is_accepted": true,
+    "question_id": 100,
+    "rel_type": "HAS_ACCEPTED_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 1.0
+   },
+   {
+    "answer_id": 2001,
+    "chunk_text": "Q: anchor two\nA: answer of 200",
+    "combined_score": 0.71,
+    "hop": 1,
+    "is_accepted": false,
+    "question_id": 200,
+    "rel_type": "HAS_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 0.8
+   },
+   {
+    "answer_id": 3002,
+    "chunk_text": "Q: related q 302\nA: answer of 302",
+    "combined_score": 0.627,
+    "hop": 2,
+    "is_accepted": false,
+    "question_id": 302,
+    "rel_type": "IS_RELATED_TO->HAS_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 0.81
+   },
+   {
+    "answer_id": 3001,
+    "chunk_text": "Q: related q 300\nA: answer of 300",
+    "combined_score": 0.46,
+    "hop": 2,
+    "is_accepted": false,
+    "question_id": 300,
+    "rel_type": "TAG_COOCCUR->HAS_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 0.4
+   },
+   {
+    "answer_id": 1002,
+    "chunk_text": "Q: anchor one\nA: second answer of 100",
+    "combined_score": 0.44,
+    "hop": 1,
+    "is_accepted": false,
+    "question_id": 100,
+    "rel_type": "HAS_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 0.5
+   }
+  ],
+  "meta": {}
+ },
+ "v2_uniform": {
+  "items": [
+   {
+    "answer_id": 1001,
+    "chunk_text": "Q: anchor one\nA: accepted answer of 100",
+    "combined_score": 0.97,
+    "hop": 1,
+    "is_accepted": true,
+    "question_id": 100,
+    "rel_type": "HAS_ACCEPTED_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 1.0
+   },
+   {
+    "answer_id": 1002,
+    "chunk_text": "Q: anchor one\nA: second answer of 100",
+    "combined_score": 0.44,
+    "hop": 1,
+    "is_accepted": false,
+    "question_id": 100,
+    "rel_type": "HAS_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 0.5
+   },
+   {
+    "answer_id": 2001,
+    "chunk_text": "Q: anchor two\nA: answer of 200",
+    "combined_score": 0.71,
+    "hop": 1,
+    "is_accepted": false,
+    "question_id": 200,
+    "rel_type": "HAS_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 0.8
+   },
+   {
+    "answer_id": 3001,
+    "chunk_text": "Q: related q 300\nA: answer of 300",
+    "combined_score": 0.46,
+    "hop": 2,
+    "is_accepted": false,
+    "question_id": 300,
+    "rel_type": "TAG_COOCCUR->HAS_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 0.4
+   },
+   {
+    "answer_id": 3002,
+    "chunk_text": "Q: related q 302\nA: answer of 302",
+    "combined_score": 0.627,
+    "hop": 2,
+    "is_accepted": false,
+    "question_id": 302,
+    "rel_type": "IS_RELATED_TO->HAS_ANSWER",
+    "source_stage": "graph_traversal",
+    "trust_weight": 0.81
+   }
+  ],
+  "meta": {}
+ },
+ "v3_alpha_0.5": {
+  "items": [
+   {
+    "alpha": 0.5,
+    "answer_id": 1001,
+    "chunk_text": "Q: anchor one\nA: accepted answer of 100",
+    "combined_score": 0.97,
+    "final_score": 0.9527,
+    "hop": 1,
+    "is_accepted": true,
+    "question_id": 100,
+    "rank": 1,
+    "rel_type": "HAS_ACCEPTED_ANSWER",
+    "sim": 0.9623,
+    "sim_norm": 0.9354,
+    "source_stage": "graph_traversal",
+    "trust": 0.97,
+    "trust_weight": 1.0
+   },
+   {
+    "alpha": 0.5,
+    "answer_id": 3002,
+    "chunk_text": "Q: related q 302\nA: answer of 302",
+    "combined_score": 0.627,
+    "final_score": 0.8135,
+    "hop": 2,
+    "is_accepted": false,
+    "question_id": 302,
+    "rank": 2,
+    "rel_type": "IS_RELATED_TO->HAS_ANSWER",
+    "sim": 0.9733,
+    "sim_norm": 1.0,
+    "source_stage": "graph_traversal",
+    "trust": 0.627,
+    "trust_weight": 0.81
+   },
+   {
+    "alpha": 0.5,
+    "answer_id": 3001,
+    "chunk_text": "Q: related q 300\nA: answer of 300",
+    "combined_score": 0.46,
+    "final_score": 0.73,
+    "hop": 2,
+    "is_accepted": false,
+    "question_id": 300,
+    "rank": 3,
+    "rel_type": "TAG_COOCCUR->HAS_ANSWER",
+    "sim": 0.9733,
+    "sim_norm": 1.0,
+    "source_stage": "graph_traversal",
+    "trust": 0.46,
+    "trust_weight": 0.4
+   },
+   {
+    "alpha": 0.5,
+    "answer_id": 2001,
+    "chunk_text": "Q: anchor two\nA: answer of 200",
+    "combined_score": 0.71,
+    "final_score": 0.6545,
+    "hop": 1,
+    "is_accepted": false,
+    "question_id": 200,
+    "rank": 4,
+    "rel_type": "HAS_ANSWER",
+    "sim": 0.9045,
+    "sim_norm": 0.599,
+    "source_stage": "graph_traversal",
+    "trust": 0.71,
+    "trust_weight": 0.8
+   },
+   {
+    "alpha": 0.5,
+    "answer_id": 4001,
+    "chunk_text": "Q: expanded q 400\nA: answer of 400",
+    "combined_score": 0.346,
+    "final_score": 0.6125,
+    "hop": "semantic",
+    "is_accepted": false,
+    "question_id": 400,
+    "rank": 5,
+    "rel_type": "HAS_ANSWER",
+    "sim": 0.9526,
+    "sim_norm": 0.879,
+    "source_stage": "semantic_expansion",
+    "trust": 0.346,
+    "trust_weight": 0.28
+   }
+  ],
+  "meta": {
+   "candidate_pool_size": 7
+  }
+ },
+ "v3_alpha_1_accepted_only": {
+  "items": [
+   {
+    "alpha": 1.0,
+    "answer_id": 1001,
+    "chunk_text": "Q: anchor one\nA: accepted answer of 100",
+    "combined_score": 0.97,
+    "final_score": 0.97,
+    "hop": 1,
+    "is_accepted": true,
+    "question_id": 100,
+    "rank": 1,
+    "rel_type": "HAS_ACCEPTED_ANSWER",
+    "sim": 0.9623,
+    "sim_norm": 1.0,
+    "source_stage": "graph_traversal",
+    "trust": 0.97,
+    "trust_weight": 1.0
+   },
+   {
+    "alpha": 1.0,
+    "answer_id": 1002,
+    "chunk_text": "Q: anchor one\nA: second answer of 100",
+    "combined_score": 0.44,
+    "final_score": 0.44,
+    "hop": 1,
+    "is_accepted": true,
+    "question_id": 100,
+    "rank": 2,
+    "rel_type": "HAS_ACCEPTED_ANSWER",
+    "sim": 0.8018,
+    "sim_norm": 0.0,
+    "source_stage": "graph_traversal",
+    "trust": 0.44,
+    "trust_weight": 0.5
+   },
+   {
+    "alpha": 1.0,
+    "answer_id": 4002,
+    "chunk_text": "Q: expanded q 402\nA: answer of 402",
+    "combined_score": 0.288,
+    "final_score": 0.288,
+    "hop": "semantic",
+    "is_accepted": true,
+    "question_id": 402,
+    "rank": 3,
+    "rel_type": "HAS_ACCEPTED_ANSWER",
+    "sim": 0.9526,
+    "sim_norm": 0.9397,
+    "source_stage": "semantic_expansion",
+    "trust": 0.288,
+    "trust_weight": 0.24
+   }
+  ],
+  "meta": {
+   "candidate_pool_size": 3
+  }
+ }
+}

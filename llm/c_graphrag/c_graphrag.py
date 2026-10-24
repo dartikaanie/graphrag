@@ -158,6 +158,7 @@ from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
 from llm.record_schema import answer_timing, latency_fields, new_run_id, record_header
 from llm.common.provenance import fetch_trust_score_version, run_provenance  # noqa: E402
+from llm.common import item_provenance as iprov  # per-item retrieval provenance (provenance_version v2)
 from llm.sample_split import SampleMismatchError, verify_sample
 from llm.c_graphrag.official_params import OfficialParamsError, check_c_test_run, load_official_params  # noqa: E402
 
@@ -547,7 +548,10 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
             """,
             anchor_ids=anchor_ids, exclude_a=exclude_a,
         )
-        candidates.extend(dict(record) for record in result)
+        for record in result:
+            c = dict(record)
+            c["anchor_id"] = c["via_question_id"]  # provenance: a 1-hop item's anchor IS its via_question
+            candidates.append(c)
 
         # 2-hop: anchor -> Question terkait (IS_RELATED_TO/TAG_COOCCUR/EMBED_SIM)
         # -> jawaban Question terkait tsb. EXCLUDE eval question sbg Question
@@ -561,13 +565,14 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
                 WHERE NOT q2.id IN $exclude_q
                 MATCH (q2)-[r3:{fetch_pattern}]->(a:Answer)
                 WHERE NOT a.id IN $exclude_a
-                WITH q2, a, r2, r3, (r2.weight * r3.weight) AS edge_weight
+                WITH anchor_id, q2, a, r2, r3, (r2.weight * r3.weight) AS edge_weight
                 ORDER BY edge_weight DESC, a.id ASC
                 LIMIT 50
                 RETURN q2.id AS via_question_id, q2.title AS via_question_title,
                        a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
                        a.isAccepted AS is_accepted, edge_weight, 2 AS hop,
-                       (type(r2) + '->' + type(r3)) AS rel_type
+                       (type(r2) + '->' + type(r3)) AS rel_type,
+                       anchor_id, r2.weight AS r2_weight, r3.weight AS r3_weight
                 """,
                 anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
             )
@@ -606,8 +611,10 @@ def fetch_author_trust(driver, database, answer_ids: list[int]) -> dict[int, flo
 
 def _select_answerable_expansion(driver, database, seed_questions: dict, index, ids_arr: np.ndarray,
                                  sbert_model, n_expansion: int, base_exclude: set, exclude_answer_ids: set,
-                                 fetch_types: list, overfetch: int, stats: dict | None) -> set:
-    """Amendment 9 selection (see semantic_expansion's docstring)."""
+                                 fetch_types: list, overfetch: int, stats: dict | None,
+                                 seed_of: dict | None = None) -> set:
+    """Amendment 9 selection (see semantic_expansion's docstring). `seed_of`
+    (provenance only): filled with {expanded question id: (seed id, cosine)}."""
     per_seed = []
     for i, (seed, title) in enumerate(seed_questions.items()):
         excluded = base_exclude | {seed}
@@ -647,13 +654,15 @@ def _select_answerable_expansion(driver, database, seed_questions: dict, index, 
             answerable = {int(r["qid"]) for r in result}
 
     chosen: set = set()
-    for cands in per_seed:
+    for seed, cands in zip(seed_questions, per_seed):
         taken = 0
-        for cid, _ in cands:
+        for cid, score in cands:
             if taken >= n_expansion:
                 break
             if cid in answerable and cid not in chosen:
                 chosen.add(cid)
+                if seed_of is not None:
+                    seed_of[cid] = (seed, score)
                 taken += 1
     if stats is not None:
         stats["n_expansion_requested"] = stats.get("n_expansion_requested", 0) + n_expansion * len(per_seed)
@@ -699,10 +708,12 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
             break
 
     expansion_qids = set()
+    seed_of: dict = {}  # provenance: expanded question id -> (seed question id, cosine). One seed per expanded Question
+    #                     (both branches exclude Questions already taken by an earlier seed).
     if require_answer:
         expansion_qids = _select_answerable_expansion(
             driver, database, seed_questions, index, ids_arr, sbert_model, n_expansion,
-            already_seen_qids | exclude_question_ids, exclude_answer_ids, fetch_types, overfetch, stats)
+            already_seen_qids | exclude_question_ids, exclude_answer_ids, fetch_types, overfetch, stats, seed_of)
     else:
         for qid, title in seed_questions.items():
             q_emb = embed_query(title, sbert_model)
@@ -712,6 +723,8 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
                 stats=stats,
             )
             expansion_qids.update(fid for fid, _ in found)
+            for fid, score in found:
+                seed_of[fid] = (qid, score)
 
     if not expansion_qids:
         return []
@@ -733,7 +746,12 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
             """,
             qids=list(expansion_qids), exclude_a=exclude_a,
         )
-        candidates.extend(dict(record) for record in result)
+        for record in result:
+            c = dict(record)
+            seed = seed_of.get(int(c["via_question_id"]))
+            c["seed_id"] = None if seed is None else int(seed[0])
+            c["seed_similarity"] = None if seed is None else round(float(seed[1]), 4)
+            candidates.append(c)
 
     if stats is not None:
         # leakage audit: expansion Questions that contributed no answer
@@ -815,6 +833,31 @@ def compute_candidate_similarities(embed_model, query_emb: np.ndarray, texts: li
     return [float(np.dot(query_vec, v)) for v in vectors]
 
 
+def _candidate_path(c: dict) -> list:
+    """Provenance path of one candidate (llm/common/item_provenance.py). Reads
+    the keys traverse_graph()/semantic_expansion() add (anchor_id, r2_weight,
+    r3_weight, seed_id, seed_similarity); a candidate from an older caller
+    lacking them still gets a path, with None where the origin is unknown (a
+    1-hop candidate's anchor is always its via_question_id)."""
+    types = iprov.split_rel_type(c.get("rel_type"))
+    answer_id, via = c["answer_id"], c["via_question_id"]
+    if c["source_stage"] == "semantic_expansion":
+        return iprov.semantic_path(c.get("seed_id"), via, answer_id, c.get("seed_similarity"),
+                                   types[-1] if types else None, c.get("raw_edge_weight"))
+    if c.get("hop") == 2:
+        return iprov.two_hop_path(c.get("anchor_id"), via, answer_id,
+                                  types[0] if types else None, c.get("r2_weight"),
+                                  types[1] if len(types) > 1 else None, c.get("r3_weight"))
+    return iprov.one_hop_path(c.get("anchor_id", via), answer_id, types[0] if types else None, c.get("edge_weight"))
+
+
+def _provenance(c: dict, rank: int, all_candidates: list) -> dict:
+    return iprov.provenance_fields(
+        source_stage=c["source_stage"], hop=c["hop"], path=c["_path"], rank=rank,
+        via_question_id=c["via_question_id"], alt_paths=iprov.alt_paths_for(c, all_candidates, "combined_score"),
+        seed_similarity=c.get("seed_similarity") if c["source_stage"] == "semantic_expansion" else None)
+
+
 def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int,
                    token_chunk_limit: int, fusion_mode: str = "trust_weighted",
                    w_path_trust: float = DEFAULT_FUSION_W_PATH_TRUST,
@@ -855,6 +898,17 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
     docs/DECISION_C_SCORING.md's Definitions section for why. alpha=1 is
     mathematically identical to v2 trust_weighted's own ranking (same
     trust, sim term weighted to 0); alpha=0 ranks purely by sim_norm.
+
+    PROVENANCE (llm/common/item_provenance.py; capture only -- no selection,
+    score or order depends on it): every item carries `path`, `anchor_id`,
+    `via_question_id`, `rank` and `alt_paths`. When one answer_id is reachable
+    by several paths the dedup rule is the one above, unchanged: the candidate
+    with the highest combined_score wins, a tie going to the one seen first
+    (graph candidates in traverse_graph() order -- hop 1, then hop 2 by edge
+    weight desc / answer_id asc -- then expansion); in "uniform" mode the
+    first seen wins. The winner's path is `path`; every other distinct path to
+    that answer is kept in `alt_paths`, ordered by combined_score desc, then
+    stage/hop, then node ids (deterministic whatever the input order).
     """
     import tiktoken
     enc = tiktoken.get_encoding("cl100k_base")
@@ -867,16 +921,19 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
         c = dict(c)
         c["combined_score"] = score
         c["source_stage"] = "graph_traversal"
+        c["_path"] = _candidate_path(c)
         all_candidates.append(c)
 
     for c in expansion_candidates:
         intrinsic = c.get("answer_trust_score") or 0.0
         proxy_weight = min(c["edge_weight"] or 0.0, 1.0) * expansion_trust_cap
         c = dict(c)
+        c["raw_edge_weight"] = c["edge_weight"]  # the KG edge's own weight, for the provenance path
         c["edge_weight"] = proxy_weight
         c["combined_score"] = (w_path_trust * proxy_weight
                                 + w_intrinsic * intrinsic)
         c["source_stage"] = "semantic_expansion"
+        c["_path"] = _candidate_path(c)
         all_candidates.append(c)
 
     if c_retrieval_version != "v3":
@@ -907,10 +964,11 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
             top = ranked[:top_k]
 
         final = []
-        for c in top:
+        for rank, c in enumerate(top, start=1):
             doc_text = answer_doc_text(c['via_question_title'], c['answer_body'])
             doc_text = _truncate_doc_text(enc, doc_text, token_chunk_limit)
             final.append({
+                **_provenance(c, rank, all_candidates),
                 "question_id": int(c["via_question_id"]),
                 "answer_id": int(c["answer_id"]),
                 "chunk_text": doc_text,
@@ -966,6 +1024,7 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
     final = []
     for rank, (c, doc_text, sim, sim_norm, trust, final_score) in enumerate(top, start=1):
         final.append({
+            **_provenance(c, rank, all_candidates),
             "question_id": int(c["via_question_id"]),
             "answer_id": int(c["answer_id"]),
             "chunk_text": doc_text,
@@ -1176,7 +1235,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "question_id": qid, **record_header(run_id, "C"),
                         "title": row["Title"], "tags": row["Tags"],
                         "accepted_answer_id": int(row["AcceptedAnswerId"]),
-                        "retrieved_context": retrieved,
+                        "retrieved_context": retrieved, "provenance_version": iprov.PROVENANCE_VERSION,
                         "candidate_pool_size": candidate_pool_size,
                         "n_anchors": len(anchor_ids), "anchor_question_ids": anchor_ids,
                         "graph_candidate_answer_ids": sorted({int(c["answer_id"]) for c in graph_candidates}),
@@ -1248,6 +1307,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "accepted_answer_id": int(row["AcceptedAnswerId"]),
                     "ground_truth_answer": row["AcceptedAnswerBody"],
                     "retrieved_context": retrieved,
+                    "provenance_version": iprov.PROVENANCE_VERSION,
                     "anchor_question_ids": [
                         {"question_id": int(aid), "similarity": round(float(score), 4)} for aid, score in anchors
                     ],
