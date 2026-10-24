@@ -407,7 +407,7 @@ def retrieve_low_level(driver, database, anchors: list, exclude_answer_ids: set)
             WHERE NOT a.id IN $exclude_a
             RETURN anchor_id AS via_question_id, anchor.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, 1 AS hop,
-                   type(r) AS rel_type, a.isAccepted AS is_accepted, r.weight AS edge_weight
+                   type(r) AS rel_type, a.isAccepted AS is_accepted
             ORDER BY a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_a=exclude_a,
@@ -479,7 +479,7 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
             RETURN q2.id AS via_question_id, q2.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, 2 AS hop,
                    r2_type AS rel_type, relevance_score, a.isAccepted AS is_accepted,
-                   via_anchor_ids, type(r3) AS r3_type, r3.weight AS r3_weight
+                   via_anchor_ids, type(r3) AS r3_type
             ORDER BY q2.id ASC, a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
@@ -495,9 +495,6 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
     for c in candidates:
         ids = sorted((int(a) for a in c.pop("via_anchor_ids")), key=lambda a: (-anchor_cos.get(a, 0.0), a))
         c["anchor_id"], c["alt_anchor_ids"] = ids[0], ids[1:]
-        c["r2_weight"] = c["relevance_score"]
-        c["edge_weight"] = (None if c["r2_weight"] is None or c.get("r3_weight") is None
-                            else c["r2_weight"] * c["r3_weight"])
     return candidates
 
 
@@ -508,20 +505,19 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
 # ---------------------------------------------------------------------
 
 def _candidate_path(c: dict) -> list:
-    """Provenance path (llm/common/item_provenance.py). D has no extracted
+    """Provenance path (llm/common/item_provenance.py; node ids and edge types only). D has no extracted
     entities or communities: the "entities" it retrieves from are the anchor
     Questions, and a high-level item adds the related Question (q2) reached by
     the r2 edge. A candidate from an older caller lacking anchor_id/r3 keys still
     gets a path (None where unknown; a low-level anchor is its via_question)."""
     answer_id, via = c["answer_id"], c["via_question_id"]
     if c["source_stage"] == "high_level":
-        return iprov.two_hop_path(c.get("anchor_id"), via, answer_id, c.get("rel_type"), c.get("r2_weight"),
-                                  c.get("r3_type"), c.get("r3_weight"))
-    return iprov.one_hop_path(c.get("anchor_id", via), answer_id, c.get("rel_type"), c.get("edge_weight"))
+        return iprov.two_hop_path(c.get("anchor_id"), via, answer_id, c.get("rel_type"), c.get("r3_type"))
+    return iprov.one_hop_path(c.get("anchor_id", via), answer_id, c.get("rel_type"))
 
 
 def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
-                     top_k: int, token_chunk_limit: int) -> list:
+                     top_k: int, token_chunk_limit: int, trace: dict | None = None) -> list:
     """PROVENANCE (capture only): items carry `path`, `anchor_id`, `alt_paths`,
     `via_question_id` and `rank`. `trust_weight` is always None: D does not use
     trust weighting (its ranking uses relevance_score alone). D has no community
@@ -529,7 +525,8 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
     (see the module docstring). `alt_paths`: other paths to the same answer
     that lost the dedup (highest relevance_score wins, a tie goes to the one
     seen first -- unchanged), incl. other anchors that reached the same
-    (q2, weight, type)."""
+    (q2, weight, type). `trace` (optional dict, filled in place): record-level
+    `not_selected` / `below_cutoff` (iprov.build_trace) from the ranking held here."""
     import tiktoken
     enc = tiktoken.get_encoding("cl100k_base")
 
@@ -562,7 +559,7 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
     # depends on Neo4j's MATCH return order (not guaranteed stable run to run
     # without an explicit ORDER BY upstream).
     ranked = sorted(best_by_answer.values(), key=lambda c: (-c["relevance_score"], c["answer_id"]))
-    top = ranked[:top_k]
+    top, rest = ranked[:top_k], ranked[top_k:]
 
     final = []
     for rank, c in enumerate(top, start=1):
@@ -586,6 +583,9 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
             # record schema r2 (llm/record_schema.py); same convention as C
             "is_accepted": bool(c["is_accepted"]) if c.get("is_accepted") is not None else None,
         })
+    if trace is not None:
+        trace.update(iprov.build_trace(all_candidates, final, [
+            [c["answer_id"], top_k + 1 + i, c["relevance_score"]] for i, c in enumerate(rest[:iprov.TRACE_CAP_BELOW_CUTOFF])]))
     return final
 
 
@@ -687,8 +687,9 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 )
 
                 # --- Fusi + cap top-K + chunking ---
+                trace: dict = {}
                 retrieved = fuse_dual_level(low_level_candidates, high_level_candidates,
-                                            top_k, token_chunk_limit)
+                                            top_k, token_chunk_limit, trace=trace)
                 retrieval_latency = time.time() - t_query_start
                 if not retrieved:
                     n_no_context += 1
@@ -704,7 +705,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "question_id": qid, **record_header(run_id, "D"),
                         "title": row["Title"], "tags": row["Tags"],
                         "accepted_answer_id": int(row["AcceptedAnswerId"]),
-                        "retrieved_context": retrieved, "provenance_version": iprov.PROVENANCE_VERSION,
+                        "retrieved_context": retrieved, "provenance_version": iprov.PROVENANCE_VERSION, **trace,
                         "anchor_question_ids": [int(a) for a, _ in anchors],
                         "n_low_level_candidates": len(low_level_candidates),
                         "n_high_level_candidates": len(high_level_candidates),
@@ -753,7 +754,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "accepted_answer_id": int(row["AcceptedAnswerId"]),
                     "ground_truth_answer": row["AcceptedAnswerBody"],
                     "retrieved_context": retrieved,
-                    "provenance_version": iprov.PROVENANCE_VERSION,
+                    "provenance_version": iprov.PROVENANCE_VERSION, **trace,
                     "anchor_question_ids": [
                         {"question_id": int(aid), "similarity": round(float(score), 4)} for aid, score in anchors
                     ],
@@ -835,14 +836,19 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
                   top_k: int, n_low_level: int, n_high_level: int, require_grounding: bool,
-                  sample_split: str = "test", leakage_mode: str = MODE_THREAD) -> dict:
+                  sample_split: str = "test", leakage_mode: str = MODE_THREAD,
+                  provenance_version: str | None = iprov.PROVENANCE_VERSION) -> dict:
     """The full set of parameters that affect Condition D's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists. Includes D_RETRIEVAL_VERSION since a retrieval
     code fix changes answers just as much as a parameter does.
 
     `sample_split` (only when not "test") and `leakage` (only when not
-    MODE_THREAD) are absent for every earlier run, so their hashes are unchanged."""
+    MODE_THREAD) are absent for every earlier run, so their hashes are unchanged.
+
+    `provenance_version` (default: the current llm/common/item_provenance.py version, "v3")
+    is part of the config so a run's config_hash changes with the provenance schema; pass
+    None to get the config (and hash) of a run made before provenance existed."""
     from llm.sample_split import add_split_to_config
     config = {
         "condition": "D", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
@@ -851,13 +857,16 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
         "d_retrieval_version": D_RETRIEVAL_VERSION,
     }
     config.update(config_leakage_key(leakage_mode))
+    if provenance_version is not None:
+        config["provenance_version"] = provenance_version
     return add_split_to_config(config, sample_split)
 
 
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
                        require_grounding: bool = True, oversample_pool: int | None = None,
                        top_k: int = 5, n_low_level: int = 3, n_high_level: int = 3,
-                       sample_split: str = "test", leakage_mode: str = MODE_THREAD) -> Path:
+                       sample_split: str = "test", leakage_mode: str = MODE_THREAD,
+                       provenance_version: str | None = iprov.PROVENANCE_VERSION) -> Path:
     """Nama file menyertakan varian grounding supaya run grounded/ungrounded
     tidak saling menimpa file .jsonl satu sama lain -- plus prompt_version +
     config_hash (see llm.manifest.read_already_done's docstring for why --
@@ -869,7 +878,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     suffix = ("grounded" if require_grounding else "ungrounded") + split_filename_tag(sample_split)
     config_hash = compute_config_hash(
         build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_low_level,
-                     n_high_level, require_grounding, sample_split, leakage_mode)
+                     n_high_level, require_grounding, sample_split, leakage_mode, provenance_version)
     )
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 

@@ -57,7 +57,7 @@ def test_high_level_item_path_is_anchor_q2_answer_and_rel_type_is_unchanged():
     assert [(s["node_type"], s["node_id"], s["edge_type_to_next"]) for s in item["path"]] == [
         ("Question", 100, "TAG_COOCCUR"), ("Question", 300, "HAS_ANSWER"), ("Answer", 3001, None)]
     assert item["rel_type"] == "TAG_COOCCUR"                      # D's rel_type stays the r2 type only
-    assert item["path"][0]["edge_weight_to_next"] == 0.7 and item["path"][1]["edge_weight_to_next"] == 0.8
+    assert all(set(s) == {"node_type", "node_id", "edge_type_to_next"} for s in item["path"])   # ids + edge types only
     assert item["trust_weight"] is None
 
 
@@ -113,13 +113,13 @@ class _Driver:
 def test_retrieve_high_level_resolves_the_anchor_and_keeps_the_others():
     rows = [{"via_question_id": 300, "via_question_title": "t", "answer_id": 3001, "answer_body": "b", "hop": 2,
              "rel_type": "TAG_COOCCUR", "relevance_score": 0.7, "is_accepted": False,
-             "via_anchor_ids": [100, 200, 150], "r3_type": "HAS_ANSWER", "r3_weight": 0.8}]
+             "via_anchor_ids": [100, 200, 150], "r3_type": "HAS_ANSWER"}]
     driver = _Driver(rows)
     # anchor cosines: 200 is the most similar anchor
     out = dl.retrieve_high_level(driver, "db", [(100, 0.80), (200, 0.90), (150, 0.80)], set(), set(), 3)
     c = out[0]
     assert (c["anchor_id"], c["alt_anchor_ids"]) == (200, [100, 150])        # tie 100/150 -> lowest id first
-    assert c["edge_weight"] == 0.7 * 0.8 and "via_anchor_ids" not in c
+    assert "via_anchor_ids" not in c and "r3.weight" not in driver.s.queries[0]
     q = driver.s.queries[0]
     # row set / order / LIMIT clauses of the retrieval query are untouched
     assert "ORDER BY relevance_score DESC, q2.id ASC\n            LIMIT $n_high_level" in q
@@ -127,10 +127,21 @@ def test_retrieve_high_level_resolves_the_anchor_and_keeps_the_others():
     assert "WITH q2, r2.weight AS relevance_score, type(r2) AS r2_type, collect(DISTINCT anchor_id) AS via_anchor_ids" in q
 
 
-def test_retrieve_low_level_sets_anchor_and_returns_the_edge_weight():
+def test_retrieve_low_level_sets_anchor():
     rows = [{"via_question_id": 100, "via_question_title": "t", "answer_id": 1, "answer_body": "b", "hop": 1,
-             "rel_type": "HAS_ANSWER", "is_accepted": None, "edge_weight": 0.5}]
+             "rel_type": "HAS_ANSWER", "is_accepted": None}]
     driver = _Driver(rows)
     c = dl.retrieve_low_level(driver, "db", [(100, 0.9)], set())[0]
-    assert (c["anchor_id"], c["relevance_score"], c["edge_weight"]) == (100, 0.9, 0.5)
-    assert "r.weight AS edge_weight" in driver.s.queries[0]
+    assert (c["anchor_id"], c["relevance_score"]) == (100, 0.9)
+    assert "r.weight" not in driver.s.queries[0]
+
+
+def test_trace_matches_the_ranking_and_does_not_change_the_result():
+    trace: dict = {}
+    items = dl.fuse_dual_level(pf.low_candidates(), pf.high_candidates(), 2, 400, trace=trace)
+    assert items == dl.fuse_dual_level(pf.low_candidates(), pf.high_candidates(), 2, 400)
+    assert [i["answer_id"] for i in items] == [3002, 1001]
+    # ranked: 3002 (.95), 1001 (.91), 1002 (.91), 2001 (.85), 3001 (.7)
+    assert trace["below_cutoff"] == [[1002, 3, 0.91], [2001, 4, 0.85], [3001, 5, 0.7]]
+    assert trace["not_selected"]["answer_ids"] == [1002, 2001, 3001]
+    assert set(trace["not_selected"]["question_ids"]) >= {200, 300, 301}
