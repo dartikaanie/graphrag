@@ -212,6 +212,45 @@ def compute_attribution(condition: str, retrieval_status: str | None, hallucinat
 
 
 # ---------------------------------------------------------------------
+# Retrieval provenance (additive; llm/common/item_provenance.py)
+# ---------------------------------------------------------------------
+
+def provenance_summary(source_record: dict | None, ctxrel_record: dict | None) -> dict:
+    """Ringkasan asal item retrieved_context dari record kondisi (B/C/D) -- hop
+    (field lama, ada di record C/D sejak awal) dan anchor_id (HANYA record dgn
+    provenance_version "v2"; record lama -> None, tidak error). Bila ctxrel judge
+    ada, label item (RELEVAN/SEBAGIAN/TIDAK_RELEVAN) digabung lewat `idx` (urutan
+    1-based item di retrieved_context, persis cara llm_judge_context_relevance.py
+    membentuk item_labels) dan dihitung per hop + berapa anchor yang menyumbang
+    >=1 item RELEVAN. TIDAK mengubah retrieval_status/attribution -- murni tambahan."""
+    items = (source_record or {}).get("retrieved_context") or []
+    labels = {it.get("idx"): it.get("label") for it in ((ctxrel_record or {}).get("item_labels") or [])
+              if it.get("idx") is not None}
+    hop_label: dict[str, dict[str, int]] = {}
+    anchors, anchors_relevant = set(), set()
+    for idx, item in enumerate(items, start=1):
+        label = labels.get(idx)
+        anchor = item.get("anchor_id")
+        if anchor is not None:
+            anchors.add(anchor)
+            if label == "RELEVAN":
+                anchors_relevant.add(anchor)
+        if label is not None:
+            counts = hop_label.setdefault(str(item.get("hop")), {})
+            counts[label] = counts.get(label, 0) + 1
+    return {
+        "provenance_version": (source_record or {}).get("provenance_version"),
+        "n_items": len(items),
+        "n_hop1": sum(1 for i in items if i.get("hop") == 1),
+        "n_hop2": sum(1 for i in items if i.get("hop") == 2),
+        "n_semantic": sum(1 for i in items if i.get("hop") == "semantic"),
+        "n_anchors": len(anchors) if anchors else None,
+        "n_anchors_with_relevant": len(anchors_relevant) if anchors else None,
+        "hop_label_counts": hop_label,
+    }
+
+
+# ---------------------------------------------------------------------
 # Per-file analysis
 # ---------------------------------------------------------------------
 
@@ -251,6 +290,7 @@ def analyze_file(input_path: Path, hallucination_override, ctxrel_override, ansr
     n_missing_ctxrel = sum(1 for qid in question_ids if qid not in ctxrel_by_qid) if condition != "A" else 0
     n_missing_ansrel = sum(1 for qid in question_ids if qid not in ansrel_by_qid)
 
+    source_by_qid = {r["question_id"]: r for r in source_records if "question_id" in r}
     rows = []
     for qid in question_ids:
         hall_rec = hallucination_by_qid.get(qid)
@@ -273,6 +313,7 @@ def analyze_file(input_path: Path, hallucination_override, ctxrel_override, ansr
             "answer_relevance_label": answer_relevance_label,
             "attribution": attribution,
             "known_zero_context_case": qid in KNOWN_ZERO_CONTEXT_QIDS,
+            **(provenance_summary(source_by_qid.get(qid), ctx_rec) if condition != "A" else {}),
         })
 
     return {
@@ -302,6 +343,35 @@ def build_cross_tab(rows: list[dict]) -> tuple[list[str], list[str], dict]:
             continue
         table[r["retrieval_status"]][r["hallucination_label"]] += 1
     return statuses, labels, table
+
+
+def build_hop_label_table(rows: list[dict]) -> dict:
+    """{hallucinated?: {hop: {label: n_items}}} over the rows that have judged
+    items -- 'attribute failures by hop'."""
+    table: dict = {}
+    for r in rows:
+        if r.get("hallucinated") is None or not r.get("hop_label_counts"):
+            continue
+        by_hop = table.setdefault(bool(r["hallucinated"]), {})
+        for hop, counts in r["hop_label_counts"].items():
+            for label, n in counts.items():
+                by_hop.setdefault(hop, {}).setdefault(label, 0)
+                by_hop[hop][label] += n
+    return table
+
+
+def mean_anchors_with_relevant(rows: list[dict]) -> dict:
+    """{hallucinated?: (mean n_anchors_with_relevant, mean n_anchors, n_questions)} over
+    rows that carry anchor_id (provenance v2 only)."""
+    acc: dict = {}
+    for r in rows:
+        if r.get("hallucinated") is None or r.get("n_anchors") is None:
+            continue
+        a = acc.setdefault(bool(r["hallucinated"]), [0, 0, 0])
+        a[0] += r["n_anchors_with_relevant"] or 0
+        a[1] += r["n_anchors"]
+        a[2] += 1
+    return {k: (v[0] / v[2], v[1] / v[2], v[2]) for k, v in acc.items()}
 
 
 def write_markdown_report(results: list[dict], strict_hallucination: bool, out_path: Path) -> None:
@@ -345,6 +415,30 @@ def write_markdown_report(results: list[dict], strict_hallucination: bool, out_p
                 lines.append(f"| {s} | " + " | ".join(cells) + " |")
             lines.append("")
 
+        if condition != "A":
+            hop_table = build_hop_label_table(rows)
+            if hop_table:
+                lines.append("### Label relevansi item per hop × hallucinated (jumlah item; asal item dari field `hop`)")
+                lines.append("")
+                lines.append("| hallucinated | hop | RELEVAN | SEBAGIAN | TIDAK_RELEVAN |")
+                lines.append("|---|---|---|---|---|")
+                for hall in sorted(hop_table, reverse=True):
+                    for hop in sorted(hop_table[hall]):
+                        c = hop_table[hall][hop]
+                        lines.append(f"| {hall} | {hop} | {c.get('RELEVAN', 0)} | {c.get('SEBAGIAN', 0)} | "
+                                     f"{c.get('TIDAK_RELEVAN', 0)} |")
+                lines.append("")
+            anchor_stats = mean_anchors_with_relevant(rows)
+            if anchor_stats:
+                lines.append("### Anchor yang menyumbang item RELEVAN (hanya record provenance_version v2)")
+                lines.append("")
+                lines.append("| hallucinated | n pertanyaan | rata-rata anchor di konteks | rata-rata anchor dgn >=1 item RELEVAN |")
+                lines.append("|---|---|---|---|")
+                for hall in sorted(anchor_stats, reverse=True):
+                    with_rel, total, n = anchor_stats[hall]
+                    lines.append(f"| {hall} | {n} | {total:.2f} | {with_rel:.2f} |")
+                lines.append("")
+
         attribution_counts = Counter(r["attribution"] for r in rows)
         n_attr_total = len(rows)
         lines.append("### Distribusi attribution")
@@ -380,9 +474,12 @@ def write_markdown_report(results: list[dict], strict_hallucination: bool, out_p
 
 def write_csv(results: list[dict], out_path: Path) -> None:
     fieldnames = ["question_id", "condition", "hallucination_label", "hallucinated", "retrieval_status",
-                  "sufficiency", "answer_relevance_label", "attribution", "known_zero_context_case"]
+                  "sufficiency", "answer_relevance_label", "attribution", "known_zero_context_case",
+                  # provenance (appended; empty for Condition A and for records without the fields)
+                  "provenance_version", "n_items", "n_hop1", "n_hop2", "n_semantic", "n_anchors",
+                  "n_anchors_with_relevant"]
     with open(out_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for res in results:
             for r in res["rows"]:

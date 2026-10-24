@@ -48,6 +48,10 @@ LANGKAH
    mirip compare_condition_c_runs.py).
 5. Detail per-pertanyaan disimpan ke retrieval_quality_{nama_file_asli}.csv
    untuk lampiran apendiks tesis.
+6. (Provenance) provenance_breakdown() -- Precision@k proxy yang SAMA, dipecah
+   per hop (field `hop`, ada di record lama) dan per anchor (field `anchor_id`,
+   hanya record dengan provenance_version "v2", llm/common/item_provenance.py).
+   Record lama tanpa field itu tetap terbaca: kolom anchor kosong.
 
 CARA PAKAI
 ----------
@@ -153,6 +157,30 @@ def compute_mrr_at_k(record: dict, eval_tags: set[str], source_tags_map: dict[in
     return 0.0
 
 
+def provenance_breakdown(record: dict, eval_tags: set[str], source_tags_map: dict[int, set[str]],
+                          tag_overlap_threshold: float) -> dict:
+    """Item relevan (proxy tag-overlap, definisi SAMA dgn compute_precision_at_k)
+    dipecah per hop dan per anchor: {"by_hop": {hop: [n_items, n_relevant]},
+    "by_anchor": {anchor_id: [n_items, n_relevant]}}. Semua field provenance dibaca
+    dgn .get -- record lama (tanpa anchor_id/path) hanya mengisi by_hop (hop sudah
+    ada sejak sebelum provenance v2; B tidak punya hop -> kunci "None") dan
+    by_anchor kosong."""
+    by_hop: dict[str, list[int]] = {}
+    by_anchor: dict[str, list[int]] = {}
+    for item in (record.get("retrieved_context") or []):
+        qid = item.get("question_id")
+        source_tags = source_tags_map.get(qid, set()) if qid is not None else set()
+        relevant = jaccard_tag_overlap(eval_tags, source_tags) > tag_overlap_threshold
+        groups = [(by_hop, str(item.get("hop")))]
+        if item.get("anchor_id") is not None:
+            groups.append((by_anchor, str(item["anchor_id"])))
+        for table, key in groups:
+            counts = table.setdefault(key, [0, 0])
+            counts[0] += 1
+            counts[1] += int(relevant)
+    return {"by_hop": by_hop, "by_anchor": by_anchor}
+
+
 def _detect_condition(path: Path) -> str | None:
     name = path.name
     for cond in ("A", "B", "C", "D"):
@@ -200,6 +228,8 @@ def analyze_file(con, path: Path, questions_parquet: str, tag_overlap_threshold:
 
     detail_rows = []
     precisions, mrrs = [], []
+    hop_totals: dict[str, list[int]] = {}
+    n_with_provenance = 0
     n_short_context = 0
     for r in records:
         eval_tags = parse_tags(r.get("tags"))
@@ -211,12 +241,21 @@ def analyze_file(con, path: Path, questions_parquet: str, tag_overlap_threshold:
             precision, n_context = precision_result
             if n_context < top_k:
                 n_short_context += 1
+        breakdown = provenance_breakdown(r, eval_tags, source_tags_map, tag_overlap_threshold)
+        for hop, (n_items, n_rel) in breakdown["by_hop"].items():
+            total = hop_totals.setdefault(hop, [0, 0])
+            total[0] += n_items
+            total[1] += n_rel
+        n_with_provenance += int(r.get("provenance_version") is not None)
         detail_rows.append({
             "question_id": r.get("question_id"),
             "n_context_actual": n_context,
             "top_k_expected": top_k,
             "precision_at_k": round(precision, 4) if precision is not None else "",
             "mrr_at_k": round(mrr, 4) if mrr is not None else "",
+            "provenance_version": r.get("provenance_version") or "",
+            "precision_by_hop": json.dumps(breakdown["by_hop"], sort_keys=True) if breakdown["by_hop"] else "",
+            "precision_by_anchor": json.dumps(breakdown["by_anchor"], sort_keys=True) if breakdown["by_anchor"] else "",
         })
         if precision is not None:
             precisions.append(precision)
@@ -225,7 +264,8 @@ def analyze_file(con, path: Path, questions_parquet: str, tag_overlap_threshold:
 
     csv_path = path.parent / f"retrieval_quality_{path.stem}.csv"
     with open(csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["question_id", "n_context_actual", "top_k_expected", "precision_at_k", "mrr_at_k"])
+        writer = csv.DictWriter(f, fieldnames=["question_id", "n_context_actual", "top_k_expected", "precision_at_k", "mrr_at_k",
+                                                   "provenance_version", "precision_by_hop", "precision_by_anchor"])
         writer.writeheader()
         writer.writerows(detail_rows)
 
@@ -240,6 +280,9 @@ def analyze_file(con, path: Path, questions_parquet: str, tag_overlap_threshold:
         "mrr_mean": round(statistics.mean(mrrs), 4) if mrrs else None,
         "mrr_median": round(statistics.median(mrrs), 4) if mrrs else None,
         "csv_path": str(csv_path),
+        "n_with_provenance": n_with_provenance,
+        "precision_by_hop": {hop: {"n_items": n, "n_relevant": rel, "precision": round(rel / n, 4)}
+                             for hop, (n, rel) in sorted(hop_totals.items()) if n},
     }
 
 
@@ -261,6 +304,12 @@ def print_summary_table(rows: list[dict]) -> None:
         ]
         print("".join(f"{val:<{w}}" for val, (_, w) in zip(row, cols)))
     print(f"\nTotal file dianalisis: {len(rows)}")
+    for r in rows:
+        if r.get("precision_by_hop"):
+            by_hop = ", ".join(f"hop={hop}: {v['precision']:.4f} ({v['n_relevant']}/{v['n_items']})"
+                               for hop, v in r["precision_by_hop"].items())
+            print(f"[hop] {r['file']}: Precision@k proxy per hop -> {by_hop}"
+                  f"{'' if r.get('n_with_provenance') else ' (tanpa provenance_version: anchor tidak tersedia)'}")
     for r in rows:
         if r["n_short_context"]:
             print(f"[catatan] {r['file']}: {r['n_short_context']}/{r['n_records']} pertanyaan punya "

@@ -25,6 +25,11 @@ RECORD_SCHEMA_VERSION
 
 The record fields are not part of config / config_hash, so resume and
 existing output paths are unchanged.
+
+Per-item retrieval provenance is versioned separately: B/C/D records carry
+provenance_version ("v2") and their retrieved_context items carry path /
+anchor_id / alt_paths / rank (llm/common/item_provenance.py); record_schema_version
+is unchanged. Records without provenance_version predate it.
 """
 
 import uuid
