@@ -135,8 +135,36 @@ export interface RetrievedContextItem {
   relevance_score?: number
   hop?: number | string
   rel_type?: string | null
-  source_stage?: 'graph_traversal' | 'semantic_expansion' | 'low_level' | 'high_level'
+  source_stage?: 'graph_traversal' | 'semantic_expansion' | 'low_level' | 'high_level' | 'vector_only'
   is_accepted?: boolean | null
+  /** Provenance (record.provenance_version v2/v3); absent on older runs. */
+  owner_question_id?: number
+  anchor_id?: number | null
+  path?: ProvenanceStep[] | null
+  alt_paths?: ProvenanceAltPath[]
+  rank?: number
+}
+
+/** One node of an item's retrieval path; v2 records also carry edge weights (ignored here). */
+export interface ProvenanceStep {
+  node_type: 'Question' | 'Answer'
+  node_id: number
+  edge_type_to_next: string | null
+}
+
+export interface ProvenanceAltPath {
+  path: ProvenanceStep[]
+  source_stage?: string
+  hop?: number | string | null
+  rel_type?: string | null
+}
+
+/** Record-level trace on C and D runs written with provenance v3. */
+export interface ProvenanceNotSelected {
+  answer_ids: number[]
+  question_ids: number[]
+  n_answer_ids: number
+  n_question_ids: number
 }
 
 export interface AnchorQuestion {
@@ -159,6 +187,10 @@ export interface RunResultDetail {
   accepted_answer_id: number
   ground_truth_answer: string
   retrieved_context?: RetrievedContextItem[]
+  provenance_version?: string
+  not_selected?: ProvenanceNotSelected
+  /** [answer_id, rank, score] just below the top-k cutoff */
+  below_cutoff?: [number, number, number][]
   anchor_question_ids?: AnchorQuestion[]
   prompt_messages?: PromptMessage[]
   n_anchors?: number

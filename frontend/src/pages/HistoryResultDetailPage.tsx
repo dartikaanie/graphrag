@@ -110,7 +110,7 @@ export function HistoryResultDetailPage() {
       {isRag && (
         <div className="border border-border rounded-lg bg-surface p-4 mb-4">
           <h2 className="text-sm font-medium text-text-secondary mb-3">Retrieval Evidence</h2>
-          <RetrievalEvidenceList items={data.retrieved_context ?? []} />
+          <RetrievalEvidenceList items={data.retrieved_context ?? []} record={data} condition={condition} />
         </div>
       )}
 
