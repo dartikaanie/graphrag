@@ -572,7 +572,7 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
                        a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
                        a.isAccepted AS is_accepted, edge_weight, 2 AS hop,
                        (type(r2) + '->' + type(r3)) AS rel_type,
-                       anchor_id, r2.weight AS r2_weight, r3.weight AS r3_weight
+                       anchor_id
                 """,
                 anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
             )
@@ -834,21 +834,19 @@ def compute_candidate_similarities(embed_model, query_emb: np.ndarray, texts: li
 
 
 def _candidate_path(c: dict) -> list:
-    """Provenance path of one candidate (llm/common/item_provenance.py). Reads
-    the keys traverse_graph()/semantic_expansion() add (anchor_id, r2_weight,
-    r3_weight, seed_id, seed_similarity); a candidate from an older caller
+    """Provenance path of one candidate (llm/common/item_provenance.py): node ids and
+    edge types only. Reads the keys traverse_graph()/semantic_expansion() add
+    (anchor_id, seed_id); a candidate from an older caller
     lacking them still gets a path, with None where the origin is unknown (a
     1-hop candidate's anchor is always its via_question_id)."""
     types = iprov.split_rel_type(c.get("rel_type"))
     answer_id, via = c["answer_id"], c["via_question_id"]
     if c["source_stage"] == "semantic_expansion":
-        return iprov.semantic_path(c.get("seed_id"), via, answer_id, c.get("seed_similarity"),
-                                   types[-1] if types else None, c.get("raw_edge_weight"))
+        return iprov.semantic_path(c.get("seed_id"), via, answer_id, types[-1] if types else None)
     if c.get("hop") == 2:
         return iprov.two_hop_path(c.get("anchor_id"), via, answer_id,
-                                  types[0] if types else None, c.get("r2_weight"),
-                                  types[1] if len(types) > 1 else None, c.get("r3_weight"))
-    return iprov.one_hop_path(c.get("anchor_id", via), answer_id, types[0] if types else None, c.get("edge_weight"))
+                                  types[0] if types else None, types[1] if len(types) > 1 else None)
+    return iprov.one_hop_path(c.get("anchor_id", via), answer_id, types[0] if types else None)
 
 
 def _provenance(c: dict, rank: int, all_candidates: list) -> dict:
@@ -866,7 +864,8 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
                    c_retrieval_version: str = "v2", alpha: float | None = None,
                    embed_model=None, query_emb: np.ndarray | None = None,
                    embedding_cache=None, accepted_only: bool = DEFAULT_ACCEPTED_ONLY,
-                   use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST) -> tuple[list, dict]:
+                   use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
+                   trace: dict | None = None) -> tuple[list, dict]:
     """Fusi graph_candidates + expansion_candidates -> top-K unified context.
     Returns (final_context_items, meta) -- `meta` is {} for
     c_retrieval_version="v2" (nothing new to report); for "v3" it carries
@@ -909,6 +908,10 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
     first seen wins. The winner's path is `path`; every other distinct path to
     that answer is kept in `alt_paths`, ordered by combined_score desc, then
     stage/hop, then node ids (deterministic whatever the input order).
+
+    `trace` (optional dict, filled in place): record-level `not_selected` and
+    `below_cutoff` (iprov.build_trace) from the candidates and the ranking this
+    function already holds; nothing is computed or queried for it.
     """
     import tiktoken
     enc = tiktoken.get_encoding("cl100k_base")
@@ -928,7 +931,6 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
         intrinsic = c.get("answer_trust_score") or 0.0
         proxy_weight = min(c["edge_weight"] or 0.0, 1.0) * expansion_trust_cap
         c = dict(c)
-        c["raw_edge_weight"] = c["edge_weight"]  # the KG edge's own weight, for the provenance path
         c["edge_weight"] = proxy_weight
         c["combined_score"] = (w_path_trust * proxy_weight
                                 + w_intrinsic * intrinsic)
@@ -946,7 +948,8 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
                 aid = c["answer_id"]
                 if aid not in best_by_answer:
                     best_by_answer[aid] = c
-            top = list(best_by_answer.values())[:top_k]
+            ordered = list(best_by_answer.values())
+            top, rest = ordered[:top_k], ordered[top_k:]
         else:
             # Dedup by answer_id, keep highest combined_score occurrence
             best_by_answer = {}
@@ -961,7 +964,7 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
             # itself depends on Neo4j's MATCH return order (not guaranteed stable run to
             # run without an explicit ORDER BY upstream).
             ranked = sorted(best_by_answer.values(), key=lambda c: (-c["combined_score"], c["answer_id"]))
-            top = ranked[:top_k]
+            top, rest = ranked[:top_k], ranked[top_k:]
 
         final = []
         for rank, c in enumerate(top, start=1):
@@ -979,6 +982,9 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
                 "source_stage": c["source_stage"],
                 "is_accepted": bool(c.get("is_accepted")) if c.get("is_accepted") is not None else None,
             })
+        if trace is not None:
+            trace.update(iprov.build_trace(all_candidates, final, [
+                [c["answer_id"], top_k + 1 + i, c["combined_score"]] for i, c in enumerate(rest[:iprov.TRACE_CAP_BELOW_CUTOFF])]))
         return final, {}
 
     # --- v3 ---
@@ -997,6 +1003,8 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
     candidate_pool_size = len(pool)
 
     if not pool:
+        if trace is not None:
+            trace.update(iprov.build_trace([], [], []))
         return [], {"candidate_pool_size": 0}
 
     doc_texts = []
@@ -1019,7 +1027,7 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
         scored.append((c, doc_text, sim, sim_norm, trust, final_score))
 
     scored.sort(key=lambda t: (-t[5], t[0]["answer_id"]))
-    top = scored[:top_k]
+    top, rest = scored[:top_k], scored[top_k:]
 
     final = []
     for rank, (c, doc_text, sim, sim_norm, trust, final_score) in enumerate(top, start=1):
@@ -1041,6 +1049,9 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
             "alpha": alpha_val,
             "rank": rank,
         })
+    if trace is not None:
+        trace.update(iprov.build_trace(all_candidates, final, [
+            [t[0]["answer_id"], top_k + 1 + i, t[5]] for i, t in enumerate(rest[:iprov.TRACE_CAP_BELOW_CUTOFF])]))
     return final, {"candidate_pool_size": candidate_pool_size}
 
 
@@ -1201,6 +1212,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         c["author_weight"] = author_weights.get(c["answer_id"], 0.0)
 
                 # --- Fusi + rerank + chunking + cap top-K ---
+                trace: dict = {}
                 retrieved, fuse_meta = fuse_and_rank(
                     graph_candidates, expansion_candidates,
                     top_k, token_chunk_limit, fusion_mode=fusion_mode,
@@ -1208,7 +1220,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     expansion_trust_cap=semantic_expansion_trust_cap,
                     c_retrieval_version=c_retrieval_version, alpha=alpha,
                     embed_model=embed_model, query_emb=query_emb, embedding_cache=embedding_cache,
-                    accepted_only=accepted_only, use_author_trust=use_author_trust,
+                    accepted_only=accepted_only, use_author_trust=use_author_trust, trace=trace,
                 )
                 candidate_pool_size = fuse_meta.get("candidate_pool_size")
                 retrieval_latency = time.time() - t_query_start
@@ -1235,7 +1247,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "question_id": qid, **record_header(run_id, "C"),
                         "title": row["Title"], "tags": row["Tags"],
                         "accepted_answer_id": int(row["AcceptedAnswerId"]),
-                        "retrieved_context": retrieved, "provenance_version": iprov.PROVENANCE_VERSION,
+                        "retrieved_context": retrieved, "provenance_version": iprov.PROVENANCE_VERSION, **trace,
                         "candidate_pool_size": candidate_pool_size,
                         "n_anchors": len(anchor_ids), "anchor_question_ids": anchor_ids,
                         "graph_candidate_answer_ids": sorted({int(c["answer_id"]) for c in graph_candidates}),
@@ -1307,7 +1319,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "accepted_answer_id": int(row["AcceptedAnswerId"]),
                     "ground_truth_answer": row["AcceptedAnswerBody"],
                     "retrieved_context": retrieved,
-                    "provenance_version": iprov.PROVENANCE_VERSION,
+                    "provenance_version": iprov.PROVENANCE_VERSION, **trace,
                     "anchor_question_ids": [
                         {"question_id": int(aid), "similarity": round(float(score), 4)} for aid, score in anchors
                     ],
@@ -1422,7 +1434,8 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
                   max_hops: int = DEFAULT_MAX_HOPS, edge_types: tuple | None = None,
                   use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
                   accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD,
-                  expansion_require_answer: bool = False) -> dict:
+                  expansion_require_answer: bool = False,
+                  provenance_version: str | None = iprov.PROVENANCE_VERSION) -> dict:
     """The full set of parameters that affect Condition C's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists. Includes c_retrieval_version since a retrieval
@@ -1437,6 +1450,10 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
     exploratory overrides therefore produces EXACTLY the same dict
     compute_config_hash() always hashed for it, so config_hash for every
     existing run is unaffected by this feature existing at all.
+
+    `provenance_version` (default: the current llm/common/item_provenance.py version, "v3")
+    is part of the config so a run's config_hash changes with the provenance schema; pass
+    None to get the config (and hash) of a run made before provenance existed.
     """
     edge_types = tuple(edge_types) if edge_types is not None else DEFAULT_EDGE_TYPES
     config = {
@@ -1467,6 +1484,8 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
     if expansion_require_answer:
         config["expansion_require_answer"] = True
         config["expansion_overfetch"] = EXPANSION_OVERFETCH
+    if provenance_version is not None:
+        config["provenance_version"] = provenance_version
     return config
 
 
@@ -1482,7 +1501,8 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        sample_split: str = DEFAULT_SAMPLE_SPLIT, max_hops: int = DEFAULT_MAX_HOPS,
                        edge_types: tuple | None = None, use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
                        accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD,
-                       expansion_require_answer: bool = False) -> Path:
+                       expansion_require_answer: bool = False,
+                       provenance_version: str | None = iprov.PROVENANCE_VERSION) -> Path:
     """Nama file menyertakan fusion mode/bobot supaya run ablasi (mis.
     --fusion-mode uniform vs --fusion-mode trust_weighted dgn bobot
     berbeda) tidak saling menimpa file .jsonl satu sama lain -- pola sama
@@ -1517,7 +1537,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
         require_grounding, enable_semantic_expansion, c_retrieval_version=c_retrieval_version,
         alpha=alpha, sample_split=sample_split, max_hops=max_hops, edge_types=edge_types,
         use_author_trust=use_author_trust, accepted_only=accepted_only, leakage_mode=leakage_mode,
-        expansion_require_answer=expansion_require_answer,
+        expansion_require_answer=expansion_require_answer, provenance_version=provenance_version,
     ))
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 

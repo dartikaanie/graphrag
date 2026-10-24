@@ -56,15 +56,16 @@ def test_two_hop_items_have_anchor_q2_answer_paths():
         assert item["path"][1]["node_id"] == item["question_id"] == item["via_question_id"]
         assert item["path"][2]["node_id"] == item["answer_id"]
     i3002 = _by_answer("v2_trust_weighted")[3002]
-    assert [(s["node_type"], s["node_id"], s["edge_type_to_next"], s["edge_weight_to_next"]) for s in i3002["path"]] == [
-        ("Question", 100, "IS_RELATED_TO", 0.9), ("Question", 302, "HAS_ANSWER", 0.9), ("Answer", 3002, None, None)]
+    assert i3002["path"] == [{"node_type": "Question", "node_id": 100, "edge_type_to_next": "IS_RELATED_TO"},
+                             {"node_type": "Question", "node_id": 302, "edge_type_to_next": "HAS_ANSWER"},
+                             {"node_type": "Answer", "node_id": 3002, "edge_type_to_next": None}]   # ids + edge types only
+    assert i3002["owner_question_id"] == i3002["via_question_id"] == i3002["question_id"] == 302
 
 
 def test_one_hop_item_anchor_is_its_via_question():
     item = _by_answer("v2_trust_weighted")[2001]
     assert item["anchor_id"] == item["via_question_id"] == 200
     assert [s["node_id"] for s in item["path"]] == [200, 2001]
-    assert item["path"][0]["edge_weight_to_next"] == 0.8     # the KG edge weight
 
 
 def test_dedup_winner_path_and_alt_paths_trust_weighted():
@@ -98,16 +99,15 @@ def test_semantic_items_start_at_their_seed():
     for item in sem:
         assert item["path"][0]["node_id"] is not None and item["anchor_id"] == item["path"][0]["node_id"]
         assert item["path"][0]["edge_type_to_next"] == "SEMANTIC_SIM"
-        assert item["seed_similarity"] == item["path"][0]["edge_weight_to_next"]
+        assert item["seed_similarity"] is not None
         assert item["path"][1]["node_id"] == item["via_question_id"]
     i4001 = next(i for i in sem if i["answer_id"] == 4001)
     assert (i4001["anchor_id"], i4001["seed_similarity"]) == (300, 0.8123)
-    # trust_weight keeps its meaning (the proxy); the KG edge's own weight is in the path
-    assert i4001["trust_weight"] == round(0.7 * 0.4, 4) and i4001["path"][1]["edge_weight_to_next"] == 0.7
+    assert i4001["trust_weight"] == round(0.7 * 0.4, 4)       # trust_weight keeps its meaning (the proxy)
 
 
 def test_candidates_from_older_callers_still_fuse():
-    """No anchor_id / r2_weight / seed keys (e.g. the existing fuse_and_rank tests)."""
+    """No anchor_id / seed keys (e.g. the existing fuse_and_rank tests)."""
     graph = [{"via_question_id": 5, "via_question_title": "t", "answer_id": 50, "answer_body": "b",
               "answer_trust_score": 0.1, "is_accepted": False, "edge_weight": 0.3, "hop": 1, "rel_type": "HAS_ANSWER"},
              {"via_question_id": 6, "via_question_title": "t", "answer_id": 60, "answer_body": "b",
@@ -159,11 +159,47 @@ def test_traverse_graph_adds_anchor_ids_and_the_cypher_carries_them():
            "answer_trust_score": 0.1, "is_accepted": True, "edge_weight": 1.0, "hop": 1, "rel_type": "HAS_ACCEPTED_ANSWER"}
     two = {"via_question_id": 300, "via_question_title": "t", "answer_id": 2, "answer_body": "b",
            "answer_trust_score": 0.1, "is_accepted": False, "edge_weight": 0.4, "hop": 2,
-           "rel_type": "TAG_COOCCUR->HAS_ANSWER", "anchor_id": 100, "r2_weight": 0.5, "r3_weight": 0.8}
+           "rel_type": "TAG_COOCCUR->HAS_ANSWER", "anchor_id": 100}
     driver = _Driver({"1": [one], "2": [two]})
     out = cg.traverse_graph(driver, "db", [100], set(), set())
     assert [(c["hop"], c["anchor_id"]) for c in out] == [(1, 100), (2, 100)]
     q2 = driver.session_obj.queries[1]
-    assert "WITH anchor_id, q2, a, r2, r3," in q2 and "anchor_id, r2.weight AS r2_weight, r3.weight AS r3_weight" in q2
+    assert "WITH anchor_id, q2, a, r2, r3," in q2 and "anchor_id" in q2.split("RETURN")[1]
+    assert "r2_weight" not in q2 and "r3_weight" not in q2       # no per-edge weights are fetched for provenance
     # retrieval clauses unchanged
     assert "ORDER BY edge_weight DESC, a.id ASC" in q2 and "LIMIT 50" in q2
+
+
+# --- record-level trace -----------------------------------------------------
+
+@pytest.mark.parametrize("label", list(pf.CONFIGS))
+def test_trace_does_not_change_the_result_and_matches_the_ranking(label):
+    plain = pf.run_config(cg.fuse_and_rank, label)
+    trace: dict = {}
+    kwargs = dict(pf.CONFIGS[label])
+    if kwargs.get("c_retrieval_version") == "v3":
+        kwargs.update(embed_model=pf.FakeEmbedModel(), query_emb=pf.QUERY_EMB)
+    items, meta = cg.fuse_and_rank(pf.graph_candidates(), pf.expansion_candidates(), 5, 400, trace=trace, **kwargs)
+    assert {"items": items, "meta": meta} == plain               # identical with and without the trace
+    kept = {i["answer_id"] for i in items}
+    ns = trace["not_selected"]
+    assert not kept & set(ns["answer_ids"])
+    assert trace["below_cutoff"] == sorted(trace["below_cutoff"], key=lambda e: e[1])
+    assert [e[1] for e in trace["below_cutoff"]] == list(range(6, 6 + len(trace["below_cutoff"])))
+    assert not kept & {e[0] for e in trace["below_cutoff"]}
+    assert {e[0] for e in trace["below_cutoff"]} <= set(ns["answer_ids"])
+
+
+def test_trace_below_cutoff_scores_for_trust_weighted():
+    trace: dict = {}
+    cg.fuse_and_rank(pf.graph_candidates(), pf.expansion_candidates(), 5, 400, trace=trace)
+    assert trace["below_cutoff"] == [[4001, 6, 0.346], [4002, 7, 0.288]]
+    assert set(trace["not_selected"]["answer_ids"]) == {4001, 4002}
+    assert 301 in trace["not_selected"]["question_ids"]         # a visited q2 whose answer (1001) lost the dedup
+
+
+def test_empty_candidates_give_an_empty_trace():
+    trace: dict = {}
+    cg.fuse_and_rank([], [], 5, 400, c_retrieval_version="v3", alpha=0.5, embed_model=pf.FakeEmbedModel(),
+                     query_emb=pf.QUERY_EMB, trace=trace)
+    assert trace["not_selected"]["n_answer_ids"] == 0 and trace["below_cutoff"] == []
