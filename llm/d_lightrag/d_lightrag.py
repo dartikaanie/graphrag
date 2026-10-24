@@ -171,6 +171,7 @@ from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_lightrag_messages
 from llm.record_schema import answer_timing, latency_fields, new_run_id, record_header
 from llm.common.provenance import fetch_trust_score_version, run_provenance  # noqa: E402
+from llm.common import item_provenance as iprov  # per-item retrieval provenance (provenance_version v2)
 from llm.sample_split import SampleMismatchError, verify_sample
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B/C
@@ -406,7 +407,7 @@ def retrieve_low_level(driver, database, anchors: list, exclude_answer_ids: set)
             WHERE NOT a.id IN $exclude_a
             RETURN anchor_id AS via_question_id, anchor.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, 1 AS hop,
-                   type(r) AS rel_type, a.isAccepted AS is_accepted
+                   type(r) AS rel_type, a.isAccepted AS is_accepted, r.weight AS edge_weight
             ORDER BY a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_a=exclude_a,
@@ -414,6 +415,7 @@ def retrieve_low_level(driver, database, anchors: list, exclude_answer_ids: set)
         for record in result:
             c = dict(record)
             c["relevance_score"] = anchor_score.get(c["via_question_id"], 0.0)
+            c["anchor_id"] = c["via_question_id"]  # provenance: a low-level item's anchor IS its via_question
             candidates.append(c)
 
     return candidates
@@ -469,14 +471,15 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
                 MATCH (q2)-[:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(ax:Answer)
                 WHERE NOT ax.id IN $exclude_a
               }
-            WITH DISTINCT q2, r2.weight AS relevance_score, type(r2) AS r2_type
+            WITH q2, r2.weight AS relevance_score, type(r2) AS r2_type, collect(DISTINCT anchor_id) AS via_anchor_ids
             ORDER BY relevance_score DESC, q2.id ASC
             LIMIT $n_high_level
             MATCH (q2)-[r3:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
             WHERE NOT a.id IN $exclude_a
             RETURN q2.id AS via_question_id, q2.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, 2 AS hop,
-                   r2_type AS rel_type, relevance_score, a.isAccepted AS is_accepted
+                   r2_type AS rel_type, relevance_score, a.isAccepted AS is_accepted,
+                   via_anchor_ids, type(r3) AS r3_type, r3.weight AS r3_weight
             ORDER BY q2.id ASC, a.id ASC
             """,
             anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
@@ -484,6 +487,17 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
         )
         candidates = [dict(record) for record in result]
 
+    # provenance (capture only): `WITH ... collect(DISTINCT anchor_id)` groups on exactly the keys the
+    # former `WITH DISTINCT` did (q2, score, type), so the rows, their order and the LIMIT are unchanged; the
+    # anchors that reached each (q2, score, type) were previously discarded. The anchor kept as the item's
+    # origin is the most similar to the question (ties: lowest id); the others are kept as alt_anchor_ids.
+    anchor_cos = {qid: score for qid, score in anchors}
+    for c in candidates:
+        ids = sorted((int(a) for a in c.pop("via_anchor_ids")), key=lambda a: (-anchor_cos.get(a, 0.0), a))
+        c["anchor_id"], c["alt_anchor_ids"] = ids[0], ids[1:]
+        c["r2_weight"] = c["relevance_score"]
+        c["edge_weight"] = (None if c["r2_weight"] is None or c.get("r3_weight") is None
+                            else c["r2_weight"] * c["r3_weight"])
     return candidates
 
 
@@ -493,8 +507,31 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
 # label source_stage, sort desc, cap top-K, chunking.
 # ---------------------------------------------------------------------
 
+def _candidate_path(c: dict) -> list:
+    """Provenance path (llm/common/item_provenance.py). D has no extracted
+    entities or communities: the "entities" it retrieves from are the anchor
+    Questions, and a high-level item adds the related Question (q2) reached by
+    the r2 edge. A candidate from an older caller lacking anchor_id/r3 keys still
+    gets a path (None where unknown; a low-level anchor is its via_question)."""
+    answer_id, via = c["answer_id"], c["via_question_id"]
+    if c["source_stage"] == "high_level":
+        return iprov.two_hop_path(c.get("anchor_id"), via, answer_id, c.get("rel_type"), c.get("r2_weight"),
+                                  c.get("r3_type"), c.get("r3_weight"))
+    return iprov.one_hop_path(c.get("anchor_id", via), answer_id, c.get("rel_type"), c.get("edge_weight"))
+
+
 def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
                      top_k: int, token_chunk_limit: int) -> list:
+    """PROVENANCE (capture only): items carry `path`, `anchor_id`, `alt_paths`,
+    `via_question_id`, `rank` and `trust_weight`. `trust_weight` is the KG edge
+    weight of the path (low-level: the HAS_* edge; high-level: r2.weight *
+    r3.weight, as in C) recorded for AUDIT ONLY -- D's ranking, as ever, uses
+    relevance_score alone and nothing here feeds into it. D has no community
+    ids: LightRAG's entity/community extraction is not part of this adaptation
+    (see the module docstring). `alt_paths`: other paths to the same answer
+    that lost the dedup (highest relevance_score wins, a tie goes to the one
+    seen first -- unchanged), incl. other anchors that reached the same
+    (q2, weight, type)."""
     import tiktoken
     enc = tiktoken.get_encoding("cl100k_base")
 
@@ -502,11 +539,18 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
     for c in low_level_candidates:
         c = dict(c)
         c["source_stage"] = "low_level"
+        c["_path"] = _candidate_path(c)
         all_candidates.append(c)
     for c in high_level_candidates:
         c = dict(c)
         c["source_stage"] = "high_level"
+        c["_path"] = _candidate_path(c)
         all_candidates.append(c)
+    # alternatives for alt_paths only (never ranked): the other anchors behind a high-level candidate
+    alt_pool = list(all_candidates)
+    for c in all_candidates:
+        for other_anchor in c.get("alt_anchor_ids") or []:
+            alt_pool.append({**c, "anchor_id": other_anchor, "_path": _candidate_path({**c, "anchor_id": other_anchor})})
 
     best_by_answer = {}
     for c in all_candidates:
@@ -523,15 +567,20 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
     top = ranked[:top_k]
 
     final = []
-    for c in top:
+    for rank, c in enumerate(top, start=1):
         doc_text = f"Q: {c['via_question_title']}\nA: {c['answer_body']}"
         token_ids = enc.encode(doc_text)
         if len(token_ids) > token_chunk_limit:
             doc_text = enc.decode(token_ids[:token_chunk_limit])
         final.append({
+            **iprov.provenance_fields(
+                source_stage=c["source_stage"], hop=c["hop"], path=c["_path"], rank=rank,
+                via_question_id=c["via_question_id"],
+                alt_paths=iprov.alt_paths_for(c, alt_pool, "relevance_score")),
             "question_id": int(c["via_question_id"]),
             "answer_id": int(c["answer_id"]),
             "chunk_text": doc_text,
+            "trust_weight": None if c.get("edge_weight") is None else round(float(c["edge_weight"]), 4),
             "relevance_score": round(float(c["relevance_score"] or 0.0), 4),
             "hop": c["hop"],
             "rel_type": c.get("rel_type"),
@@ -657,7 +706,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "question_id": qid, **record_header(run_id, "D"),
                         "title": row["Title"], "tags": row["Tags"],
                         "accepted_answer_id": int(row["AcceptedAnswerId"]),
-                        "retrieved_context": retrieved,
+                        "retrieved_context": retrieved, "provenance_version": iprov.PROVENANCE_VERSION,
                         "anchor_question_ids": [int(a) for a, _ in anchors],
                         "n_low_level_candidates": len(low_level_candidates),
                         "n_high_level_candidates": len(high_level_candidates),
@@ -706,6 +755,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "accepted_answer_id": int(row["AcceptedAnswerId"]),
                     "ground_truth_answer": row["AcceptedAnswerBody"],
                     "retrieved_context": retrieved,
+                    "provenance_version": iprov.PROVENANCE_VERSION,
                     "anchor_question_ids": [
                         {"question_id": int(aid), "similarity": round(float(score), 4)} for aid, score in anchors
                     ],

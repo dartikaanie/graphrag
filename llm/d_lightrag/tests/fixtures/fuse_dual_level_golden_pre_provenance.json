@@ -1,0 +1,128 @@
+{
+ "short_chunk": [
+  {
+   "answer_id": 3002,
+   "chunk_text": "Q: title",
+   "hop": 2,
+   "is_accepted": null,
+   "question_id": 302,
+   "rel_type": "IS_RELATED_TO",
+   "relevance_score": 0.95,
+   "source_stage": "high_level"
+  },
+  {
+   "answer_id": 1001,
+   "chunk_text": "Q: title",
+   "hop": 1,
+   "is_accepted": true,
+   "question_id": 100,
+   "rel_type": "HAS_ACCEPTED_ANSWER",
+   "relevance_score": 0.91,
+   "source_stage": "low_level"
+  },
+  {
+   "answer_id": 1002,
+   "chunk_text": "Q: title",
+   "hop": 1,
+   "is_accepted": false,
+   "question_id": 100,
+   "rel_type": "HAS_ANSWER",
+   "relevance_score": 0.91,
+   "source_stage": "low_level"
+  },
+  {
+   "answer_id": 2001,
+   "chunk_text": "Q: title",
+   "hop": 1,
+   "is_accepted": false,
+   "question_id": 200,
+   "rel_type": "HAS_ANSWER",
+   "relevance_score": 0.85,
+   "source_stage": "low_level"
+  },
+  {
+   "answer_id": 3001,
+   "chunk_text": "Q: title",
+   "hop": 2,
+   "is_accepted": false,
+   "question_id": 300,
+   "rel_type": "TAG_COOCCUR",
+   "relevance_score": 0.7,
+   "source_stage": "high_level"
+  }
+ ],
+ "top2": [
+  {
+   "answer_id": 3002,
+   "chunk_text": "Q: title 302\nA: body of 3002",
+   "hop": 2,
+   "is_accepted": null,
+   "question_id": 302,
+   "rel_type": "IS_RELATED_TO",
+   "relevance_score": 0.95,
+   "source_stage": "high_level"
+  },
+  {
+   "answer_id": 1001,
+   "chunk_text": "Q: title 100\nA: body of 1001",
+   "hop": 1,
+   "is_accepted": true,
+   "question_id": 100,
+   "rel_type": "HAS_ACCEPTED_ANSWER",
+   "relevance_score": 0.91,
+   "source_stage": "low_level"
+  }
+ ],
+ "top5": [
+  {
+   "answer_id": 3002,
+   "chunk_text": "Q: title 302\nA: body of 3002",
+   "hop": 2,
+   "is_accepted": null,
+   "question_id": 302,
+   "rel_type": "IS_RELATED_TO",
+   "relevance_score": 0.95,
+   "source_stage": "high_level"
+  },
+  {
+   "answer_id": 1001,
+   "chunk_text": "Q: title 100\nA: body of 1001",
+   "hop": 1,
+   "is_accepted": true,
+   "question_id": 100,
+   "rel_type": "HAS_ACCEPTED_ANSWER",
+   "relevance_score": 0.91,
+   "source_stage": "low_level"
+  },
+  {
+   "answer_id": 1002,
+   "chunk_text": "Q: title 100\nA: body of 1002",
+   "hop": 1,
+   "is_accepted": false,
+   "question_id": 100,
+   "rel_type": "HAS_ANSWER",
+   "relevance_score": 0.91,
+   "source_stage": "low_level"
+  },
+  {
+   "answer_id": 2001,
+   "chunk_text": "Q: title 200\nA: body of 2001",
+   "hop": 1,
+   "is_accepted": false,
+   "question_id": 200,
+   "rel_type": "HAS_ANSWER",
+   "relevance_score": 0.85,
+   "source_stage": "low_level"
+  },
+  {
+   "answer_id": 3001,
+   "chunk_text": "Q: title 300\nA: body of 3001",
+   "hop": 2,
+   "is_accepted": false,
+   "question_id": 300,
+   "rel_type": "TAG_COOCCUR",
+   "relevance_score": 0.7,
+   "source_stage": "high_level"
+  }
+ ]
+}
