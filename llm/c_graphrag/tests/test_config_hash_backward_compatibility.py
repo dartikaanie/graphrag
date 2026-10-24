@@ -57,6 +57,7 @@ def test_all_9_real_pilot_run_config_hashes_unchanged():
             r["provider"], r["model"], r["n_sample_target"], r["seed"], r["oversample_pool"],
             r["top_k"], r["require_citation"], r["require_grounding"],
             corpus="legacy_sample",  # every pilot run predates the KG corpus
+            provenance_version=None,  # ... and item provenance (part of config_hash since v3)
         )
         assert compute_config_hash(config) == r["config_hash"], f"B run {r['output_path']} hash changed"
         checked += 1
@@ -71,7 +72,7 @@ def test_all_9_real_pilot_run_config_hashes_unchanged():
             # constant's only value before this feature existed) -- no
             # alpha/sample_split/exploratory-switch overrides, so the new
             # optional params are left at their defaults deliberately.
-            c_retrieval_version=r["c_retrieval_version"],
+            c_retrieval_version=r["c_retrieval_version"], provenance_version=None,
         )
         assert compute_config_hash(config) == r["config_hash"], f"C run {r['output_path']} hash changed"
         checked += 1
@@ -79,7 +80,7 @@ def test_all_9_real_pilot_run_config_hashes_unchanged():
     for r in _pilot_v3_records(REPO_ROOT / "llm" / "d_lightrag" / "logs" / "run_history.jsonl"):
         config = d_lightrag.build_config(
             r["provider"], r["model"], r["n_sample_target"], r["seed"], r["oversample_pool"],
-            r["top_k"], r["n_low_level"], r["n_high_level"], r["require_grounding"],
+            r["top_k"], r["n_low_level"], r["n_high_level"], r["require_grounding"], provenance_version=None,
         )
         assert compute_config_hash(config) == r["config_hash"], f"D run {r['output_path']} hash changed"
         checked += 1
@@ -95,7 +96,7 @@ def test_build_config_v2_default_dict_is_byte_identical_to_pre_feature_shape():
     (the caller-visible default), matching every real run checked above."""
     config = c_graphrag.build_config(
         "openai", "gpt-4o-mini", 10, 42, 1536, 5, 3, 3, "trust_weighted", 0.7, 0.3, 0.4, True, True,
-        c_retrieval_version="v2",
+        c_retrieval_version="v2", provenance_version=None,
     )
     assert set(config.keys()) == {
         "condition", "provider", "model", "n_sample", "seed", "oversample_pool", "top_k",
@@ -103,6 +104,24 @@ def test_build_config_v2_default_dict_is_byte_identical_to_pre_feature_shape():
         "semantic_expansion_trust_cap", "require_grounding", "enable_semantic_expansion",
         "c_retrieval_version",
     }
+
+
+def test_provenance_version_is_part_of_the_config_hash_of_new_runs():
+    """Since provenance v3 a B/C/D config carries provenance_version (so its config_hash, and the
+    output filename, differ from a pre-provenance run's); None reproduces the legacy config."""
+    from llm.common.item_provenance import PROVENANCE_VERSION
+
+    new = c_graphrag.build_config("openai", "gpt-4o-mini", 10, 42, 1536, 5, 3, 3, "trust_weighted", 0.7, 0.3, 0.4,
+                                  True, True, c_retrieval_version="v2")
+    legacy = c_graphrag.build_config("openai", "gpt-4o-mini", 10, 42, 1536, 5, 3, 3, "trust_weighted", 0.7, 0.3, 0.4,
+                                     True, True, c_retrieval_version="v2", provenance_version=None)
+    assert new["provenance_version"] == PROVENANCE_VERSION == "v3" and "provenance_version" not in legacy
+    assert {k: v for k, v in new.items() if k != "provenance_version"} == legacy
+    assert compute_config_hash(new) != compute_config_hash(legacy)
+    for mod, args in ((b_condition_b_rag, ("openai", "m", 10, 42, 1536, 5, True, False)),
+                      (d_lightrag, ("openai", "m", 10, 42, 1536, 5, 3, 3, True))):
+        assert mod.build_config(*args)["provenance_version"] == "v3"
+        assert "provenance_version" not in mod.build_config(*args, provenance_version=None)
 
 
 def test_each_exploratory_switch_changes_config_hash_when_non_default():

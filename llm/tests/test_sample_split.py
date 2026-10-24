@@ -52,10 +52,10 @@ def test_test_runs_keep_config_and_filename_dev_runs_get_their_own():
     assert a.build_output_path("r", "openai", "gpt-4o-mini", 10, 42, oversample_pool=1536).name == \
         "condition_a_openai_gpt-4o-mini_n10_seed42_v3_caf85ba006.jsonl"
     assert b.build_output_path("r", "openai", "gpt-4o-mini", 10, 42, True, False, 1536, 5,
-                               corpus="legacy_sample").name == \
+                               corpus="legacy_sample", provenance_version=None).name == \
         "condition_b_openai_gpt-4o-mini_n10_seed42_plain_v3_37e6072d55.jsonl"
     assert b.build_output_path("r", "openai", "gpt-4o-mini", 10, 42, True, True, 1536, 5,
-                               corpus="legacy_sample").name == \
+                               corpus="legacy_sample", provenance_version=None).name == \
         "condition_b_openai_gpt-4o-mini_n10_seed42_grounded_v3_b0f24482bd.jsonl"
     assert "_dev_" in a.build_output_path("r", "openai", "gpt-4o-mini", 50, 42, oversample_pool=1536,
                                           sample_split="dev").name

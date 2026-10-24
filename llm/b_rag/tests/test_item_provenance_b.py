@@ -59,8 +59,7 @@ def test_items_are_vector_only_and_validate(tiny_corpus, minilm):
         assert ip.validate_item(item) == []
         assert item["rank"] == rank and item["source_stage"] == "vector_only"
         assert item["hop"] is None and item["anchor_id"] is None and item["trust_weight"] is None
-        assert item["path"] == [{"node_type": "Answer", "node_id": item["answer_id"], "edge_type_to_next": None,
-                                 "edge_weight_to_next": None}]
+        assert item["path"] == [{"node_type": "Answer", "node_id": item["answer_id"], "edge_type_to_next": None}]
         assert item["via_question_id"] == item["question_id"] and item["alt_paths"] == []
         assert "score" in item and item["is_accepted"] in (True, False)
 

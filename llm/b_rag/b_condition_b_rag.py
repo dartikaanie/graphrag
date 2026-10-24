@@ -731,7 +731,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
                   top_k: int, require_citation: bool, require_grounding: bool,
                   sample_split: str = "test", corpus: str = CORPUS_KG, token_chunk_limit: int = 400,
-                  leakage_mode: str = MODE_THREAD) -> dict:
+                  leakage_mode: str = MODE_THREAD,
+                  provenance_version: str | None = iprov.PROVENANCE_VERSION) -> dict:
     """The full set of parameters that affect Condition B's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists (stored in every record/manifest AND hashed into
@@ -753,6 +754,8 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
     elif corpus != CORPUS_LEGACY:
         raise ValueError(f"Unknown corpus '{corpus}' -- must be one of {CORPUS_CHOICES}")
     config.update(config_leakage_key(leakage_mode))  # absent for MODE_THREAD -> earlier hashes unchanged
+    if provenance_version is not None:  # part of config_hash; None = a run made before provenance existed
+        config["provenance_version"] = provenance_version
     return add_split_to_config(config, sample_split)  # sample_split only present when not "test" -- existing hashes unchanged
 
 
@@ -760,7 +763,8 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        require_citation: bool = False, require_grounding: bool = False,
                        oversample_pool: int | None = None, top_k: int = 5,
                        sample_split: str = "test", corpus: str = CORPUS_KG,
-                       token_chunk_limit: int = 400, leakage_mode: str = MODE_THREAD) -> Path:
+                       token_chunk_limit: int = 400, leakage_mode: str = MODE_THREAD,
+                       provenance_version: str | None = iprov.PROVENANCE_VERSION) -> Path:
     """Nama file JSONL otomatis dari provider+model+n_sample+seed -- identik
     pola Kondisi A, format:
     condition_b_{provider}_{safe_model}_n{n_sample}_seed{seed}.jsonl.
@@ -788,7 +792,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     suffix = ("_grounded" if require_grounding else "_plain") if require_citation else ""
     config_hash = compute_config_hash(
         build_config(provider, model, n_sample, seed, oversample_pool, top_k, require_citation, require_grounding,
-                     sample_split, corpus, token_chunk_limit, leakage_mode)
+                     sample_split, corpus, token_chunk_limit, leakage_mode, provenance_version)
     )
     from llm.sample_split import split_filename_tag
     return Path(output_dir) / f"{base}{suffix}{split_filename_tag(sample_split)}_{PROMPT_VERSION}_{config_hash}.jsonl"

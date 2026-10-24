@@ -77,11 +77,13 @@ def calibration_runs() -> list[dict]:
             "run_label": label, "condition": "B", "cwd": B_DIR, "script": "b_condition_b_rag.py",
             "args": b_common + ["--require-grounding" if grounding else "--no-require-grounding"],
             "output_path": B_DIR / b.build_output_path("results", PROVIDER, MODEL, N_DEV, SEED, True, grounding,
-                                                       OVERSAMPLE_POOL, B_TOP_K, "dev", corpus="legacy_sample"),
+                                                       OVERSAMPLE_POOL, B_TOP_K, "dev", corpus="legacy_sample",
+                                                       provenance_version=None),  # the batch already ran, pre-provenance
             "config": b.build_config(PROVIDER, MODEL, N_DEV, SEED, OVERSAMPLE_POOL, B_TOP_K, True, grounding, "dev",
-                                     corpus="legacy_sample"),
+                                     corpus="legacy_sample", provenance_version=None),
             "pilot_file": B_DIR / b.build_output_path("results", PROVIDER, MODEL, 10, SEED, True, grounding,
-                                                      OVERSAMPLE_POOL, B_TOP_K, corpus="legacy_sample"),
+                                                      OVERSAMPLE_POOL, B_TOP_K, corpus="legacy_sample",
+                                                      provenance_version=None),  # an existing pilot run: pre-provenance name
         })
     for r in runs:
         r["config_hash"] = compute_config_hash(r["config"])
