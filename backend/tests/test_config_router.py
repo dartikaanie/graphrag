@@ -137,17 +137,16 @@ _RUNS_TMP = Path(tempfile.mkdtemp(prefix="graphrag_runs_test_"))  # never the re
 # and the per-run launch rule in POST /api/runs (Amendment 10).
 # ---------------------------------------------------------------------
 
-def test_defaults_endpoint_returns_nine_run_matrix_with_two_c_alphas(monkeypatch):
+def test_defaults_endpoint_returns_four_run_official_matrix(monkeypatch):
     import app.routers.config as config_router
 
     monkeypatch.setattr(config_router, "_official_c_params", lambda: _SELECTED)
     matrix = client.get("/api/config/defaults").json()["official_run_matrix"]
-    assert [r["run"] for r in matrix] == [f"R{i}" for i in range(1, 10)]
+    assert [r["run"] for r in matrix] == ["R1", "R3", "R5", "R9"]  # Amendment 16: A, B-, C-primary-, D-grounded
+    assert not any(r["legacy"] for r in matrix)
     c = {r["run"]: r for r in matrix if r["condition"] == "C"}
-    assert {k: (v["alpha"], v["grounding"]) for k, v in c.items()} == {
-        "R4": (0.25, False), "R5": (0.25, True), "R6": (0.0, False), "R7": (0.0, True)}
+    assert {k: (v["alpha"], v["grounding"]) for k, v in c.items()} == {"R5": (0.25, True)}
     assert all(r["dashboard"]["c_retrieval_version"] == "v3" for r in c.values())
-    assert len({r["dashboard"]["alpha"] for r in c.values()}) == 2
 
 
 def test_defaults_endpoint_matrix_alphas_null_while_pending(monkeypatch):
@@ -155,7 +154,7 @@ def test_defaults_endpoint_matrix_alphas_null_while_pending(monkeypatch):
 
     monkeypatch.setattr(config_router, "_official_c_params", lambda: _PENDING)
     matrix = client.get("/api/config/defaults").json()["official_run_matrix"]
-    assert [r["alpha"] for r in matrix if r["condition"] == "C"] == [None] * 4
+    assert [r["alpha"] for r in matrix if r["condition"] == "C"] == [None]
 
 
 def _c_test_run(monkeypatch, official, tmp_path=None, **overrides):
@@ -187,7 +186,16 @@ def test_create_run_refuses_c_test_run_v2_or_unlisted_alpha(monkeypatch):
 
 
 def test_create_run_allows_official_c_alpha_and_dev_runs(monkeypatch):
-    resp, started = _c_test_run(monkeypatch, _SELECTED, alpha=0.0)
+    resp, started = _c_test_run(monkeypatch, _SELECTED, alpha=0.25)
     assert resp.status_code == 200 and len(started) == 1
     resp, started = _c_test_run(monkeypatch, _PENDING, sample_split="dev", c_retrieval_version="v2", alpha=None)
+    assert resp.status_code == 200 and len(started) == 1
+
+
+def test_create_run_refuses_legacy_cells_without_the_flag(monkeypatch):
+    resp, started = _c_test_run(monkeypatch, _SELECTED, alpha=0.0)  # alpha_ablation
+    assert resp.status_code == 400 and "legacy" in resp.json()["detail"] and not started
+    resp, started = _c_test_run(monkeypatch, _SELECTED, alpha=0.25, require_grounding=False)  # C-primary-plain
+    assert resp.status_code == 400 and "legacy" in resp.json()["detail"] and not started
+    resp, started = _c_test_run(monkeypatch, _SELECTED, alpha=0.0, allow_legacy_cells=True)
     assert resp.status_code == 200 and len(started) == 1

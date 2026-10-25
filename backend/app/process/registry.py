@@ -339,7 +339,7 @@ PARAMETERS: tuple[Param, ...] = (
     P("cond.generation_model", "Generation model", "conditions", Src("cli_default", C, "--model"), "",
       (A, B, C, D), spec=Quote(DEC, "same generation model (`gpt-4o-mini`)"), set_by="amendment-4"),
     P("cond.c_retrieval_version", "C retrieval version (code default)", "conditions",
-      Src("const", C, "C_RETRIEVAL_VERSION"), "", (C,), rationale=Quote(C, '"v2" (C_RETRIEVAL_VERSION saat ini)'),
+      Src("const", C, "C_RETRIEVAL_VERSION"), "", (C,), rationale=Quote(C, '"v3" (C_RETRIEVAL_VERSION saat ini)'),
       note="v3 (alpha ranking) is selected per run with --c-retrieval-version v3; stage 1 ran with v3."),
     P("cond.d_retrieval_version", "D retrieval version", "conditions", Src("const", D, "D_RETRIEVAL_VERSION"), "",
       (D,)),

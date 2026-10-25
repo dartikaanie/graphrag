@@ -80,13 +80,13 @@ function ArchiveBadge() {
 }
 
 function runName(r: ReportRun) {
-  return `${r.label} · ${r.condition}${r.grounding === null ? '' : r.grounding ? ' grounded' : ' plain'}${r.alpha === null ? '' : ` α=${r.alpha}`}`
+  return `${r.label} · ${r.condition}${r.grounding === null ? '' : r.grounding ? ' grounded' : ' plain (legacy)'}${r.alpha === null ? '' : ` α=${r.alpha}`}`
 }
 
 function Three({ t }: { t: ThreeNumbers }) {
   return (
     <span className="whitespace-nowrap">
-      {pct(t.rate_excl_abstain)} <span className="text-text-muted">· {pct(t.abstain_rate)} · {pct(t.rate_all_answers)}</span>
+      {pct(t.rate_excl_abstain)} <span className="text-text-muted">· {pct(t.abstain_rate)} · {pct(t.rate_abstain_as_failed)}</span>
     </span>
   )
 }
@@ -316,29 +316,32 @@ function ReportBody({ data, mock }: { data: Report; mock: boolean }) {
       </Section>
 
       <Section id="comparisons" title="h. Comparisons" note="Rule (e): consistent only if the panel and DeepSeek-only differences (rate excl. ABSTAIN) have the same sign; otherwise inconclusive.">
-        <Table head={['Comparison', 'Panel', 'DeepSeek', 'Llama', 'Qwen3-235B', 'Flag']}>
+        <Table head={['Comparison', 'Panel', 'DeepSeek', 'Llama', 'Qwen3-235B', 'Flag', 'C better / equal / worse', 'same, ABSTAIN = failed']}>
           {data.comparisons.map((cmp) => (
             <tr key={cmp.comparison} className="border-b border-border last:border-b-0">
-              <td className={td}>{cmp.comparison}</td>
+              <td className={td}>{cmp.name ? `${cmp.name} (${cmp.comparison})` : cmp.comparison}</td>
               <td className={td}>{cmp.available ? num(cmp.difference_panel, 4) : '—'}</td>
               {JUDGES.map((j) => <td key={j} className={td}>{cmp.available ? num(cmp.difference_by_judge?.[j], 4) : '—'}</td>)}
               <td className={td}>
                 {cmp.available ? <Badge tone={cmp.flag === 'consistent' ? 'success' : 'warning'}>{cmp.flag}</Badge> : <span className="text-text-muted">not available</span>}
               </td>
+              <td className={td}>{cmp.paired ? `${cmp.paired.primary_excl_abstain.c_better} / ${cmp.paired.primary_excl_abstain.equal} / ${cmp.paired.primary_excl_abstain.c_worse}` : '—'}</td>
+              <td className={td}>{cmp.paired ? `${cmp.paired.abstain_as_failed.c_better} / ${cmp.paired.abstain_as_failed.equal} / ${cmp.paired.abstain_as_failed.c_worse}` : '—'}</td>
             </tr>
           ))}
         </Table>
       </Section>
 
       <Section id="reliability" title="i. Judge reliability">
-        <Table head={['Run', "Fleiss' kappa (3 categories, complete items)", 'n complete', "Krippendorff's alpha (nominal)"]}>
-          {runs.length === 0 && <EmptyRow cols={4} text={NO_RUNS} />}
+        <Table head={['Run', "Fleiss' kappa (3 categories, complete items)", 'n complete', "Krippendorff's alpha (nominal)", 'all 3 judges same label']}>
+          {runs.length === 0 && <EmptyRow cols={5} text={NO_RUNS} />}
           {runs.map((r) => (
             <tr key={r.run_id} className="border-b border-border last:border-b-0">
               <td className={td}>{runName(r)}</td>
               <td className={td}>{num(r.reliability.fleiss_kappa_3cat)}</td>
               <td className={td}>{r.reliability.n_complete}</td>
               <td className={td}>{num(r.reliability.krippendorff_alpha_nominal)}</td>
+              <td className={td}>{pct(r.reliability.all_three_judges_same?.same_label ?? null)}</td>
             </tr>
           ))}
         </Table>

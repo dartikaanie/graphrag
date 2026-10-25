@@ -1,8 +1,8 @@
 """
 cost_projection.py
 ==================
-Cost projection for alpha stage 2 and the official runs (Amendment 14 draft,
-plan steps 6c / 7b), from ACTUAL per-call token counts in stored outputs:
+Cost projection for alpha stage 2 and the four official runs (Amendments 14 and 16: A, B-grounded,
+C-primary-grounded, D-grounded), from ACTUAL per-call token counts in stored outputs:
 
   generation (OpenAI gpt-4o-mini): mean prompt / completion tokens per answer
     of the archived dev runs of the same condition and grounding (full input
@@ -53,8 +53,10 @@ JUDGE_BASIS = {
 JUDGE_LABEL = {("A", None): "A [dev]", False: "B-plain [dev]", True: "B-grounded [dev]"}
 
 STAGE2_RUNS = [("S2-a0.25-on", "C", True), ("S2-a0.25-off", "C", False), ("S2-a0-on", "C", True), ("S2-a0-off", "C", False)]
-OFFICIAL_STAGE1 = [("R1", "A", None), ("R3", "B", True), ("R5", "C", True), ("R7", "C", True), ("R9", "D", True)]
-OFFICIAL_STAGE2 = [("R2", "B", False), ("R4", "C", False), ("R6", "C", False), ("R8", "D", False)]
+# Amendment 16: the four official runs (cell ids of llm/official_run_matrix.py)
+OFFICIAL_RUNS = [("R1", "A", None), ("R3", "B", True), ("R5", "C", True), ("R9", "D", True)]
+# the five LEGACY cells, projected only for reference (no official run uses them)
+LEGACY_RUNS = [("R2", "B", False), ("R4", "C", False), ("R6", "C", False), ("R7", "C", True), ("R8", "D", False)]
 
 
 def _read(rel: str) -> list[dict]:
@@ -125,9 +127,19 @@ def build() -> dict:
         "basis": {"generation": {f"{c}|{g}": v for (c, g), v in gen.items()},
                   "judging": {f"{j}|{k}": v for (j, k), v in jt.items()}},
         "alpha_stage2": project(STAGE2_RUNS, N_DEV, gen, jt),
-        "official_stage1": project(OFFICIAL_STAGE1, N_TEST, gen, jt),
-        "official_stage2": project(OFFICIAL_STAGE2, N_TEST, gen, jt),
+        "official": project(OFFICIAL_RUNS, N_TEST, gen, jt),
+        "legacy_cells_reference_only": project(LEGACY_RUNS, N_TEST, gen, jt),
+        "secondary_metrics": _secondary(),
     }
+
+
+def _secondary() -> dict:
+    """Context + answer relevance of the four official runs (one judge, Llama-3.3-70B; upper bound before dedup)."""
+    from secondary_metrics import project as plan
+
+    p = plan(N_TEST)
+    return {"calls": p["calls"], "total_calls": p["total_calls"], "estimated_usd": p["estimated_cost_usd"],
+            "with_buffer_usd": round(p["estimated_cost_usd"] * (1 + BUFFER), 3), "note": p["note"]}
 
 
 def markdown(p: dict) -> str:
@@ -136,8 +148,8 @@ def markdown(p: dict) -> str:
              "panel-v2 (Llama $0.10/$0.32, DeepSeek $0.26/$0.38, Qwen3-235B $0.09/$0.55). C and D are judged with the "
              "token means of B's records of the same grounding (no C/D judge-v2.3 records exist).", ""]
     for key, title in (("alpha_stage2", "Alpha stage 2 (4 x 50 dev answers)"),
-                       ("official_stage1", "Official stage 1: R1, R3, R5, R7, R9 (5 x 384)"),
-                       ("official_stage2", "Official stage 2: R2, R4, R6, R8 (4 x 384)")):
+                       ("official", "Official: R1 A, R3 B-grounded, R5 C-primary-grounded, R9 D-grounded (4 x 384)"),
+                       ("legacy_cells_reference_only", "Legacy cells, reference only (not run): R2, R4, R6, R7, R8 (5 x 384)")):
         s = p[key]
         lines += [f"## {title}", "", "| Run | n | Generation | Llama | DeepSeek | Qwen3-235B | Judging |", "|---|---|---|---|---|---|---|"]
         for r in s["runs"]:
@@ -149,6 +161,11 @@ def markdown(p: dict) -> str:
                   f"${s['judging_usd_per_judge']['deepseek']:.3f} | ${s['judging_usd_per_judge']['qwen3-235b']:.3f} | ${s['judging_usd']:.3f} |",
                   f"| **+10%** | | **${b['generation_usd']:.3f}** | ${b['judging_usd_per_judge']['llama']:.3f} | "
                   f"${b['judging_usd_per_judge']['deepseek']:.3f} | ${b['judging_usd_per_judge']['qwen3-235b']:.3f} | **${b['judging_usd']:.3f}** |", ""]
+    sm = p["secondary_metrics"]
+    lines += ["## Secondary metrics (context relevance B/C/D + answer relevance A-D, one judge Llama-3.3-70B)", "",
+              f"{sm['calls']['ctxrel']} context-relevance calls (upper bound before dedup) + {sm['calls']['ansrel']} "
+              f"answer-relevance calls = {sm['total_calls']} calls; estimated ${sm['estimated_usd']} "
+              f"(+10%: ${sm['with_buffer_usd']}). {sm['note']}.", ""]
     return "\n".join(lines)
 
 

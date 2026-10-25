@@ -66,16 +66,30 @@ def build() -> list[dict]:
     add("Alpha selection", "stage-1 alpha grid", list(v), s, "done", "Selection procedure; stage 1 of record: Amendment 9")
     v, s = const("llm/c_graphrag/stage2_report.py", "STAGE2_ALPHAS")
     add("Alpha selection", "stage-2 candidates", list(v), s, "candidate (stage 2 not run)", "Amendment 9 recheck")
-    add("Alpha selection", "alpha* (C-primary)", official["alpha_primary"], f"{OFFICIAL_PARAMS}#alpha_primary",
+    add("Alpha selection", "alpha* (C-primary; the only alpha of the official runs)", official["alpha_primary"], f"{OFFICIAL_PARAMS}#alpha_primary",
         official["status"], "set by stage2_report.py (Amendment 10)")
-    add("Alpha selection", "alpha_abl (C-ablation)", official["alpha_ablation"], f"{OFFICIAL_PARAMS}#alpha_ablation",
-        official["status"], "the other stage-2 candidate (Amendment 10)")
+    add("Alpha selection", "alpha_abl (second stage-2 candidate)", official["alpha_ablation"],
+        f"{OFFICIAL_PARAMS}#alpha_ablation", official["status"],
+        "stage 2 still produces it (Amendment 10); NO official run uses it since Amendment 16 (legacy cell R6/R7)")
     v, s = const("llm/c_graphrag/ctxrel_sweep.py", "STAGE2_ANSWER_COUNT_TIE_MARGIN")
     add("Alpha selection", "stage-2 tie margin (answers)", v, s, "frozen",
         "Selection procedure; tie-breaks: secondary criterion, then larger alpha")
     add("Alpha selection", "stage-2 metric", "binary hallucination rate excl. ABSTAIN, pooled over grounding on/off, "
         "PANEL label (Amendment 14 draft (g))", _line_of("llm/c_graphrag/stage2_report.py", "def stage2_metrics"),
         "frozen (Amendment 14 draft)", "Amendment 4 binary metric")
+
+    # --- run matrix (Amendment 16) ---
+    rm = "llm/official_run_matrix.py"
+    add("Run matrix", "official runs (thesis R1-R4 = cell id)", {t: [r["run"], r["label"]] for r in orm.build_matrix(official)
+                                                              for t in [r["thesis_run"]]},
+        _line_of(rm, "OFFICIAL_CELLS ="), "frozen (Amendment 16)",
+        "A, B-grounded, C-primary-grounded, D-grounded; grounding + citation instructions ON for B, C, D")
+    add("Run matrix", "legacy cells (refused on the test sample without --allow-legacy-cells)",
+        [r["label"] for r in orm.build_matrix(official, include_legacy=True) if r["legacy"]], _line_of(rm, "LEGACY_FLAG ="),
+        "frozen (Amendment 16)", "plain and C-ablation cells of Amendment 10; kept reproducible, never started by default")
+    add("Run matrix", "pre-registered comparisons", ["C vs A (R5 vs R1)", "C vs B (R5 vs R3)", "C vs D (R5 vs R9)"],
+        _line_of("llm/evaluation/official_report.py", "COMPARISONS ="), "frozen (Amendment 16)",
+        "hallucination rate, panel label, ABSTAIN excluded")
 
     # --- trust score ---
     tf = "01_data_cleaning/trust_formulas.py"
@@ -119,7 +133,14 @@ def build() -> list[dict]:
     add("Retrieval (B, C, D)", "D n_low_level / n_high_level", [orm.N_LOW_LEVEL, orm.N_HIGH_LEVEL],
         _line_of("llm/official_run_matrix.py", "N_LOW_LEVEL ="))
     v, s = const("llm/d_lightrag/d_lightrag.py", "D_RETRIEVAL_VERSION")
-    add("Retrieval (B, C, D)", "D retrieval version", v, s)
+    add("Retrieval (B, C, D)", "D retrieval version (official)", v, s, "frozen (Amendment 16)",
+        "v4: one score on both levels = cosine(query, owner Question); v3 (edge-weight scores) stays reproducible")
+    add("Retrieval (B, C, D)", "D retrieval version pinned in the run matrix", orm.D_RETRIEVAL_VERSION,
+        _line_of("llm/official_run_matrix.py", "D_RETRIEVAL_VERSION ="), "frozen (Amendment 16)",
+        "test_d_retrieval_v4 checks it equals d_lightrag.D_RETRIEVAL_VERSION")
+    v, s = const("llm/d_lightrag/d_lightrag.py", "HIGH_LEVEL_CANDIDATE_CAP")
+    add("Retrieval (B, C, D)", "D v4 cap on neighbour Questions scored per query", v, s, "frozen (Amendment 16)",
+        "smallest question ids kept when exceeded; recorded as high_level_cap_hit")
     v, s = const(cg, "EMBED_DIM")
     add("Retrieval (B, C, D)", "embedding model", f"all-MiniLM-L6-v2 ({v}-dim)", _line_of(cg, '"all-MiniLM-L6-v2"'))
 
@@ -181,6 +202,13 @@ def build() -> list[dict]:
             _line_of("llm/evaluation/judge_panel_config.py", f'"{j.model}"'), "frozen (Amendment 14 draft)")
     add("Judge", "aggregation", "2-of-3 majority (judge_panel_aggregate.aggregate_labels)",
         _line_of("llm/evaluation/judge_panel_aggregate.py", "def aggregate_labels"), "frozen (Amendment 14 draft)")
+    # --- secondary metrics (Amendment 16) ---
+    sm = "llm/evaluation/secondary_metrics.py"
+    add("Secondary metrics", "judge (one, not the panel)", "primary = meta-llama/Llama-3.3-70B-Instruct, temperature 0.0",
+        _line_of(sm, "JUDGE_ID ="), "frozen (Amendment 16)", "context relevance B/C/D, answer relevance A-D; secondary only")
+    for label, name in (("context-relevance prompt", "CTXREL_PROMPT"), ("answer-relevance prompt", "ANSREL_PROMPT")):
+        v, s = const(sm, name)
+        add("Secondary metrics", label, v, s, "frozen (Amendment 16)")
     return out
 
 
@@ -197,7 +225,8 @@ def render(table: list[dict]) -> tuple[str, dict]:
     lines = ["# Frozen parameters of the official evaluation", "",
              "Generated by `llm/frozen_parameters.py` from the files that define each value (do not edit by hand). "
              f"Parameter-table hash: `{config_hash}`. Status \"frozen (Amendment 14 draft)\" becomes binding when "
-             "Amendment 14 is approved; alpha\\* and alpha_abl are filled in by stage 2.", ""]
+             "Amendment 14 is approved; \"frozen (Amendment 16)\" is the four-run design. alpha\\* is filled in by stage 2 "
+             "(the second candidate alpha_abl is used by no official run).", ""]
     group = None
     for r in table:
         if r["group"] != group:

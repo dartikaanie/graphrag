@@ -183,9 +183,16 @@ def expected_generation_config(status: str, condition: str) -> dict:
            "n_sample": orm.N_SAMPLE if status == STATUS_OFFICIAL else 50}
     if condition in ("B", "C", "D"):
         exp.update(top_k=orm.TOP_K, leakage=orm.LEAKAGE_MODE)
+    if status == STATUS_OFFICIAL and condition in ("B", "C", "D"):
+        exp.update(require_grounding=True)  # Amendment 16: the four official runs are grounded; plain cells are legacy
+    if condition == "B" and status == STATUS_OFFICIAL:
+        exp.update(require_citation=True)
     if condition == "C":
         exp.update(c_retrieval_version="v3", n_anchor=orm.N_ANCHOR, n_semantic_expansion=orm.N_SEMANTIC_EXPANSION,
                    expansion_require_answer=True, fusion_mode="trust_weighted")
+    if condition == "D":
+        exp.update(d_retrieval_version=orm.D_RETRIEVAL_VERSION, n_low_level=orm.N_LOW_LEVEL,
+                   n_high_level=orm.N_HIGH_LEVEL)
     return exp
 
 
@@ -206,6 +213,12 @@ def generation_entry(run_file, status: str) -> dict:
     wrong = {k: (cfg.get(k, defaults.get(k)), v) for k, v in exp.items() if cfg.get(k, defaults.get(k)) != v}
     if cond == "B" and not str(cfg.get("corpus", "")).startswith("kg_answers"):
         wrong["corpus"] = (cfg.get("corpus"), "kg_answers_*")
+    if status == STATUS_OFFICIAL and cond == "C":  # the one alpha of the official runs (Amendment 16)
+        from llm.c_graphrag.official_params import load_official_params
+        official = load_official_params() or {}
+        if official.get("status") != "selected" or cfg.get("alpha") != official.get("alpha_primary"):
+            wrong["alpha"] = (cfg.get("alpha"), f"alpha_primary of a 'selected' official_params.json "
+                                                f"({official.get('status')}, {official.get('alpha_primary')})")
     if status == STATUS_DEV_STAGE2 and (cond != "C" or cfg.get("alpha") not in (0.25, 0.0)):
         wrong["condition/alpha"] = ((cond, cfg.get("alpha")), "C with alpha 0.25 or 0")
     if wrong:

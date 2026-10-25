@@ -1,11 +1,16 @@
-"""The official run matrix R1-R9 on the test sample (n = 384).
+"""The official run matrix on the test sample (n = 384): FOUR runs.
 
-docs/DECISION_C_SCORING.md (Amendment 10) and docs/OFFICIAL_RUN_MATRIX.md:
+docs/DECISION_C_SCORING.md (Amendment 16) and docs/OFFICIAL_RUN_MATRIX.md. Thesis run -> cell id:
 
-    R1 A            R2 B-plain        R3 B-grounded
-    R4 C-primary-plain     R5 C-primary-grounded     (alpha_primary  = alpha*)
-    R6 C-ablation-plain    R7 C-ablation-grounded    (alpha_ablation = the other stage-2 candidate)
-    R8 D-plain      R9 D-grounded
+    thesis R1 = cell R1  A (plain LLM)
+    thesis R2 = cell R3  B-grounded
+    thesis R3 = cell R5  C-primary-grounded   (alpha_primary = alpha*)
+    thesis R4 = cell R9  D-grounded
+
+Grounding and citation instructions are ON for B, C and D. The other five cells (R2 B-plain, R4 C-primary-plain,
+R6/R7 C-ablation, R8 D-plain) are LEGACY: still defined (Amendment 10 history stays reproducible) but refused on the
+test sample unless --allow-legacy-cells (CLI) / allow_legacy_cells (API) is passed explicitly; see
+legacy_cell_error(). build_matrix() returns the four official cells unless include_legacy=True.
 
 C's alphas come from llm/c_graphrag/official_params.json only; while it is
 pending they are None and the CLI strings carry a placeholder. Every C cell
@@ -34,6 +39,7 @@ N_ANCHOR = 3
 N_SEMANTIC_EXPANSION = 3
 N_LOW_LEVEL = 3
 N_HIGH_LEVEL = 3
+D_RETRIEVAL_VERSION = "v4"  # Amendment 16: one cosine score on both levels (must equal d_lightrag.D_RETRIEVAL_VERSION)
 LEAKAGE_MODE = "thread"  # Amendment 15: q + its thread only (supersedes Amendment 8's "dup+neardup0.95")
 
 _COMMON_ARGS = ["--n-sample", str(N_SAMPLE), "--seed", str(SEED), "--oversample-pool", str(OVERSAMPLE_POOL),
@@ -50,6 +56,42 @@ CELLS = (
     ("R8", "D-plain", "D", False, None),
     ("R9", "D-grounded", "D", True, None),
 )
+
+# The four official cells -> the run number the thesis uses (Bab III, Tabel matriks run).
+OFFICIAL_CELLS = {"R1": "R1", "R3": "R2", "R5": "R3", "R9": "R4"}
+LEGACY_FLAG = "--allow-legacy-cells"
+
+
+def is_legacy_cell(run: str) -> bool:
+    return run not in OFFICIAL_CELLS
+
+
+def add_legacy_argument(parser) -> None:
+    """--allow-legacy-cells for the B, C and D CLIs (see legacy_cell_error)."""
+    parser.add_argument("--allow-legacy-cells", action="store_true", default=False,
+                        help="Allow a test-sample run of a LEGACY matrix cell (plain, C-ablation). Without it such "
+                             "a run is refused (Amendment 16: the official evaluation has four runs).")
+
+
+def legacy_cell_error(condition: str, *, sample_split: str = "test", require_citation: bool | None = True,
+                      require_grounding: bool | None = None, c_role: str | None = None,
+                      allow_legacy: bool = False) -> str | None:
+    """Reason a test-sample run is a LEGACY cell (and so refused), or None when it may start. Official cells:
+    A; B with citation AND grounding; C at alpha_primary with grounding; D with grounding. Dev runs and
+    allow_legacy=True are never refused."""
+    if allow_legacy or sample_split != "test" or condition == "A":
+        return None
+    why = None
+    if condition == "B" and not (require_citation and require_grounding):
+        why = "B without citation+grounding (B-plain / plain RAG)"
+    elif condition in ("C", "D") and not require_grounding:
+        why = f"{condition} without grounding ({condition}-plain)"
+    elif condition == "C" and c_role == ROLE_ABLATION:
+        why = "C-ablation (alpha_ablation)"
+    if why is None:
+        return None
+    return (f"{why} is a legacy cell: the official evaluation has four runs (A, B-grounded, C-primary-grounded, "
+            f"D-grounded). Pass {LEGACY_FLAG} (API: allow_legacy_cells=true) to run it deliberately.")
 
 SCRIPTS = {
     "A": ("llm/a_pure_llm", "a_baseline_replication.py"),
@@ -71,12 +113,16 @@ def _alpha_value(official: dict | None, role: str):
     return official[_ALPHA_KEY[role]]
 
 
-def build_matrix(official: dict | None) -> list[dict]:
-    """One dict per run: run, label, condition, grounding (None for A),
+def build_matrix(official: dict | None, include_legacy: bool = False) -> list[dict]:
+    """One dict per run: run (cell id), thesis_run, legacy, label, condition, grounding (None for A),
     role (C only), alpha (C only; None while pending), cwd, script, argv
-    (CLI arguments after the script), dashboard (RunCreateRequest fields)."""
+    (CLI arguments after the script), dashboard (RunCreateRequest fields). The four official cells only,
+    unless include_legacy=True; legacy rows carry --allow-legacy-cells / allow_legacy_cells."""
     rows = []
     for run, label, condition, grounding, role in CELLS:
+        legacy = is_legacy_cell(run)
+        if legacy and not include_legacy:
+            continue
         cwd, script = SCRIPTS[condition]
         argv = list(_COMMON_ARGS)
         dashboard = {"condition": condition, "mode": "batch", "provider": PROVIDER, "model": MODEL,
@@ -104,10 +150,13 @@ def build_matrix(official: dict | None) -> list[dict]:
         elif condition == "D":
             argv += ["--top-k", str(TOP_K), "--token-chunk-limit", str(TOKEN_CHUNK_LIMIT),
                      "--n-low-level", str(N_LOW_LEVEL), "--n-high-level", str(N_HIGH_LEVEL),
-                     _grounding_flag(grounding), "--leakage-mode", LEAKAGE_MODE]
+                     "--d-retrieval-version", D_RETRIEVAL_VERSION, _grounding_flag(grounding), "--leakage-mode", LEAKAGE_MODE]
             dashboard.update(top_k=TOP_K, n_low_level=N_LOW_LEVEL, n_high_level=N_HIGH_LEVEL,
                              require_grounding=grounding)
-        rows.append({"run": run, "label": label, "condition": condition, "grounding": grounding, "role": role,
+        if legacy:
+            argv.append(LEGACY_FLAG)
+            dashboard["allow_legacy_cells"] = True
+        rows.append({"run": run, "thesis_run": OFFICIAL_CELLS.get(run), "legacy": legacy, "label": label, "condition": condition, "grounding": grounding, "role": role,
                      "alpha": alpha, "cwd": cwd, "script": script, "argv": argv, "dashboard": dashboard})
     return rows
 

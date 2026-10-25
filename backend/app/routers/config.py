@@ -118,7 +118,7 @@ def get_defaults():
         "c_retrieval_version": C_RETRIEVAL_VERSION,
         "d_retrieval_version": D_RETRIEVAL_VERSION,
         "official_c_params": _official_c_params(),
-        # R1-R9 on the test sample (llm/official_run_matrix.py; C alphas null while pending)
+        # the four official runs on the test sample (llm/official_run_matrix.py, Amendment 16; C alpha null while pending)
         "official_run_matrix": build_matrix(_official_c_params()),
     }
 

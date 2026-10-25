@@ -73,8 +73,9 @@ interface DParams {
 }
 
 /**
- * The factorial design: retrieval method x grounding (on/off), minus A
- * (which has no grounding axis) -- 1 + 2 + 2 + 2 + 2 = 9 runs. The two C
+ * The official design (Amendment 16) is FOUR runs: A, B-grounded, C-primary-grounded, D-grounded. The legacy
+ * 9-cell factorial (retrieval method x grounding on/off, 1 + 2 + 2 + 2 + 2) is built only when "include legacy
+ * cells" is ticked, and its legacy cells are sent with allow_legacy_cells. The two C
  * methods depend on c_retrieval_version:
  *   - v3 (the official matrix, docs/OFFICIAL_RUN_MATRIX.md, Amendment 10):
  *     C-primary at alphaPrimary and C-ablation at alphaAblation, both with
@@ -89,7 +90,7 @@ interface DParams {
  * EXPERIMENTAL FACTOR, not a form field, so it's fixed per-run below, not
  * taken from CParams. See docs/Agent prompt grounding factor ui.md.
  */
-function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DParams, versions: { c_retrieval_version?: string; d_retrieval_version?: string }): FactorialRunConfig[] {
+function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DParams, versions: { c_retrieval_version?: string; d_retrieval_version?: string }, includeLegacy: boolean): FactorialRunConfig[] {
   const base = {
     mode: 'batch' as const,
     provider: shared.provider,
@@ -125,12 +126,20 @@ function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DPa
     runLabel, condition: 'C', fusionMode, grounding, retrievalVersion: versions.c_retrieval_version,
     params: { condition: 'C', ...base, ...cShared, fusion_mode: fusionMode, alpha, require_grounding: grounding },
   })
+  // Amendment 16: the official evaluation has FOUR runs (A, B-grounded, C-primary-grounded, D-grounded). Every
+  // other cell is legacy: only built when includeLegacy is ticked, and then sent with allow_legacy_cells.
+  const legacy = { allow_legacy_cells: true }
+  includeLegacy = includeLegacy || cParams.cRetrievalVersion !== 'v3' // v2 is a pilot-only method: all cells legacy
   const cRuns: FactorialRunConfig[] = cParams.cRetrievalVersion === 'v3'
     ? [
-        cCell('C-primary-plain', 'trust_weighted', false, cParams.alphaPrimary),
         cCell('C-primary-grounded', 'trust_weighted', true, cParams.alphaPrimary),
-        cCell('C-ablation-plain', 'trust_weighted', false, cParams.alphaAblation),
-        cCell('C-ablation-grounded', 'trust_weighted', true, cParams.alphaAblation),
+        ...(includeLegacy
+          ? [
+              cCell('C-primary-plain', 'trust_weighted', false, cParams.alphaPrimary),
+              cCell('C-ablation-plain', 'trust_weighted', false, cParams.alphaAblation),
+              cCell('C-ablation-grounded', 'trust_weighted', true, cParams.alphaAblation),
+            ]
+          : []),
       ]
     : [
         cCell('C-uniform-plain', 'uniform', false),
@@ -139,26 +148,34 @@ function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DPa
         cCell('C-trust-grounded', 'trust_weighted', true),
       ]
 
-  return [
+  const official: FactorialRunConfig[] = [
     { runLabel: 'A', condition: 'A', params: { condition: 'A', ...base } },
-    {
-      runLabel: 'B-plain', condition: 'B', grounding: false, requireCitation: true,
-      params: { condition: 'B', ...base, top_k: shared.topK, require_citation: true, require_grounding: false },
-    },
     {
       runLabel: 'B-grounded', condition: 'B', grounding: true, requireCitation: true,
       params: { condition: 'B', ...base, top_k: shared.topK, require_citation: true, require_grounding: true },
     },
     ...cRuns,
     {
-      runLabel: 'D-plain', condition: 'D', grounding: false, retrievalVersion: versions.d_retrieval_version,
-      params: { condition: 'D', ...base, ...dShared, require_grounding: false },
-    },
-    {
       runLabel: 'D-grounded', condition: 'D', grounding: true, retrievalVersion: versions.d_retrieval_version,
       params: { condition: 'D', ...base, ...dShared, require_grounding: true },
     },
   ]
+  if (!includeLegacy) return official
+
+  const legacyCells: FactorialRunConfig[] = [
+    {
+      runLabel: 'B-plain', condition: 'B', grounding: false, requireCitation: true,
+      params: { condition: 'B', ...base, top_k: shared.topK, require_citation: true, require_grounding: false },
+    },
+    {
+      runLabel: 'D-plain', condition: 'D', grounding: false, retrievalVersion: versions.d_retrieval_version,
+      params: { condition: 'D', ...base, ...dShared, require_grounding: false },
+    },
+  ]
+  const legacyLabels = new Set(['B-plain', 'D-plain', 'C-primary-plain', 'C-ablation-plain', 'C-ablation-grounded',
+    'C-uniform-plain', 'C-uniform-grounded', 'C-trust-plain', 'C-trust-grounded'])
+  return [...official, ...legacyCells].map((r) =>
+    legacyLabels.has(r.runLabel) ? { ...r, params: { ...r.params, ...legacy } } : r)
 }
 
 export function FactorialBatchPage() {
@@ -169,6 +186,8 @@ export function FactorialBatchPage() {
   const defaultOversamplePool = defaults?.default_oversample_pool ?? 1536
 
   const [preset, setPreset] = useState<'pilot' | 'dev' | 'official' | 'custom'>('pilot')
+  // Amendment 16: legacy matrix cells (plain, C-ablation) are off unless ticked; the official preset clears it
+  const [includeLegacy, setIncludeLegacy] = useState(false)
   const [provider, setProvider] = useState('openai')
   const [model, setModel] = useState('gpt-4o-mini')
   const [nSample, setNSample] = useState(10)
@@ -176,7 +195,7 @@ export function FactorialBatchPage() {
   const [oversamplePool, setOversamplePool] = useState('')
   const [topK, setTopK] = useState(5)
 
-  // Condition C parameters -- identical across all 4 C runs (both fusion
+  // Condition C parameters -- identical across every C run (both fusion
   // modes x both grounding settings). Pre-filled with the values used in
   // the existing runs (path=0.7/intrinsic=0.3, n_anchor=3,
   // n_semantic_expansion=3, semantic expansion on).
@@ -239,6 +258,7 @@ export function FactorialBatchPage() {
     } else {
       setNSample(384)
       setSampleSplit('test')
+      setIncludeLegacy(false)
       applyOfficialLock(defaults?.official_c_params)
     }
   }
@@ -297,12 +317,14 @@ export function FactorialBatchPage() {
         },
         { nLowLevel, nHighLevel },
         { c_retrieval_version: cRetrievalVersion === 'v3' ? 'v3' : defaults?.c_retrieval_version, d_retrieval_version: defaults?.d_retrieval_version },
+        includeLegacy,
       ),
     [
       provider, model, nSample, seed, effectiveOversamplePool, topK,
       nAnchor, nSemanticExpansion, fusionWPathTrust, fusionWIntrinsic, semanticExpansionTrustCap, enableSemanticExpansion,
       cRetrievalVersion, alphaPrimary, alphaAblation, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly,
       nLowLevel, nHighLevel, defaults,
+      includeLegacy,
     ],
   )
 
@@ -369,7 +391,7 @@ export function FactorialBatchPage() {
   return (
     <div className="max-w-5xl">
       <p className="text-sm text-text-secondary mb-4">
-        Fires all 9 runs (A + 4 retrieval methods × grounding on/off) with IDENTICAL shared parameters. Build the
+        Fires the 4 official runs (A, B-grounded, C-primary-grounded, D-grounded; 9 with “include legacy cells”) with IDENTICAL shared parameters. Build the
         dry-run preview first — nothing launches until you confirm.
       </p>
 
@@ -398,6 +420,11 @@ export function FactorialBatchPage() {
         >
           Custom
         </button>
+        <label className="flex items-center gap-1.5 text-sm text-text-secondary self-center">
+          <input type="checkbox" checked={includeLegacy} disabled={preset === 'official'}
+            onChange={(e) => setIncludeLegacy(e.target.checked)} />
+          include legacy cells (plain, C-ablation)
+        </label>
         {sampleSplit === 'dev' && (
           <span className="px-2 py-1 text-xs rounded-md bg-white border border-warning/40 text-warning self-center">dev split</span>
         )}
@@ -433,7 +460,7 @@ export function FactorialBatchPage() {
         <p className="text-xs text-text-secondary mb-3">
           Fusion mode: runs both <span className="font-medium">uniform</span> and{' '}
           <span className="font-medium">trust_weighted</span> as an experimental factor — no selector here, both
-          are launched. These parameters apply identically to all 4 C runs.
+          are launched. These parameters apply identically to every C run.
         </p>
         <div className="grid grid-cols-3 gap-4">
           <Field label="n_anchor" glossaryKey="n_anchor">
@@ -582,7 +609,7 @@ export function FactorialBatchPage() {
 
       {showDryRun && (
         <div className="border border-border rounded-lg bg-surface p-4 mb-4 overflow-x-auto">
-          <h2 className="text-sm font-semibold text-text-primary mb-1">Dry-run — 9 runs, shared params confirmed identical</h2>
+          <h2 className="text-sm font-semibold text-text-primary mb-1">Dry-run — {runs.length} runs, shared params confirmed identical</h2>
           <p className="text-xs text-text-secondary mb-3">
             prompt_version: <span className="font-medium">{defaults?.prompt_version ?? '—'}</span> · C retrieval_version:{' '}
             <span className="font-medium">{defaults?.c_retrieval_version ?? '—'}</span> · D retrieval_version:{' '}

@@ -872,7 +872,15 @@ def main():
     from llm.sample_split import add_split_arguments
     add_split_arguments(parser)
     add_leakage_arguments(parser)
+    from llm.official_run_matrix import add_legacy_argument
+    add_legacy_argument(parser)
     args = parser.parse_args()
+    from llm.official_run_matrix import legacy_cell_error
+    _legacy = legacy_cell_error("B", sample_split=args.sample_split, require_citation=args.require_citation,
+                                require_grounding=args.require_grounding, allow_legacy=args.allow_legacy_cells)
+    if _legacy:
+        print(f"[ERROR] {_legacy}")
+        sys.exit(2)
     leakage_mode = leakage_mode_from_args(args)
     dev_tag = "" if args.sample_split == "test" else f" [{args.sample_split}]"
 

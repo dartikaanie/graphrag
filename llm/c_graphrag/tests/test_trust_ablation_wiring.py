@@ -7,7 +7,8 @@ import pytest
 
 import c_graphrag as cg
 import stage2_report as s2
-from llm.c_graphrag.official_params import ROLE_ABLATION, ROLE_PRIMARY, check_c_test_run, role_for_alpha
+from llm.c_graphrag.official_params import (ROLE_ABLATION, ROLE_PRIMARY, OfficialParamsError, check_c_test_run,
+                                           role_for_alpha)
 from llm.manifest import compute_config_hash, write_manifest
 from llm.official_run_matrix import LEAKAGE_MODE, build_matrix
 
@@ -29,8 +30,10 @@ def test_roles_follow_the_stage2_winner(winner):
     locked = dict(c_retrieval_version="v3", max_hops=2, edge_types=tuple(official["edge_types"]),
                   use_author_trust=False, accepted_only=False)
     assert check_c_test_run(official, alpha=winner, **locked) == ROLE_PRIMARY
-    assert check_c_test_run(official, alpha=other, **locked) == ROLE_ABLATION
-    roles = {(r["role"], r["alpha"]) for r in build_matrix(official) if r["condition"] == "C"}
+    with pytest.raises(OfficialParamsError, match="legacy"):  # Amendment 16: the ablation alpha is a legacy cell
+        check_c_test_run(official, alpha=other, **locked)
+    assert check_c_test_run(official, alpha=other, allow_legacy=True, **locked) == ROLE_ABLATION
+    roles = {(r["role"], r["alpha"]) for r in build_matrix(official, include_legacy=True) if r["condition"] == "C"}
     assert roles == {(ROLE_PRIMARY, winner), (ROLE_ABLATION, other)}
 
 
@@ -41,9 +44,13 @@ def test_draft_refuses_a_winner_outside_the_candidates():
 
 @pytest.mark.parametrize("grounding", (True, False))
 def test_matrix_c_primary_and_ablation_differ_only_in_alpha(grounding):
-    rows = {r["role"]: r for r in build_matrix(_official_from_stage2(0.25))
+    rows = {r["role"]: r for r in build_matrix(_official_from_stage2(0.25), include_legacy=True)
             if r["condition"] == "C" and r["grounding"] is grounding}
     p, a = rows[ROLE_PRIMARY], rows[ROLE_ABLATION]
+    a = {**a, "argv": [x for x in a["argv"] if x != "--allow-legacy-cells"],
+         "dashboard": {k: v for k, v in a["dashboard"].items() if k != "allow_legacy_cells"}}
+    p = {**p, "argv": [x for x in p["argv"] if x != "--allow-legacy-cells"],
+         "dashboard": {k: v for k, v in p["dashboard"].items() if k != "allow_legacy_cells"}}
     i = p["argv"].index("--alpha")
     assert p["argv"][:i + 1] + p["argv"][i + 2:] == a["argv"][:i + 1] + a["argv"][i + 2:]
     assert (p["argv"][i + 1], a["argv"][i + 1]) == ("0.25", "0")

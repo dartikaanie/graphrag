@@ -92,7 +92,12 @@ STAGE2_CFG = {"condition": "C", "provider": "openai", "model": "gpt-4o-mini", "s
               "fusion_mode": "trust_weighted", "alpha": 0.25, "require_grounding": True}
 
 
-def test_generation_entry_checks_the_frozen_config(tmp_path, reg_path):
+def test_generation_entry_checks_the_frozen_config(tmp_path, reg_path, monkeypatch):
+    import llm.c_graphrag.official_params as op
+
+    # an official C run must carry alpha_primary of a SELECTED official_params.json (Amendment 16: one alpha)
+    monkeypatch.setattr(op, "load_official_params", lambda *a, **k: {"status": "selected", "alpha_primary": 0.25,
+                                                                      "alpha_ablation": 0.0})
     e = rr.generation_entry(_gen_file(tmp_path, STAGE2_CFG, 50), "dev-stage2")
     assert e["status"] == "dev-stage2" and e["alpha"] == 0.25 and e["n"] == 50
     assert e["cost_usd"] == pytest.approx(50 * (1000 * 0.15 + 300 * 0.60) / 1e6)
@@ -105,6 +110,10 @@ def test_generation_entry_checks_the_frozen_config(tmp_path, reg_path):
         rr.generation_entry(_gen_file(tmp_path, STAGE2_CFG, 50), "official")
     official = {k: v for k, v in STAGE2_CFG.items() if k != "sample_split"} | {"n_sample": 384}
     assert rr.generation_entry(_gen_file(tmp_path, official, 384), "official")["status"] == "official"
+    with pytest.raises(rr.RegistryError, match="alpha"):  # the second stage-2 candidate is a legacy cell
+        rr.generation_entry(_gen_file(tmp_path, {**official, "alpha": 0.0}, 384), "official")
+    with pytest.raises(rr.RegistryError, match="require_grounding"):  # plain cells cannot be official
+        rr.generation_entry(_gen_file(tmp_path, {**official, "require_grounding": False}, 384), "official")
 
 
 def test_runs_without_r3_timing_are_refused(tmp_path, reg_path):

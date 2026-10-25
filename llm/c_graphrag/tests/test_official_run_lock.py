@@ -26,8 +26,11 @@ def _args(**kw):
 
 def test_official_alphas_give_their_roles():
     assert cg.official_role_for_args(_args(alpha=0.25), SELECTED) == "c_primary"
-    assert cg.official_role_for_args(_args(alpha=0.0), SELECTED) == "c_ablation"
-    assert cg.official_role_for_args(_args(alpha=0), SELECTED) == "c_ablation"
+    # Amendment 16: the second candidate (alpha_ablation) is a LEGACY cell -- refused unless explicitly allowed
+    for alpha in (0.0, 0):
+        with pytest.raises(OfficialParamsError, match="legacy"):
+            cg.official_role_for_args(_args(alpha=alpha), SELECTED)
+        assert cg.official_role_for_args(_args(alpha=alpha, allow_legacy_cells=True), SELECTED) == "c_ablation"
 
 
 def test_test_split_refuses_v2():

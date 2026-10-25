@@ -25,9 +25,9 @@ export const PARAM_GLOSSARY = {
   semantic_expansion_trust_cap:
     'Maximum trust score assignable to candidates found only via semantic (embedding) expansion, since they lack a graph path to derive trust from. Only used in "trust_weighted" mode.',
   n_low_level:
-    'Number of similar questions used as entry points ("anchors") for low-level retrieval — the answers directly attached to each anchor question, ranked purely by anchor similarity (no trust score).',
+    'Number of similar questions used as entry points ("anchors") for low-level retrieval — the answers directly attached to each anchor question, scored by the cosine between the query and the anchor question (the same score as the high level; no trust score).',
   n_high_level:
-    'Number of related questions (via tag co-occurrence / relatedness edges) used for high-level retrieval — broader, theme-level context beyond the direct anchors, ranked by the raw edge relevance score (no trust score).',
+    'Number of related questions (via tag co-occurrence / relatedness edges) used for high-level retrieval — broader, theme-level context beyond the direct anchors. The neighbours are scored by the cosine between the query and the neighbour question itself (retrieval v4), not by edge weight (no trust score).',
   require_grounding:
     'Whether the LLM is instructed to ground its answer ONLY in the retrieved context, in addition to citing sources. Turning this off keeps the citation instruction but drops the "don’t introduce facts outside the context" constraint — isolating the effect of the grounding constraint itself.',
   enable_semantic_expansion:

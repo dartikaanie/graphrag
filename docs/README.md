@@ -169,8 +169,10 @@ its own `logs/run_history.jsonl`.
 - **Condition D**: same sampling and KG/FAISS cache as Condition C, but a
   dual-level retrieval mechanism (adapted from LightRAG, Guo et al.) instead
   of trust-weighted fusion — low-level (1-hop from vector-search anchors) +
-  high-level (2-hop via tag/relatedness/embedding-similarity edges), ranked
-  purely by relevance score, never trust. Shares Condition C's
+  high-level (2-hop via tag/relatedness/embedding-similarity edges). Since
+  retrieval v4 (Amendment 16) both levels are scored by the same quantity,
+  the cosine between the query and the question that owns the answer; edge
+  weights are no longer scores; never trust. Shares Condition C's
   `--require-grounding` ablation switch so the grounding-constraint
   experiment can be run identically on both graph-based conditions; semantic
   expansion is not implemented here (only two retrieval levels, by design).

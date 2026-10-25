@@ -411,8 +411,14 @@ def test_human_kappa_reference_and_judge_join(tmp_path, monkeypatch):
     assert "binary kappa" in md and "3-category confusion matrix" in md
 
 
-def test_calibration_generate_plan_and_registry(tmp_path):
+def test_calibration_generate_plan_and_registry(tmp_path, monkeypatch):
     import calibration_generate as cg
+    from llm import archive_paths
+
+    # The pilot run histories this plan reads live in the pre-official ARCHIVE. A live llm/<cond>/logs/run_history.jsonl
+    # (any later run writes one) must not shadow them: resolve to the archived copy when there is one.
+    real_resolve = archive_paths.resolve
+    monkeypatch.setattr(cg.archive_paths, "resolve", lambda p: archive_paths.archived(p) or real_resolve(p))
 
     runs = cg.calibration_runs()
     assert [r["run_label"] for r in runs] == ["A [dev]", "B-plain [dev]", "B-grounded [dev]"]

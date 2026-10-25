@@ -136,6 +136,7 @@ export function SettingsPage() {
   const [kappaSampleSize, setKappaSampleSize] = useState(50)
   const [judgeMajorityRounds, setJudgeMajorityRounds] = useState(1)
   const [judgesWaitForHeavyRun, setJudgesWaitForHeavyRun] = useState(true)
+  const [showQuestionTrust, setShowQuestionTrust] = useState(false)
 
   useEffect(() => {
     if (!data) return
@@ -155,6 +156,7 @@ export function SettingsPage() {
     setKappaSampleSize(data.kappa_sample_size)
     setJudgeMajorityRounds(data.judge_majority_rounds)
     setJudgesWaitForHeavyRun(data.judges_wait_for_heavy_run)
+    setShowQuestionTrust(data.show_question_trust_score ?? false)
   }, [data])
 
   if (isLoading || !data) return <div className="text-sm text-text-muted">Loading...</div>
@@ -474,6 +476,29 @@ export function SettingsPage() {
                 judge run also waits until no A/B/C/D run is executing before it starts, on top of — not
                 instead of — the limit of 2 concurrent judge runs. Turn off to let judges start immediately
                 even while a generator run is in progress.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-border">
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={showQuestionTrust}
+              onChange={(e) => {
+                const next = e.target.checked
+                setShowQuestionTrust(next)
+                updateSettings.mutate({ show_question_trust_score: next })
+              }}
+            />
+            <span className="text-text-primary">
+              Show Question trustScore
+              <span className="block text-xs text-text-secondary mt-0.5">
+                Off by default. The Question-level trustScore is still stored in the graph but is not part of the
+                design (Amendment 16): retrieval never reads it. Turn on to display it on the question page and in
+                graph tooltips.
               </span>
             </span>
           </label>

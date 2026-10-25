@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react'
 import ForceGraph2D, { type NodeObject, type LinkObject, type ForceGraphMethods } from 'react-force-graph-2d'
+import { useShowQuestionTrust } from '@/api/hooks'
 import type { GraphData, GraphLink, GraphNode } from '@/types/graph'
 import { ACCEPTED_ANSWER_COLOR, EDGE_COLORS, EDGE_LABELS, NODE_COLORS } from '@/lib/graphColors'
 
@@ -47,13 +48,13 @@ function shortLabel(node: GraphNode): string {
   }
 }
 
-function hoverLabel(node: GraphNode): string {
+function hoverLabel(node: GraphNode, showQuestionTrust: boolean): string {
   const p = node.properties
   switch (node.type) {
     case 'Question':
       return `<div style="max-width:240px;white-space:normal">
         <strong>Q#${p.id}</strong> ${escapeHtml(node.label)}<br/>
-        score: ${p.score ?? '—'} · trust: ${typeof p.trustScore === 'number' ? p.trustScore.toFixed(2) : '—'}${p.domainTag ? ` · ${escapeHtml(String(p.domainTag))}` : ''}
+        score: ${p.score ?? '—'}${showQuestionTrust ? ` · trust: ${typeof p.trustScore === 'number' ? p.trustScore.toFixed(2) : '—'}` : ''}${p.domainTag ? ` · ${escapeHtml(String(p.domainTag))}` : ''}
       </div>`
     case 'Answer':
       return `<div>
@@ -88,6 +89,7 @@ function linkHoverLabel(link: GraphLink): string {
 }
 
 export function GraphView({ data, height = 360, onNodeClick, centerNodeId }: GraphViewProps) {
+  const showQuestionTrust = useShowQuestionTrust()
   const fgRef = useRef<ForceGraphMethods<NodeObject<GraphNode>, LinkObject<GraphNode, GraphLink>> | undefined>(
     undefined,
   )
@@ -154,7 +156,7 @@ export function GraphView({ data, height = 360, onNodeClick, centerNodeId }: Gra
         graphData={data as unknown as { nodes: NodeObject<GraphNode>[]; links: LinkObject<GraphNode, GraphLink>[] }}
         height={height}
         nodeId="id"
-        nodeLabel={(node) => hoverLabel(node as unknown as GraphNode)}
+        nodeLabel={(node) => hoverLabel(node as unknown as GraphNode, showQuestionTrust)}
         nodeCanvasObject={nodeCanvasObject}
         nodePointerAreaPaint={(node, color, ctx) => {
           const n = node as unknown as GraphNode & { x: number; y: number }

@@ -130,8 +130,8 @@ def test_condition_d_record_and_is_accepted(tmp_path, quiet, monkeypatch):
             "rel_type": "HAS_ACCEPTED_ANSWER", "relevance_score": 0.9, "is_accepted": True}]
     high = [{"via_question_id": 902, "via_question_title": "y?", "answer_id": 903, "answer_body": "do y", "hop": 2,
              "rel_type": "EMBED_SIM", "relevance_score": 0.4, "is_accepted": False}]
-    monkeypatch.setattr(d, "retrieve_low_level", lambda *x, **k: low)
-    monkeypatch.setattr(d, "retrieve_high_level", lambda *x, **k: high)
+    for name in ("retrieve_low_level", "retrieve_high_level", "retrieve_low_level_v4", "retrieve_high_level_v4"):
+        monkeypatch.setattr(d, name, lambda *x, _r=(low if "low" in name else high), **k: _r)  # v3 and v4 alike
     recs, _ = d.process_sample(_sample(), None, _fake_llm, None, None, "db", None, None, None, {}, {100: [101]},
                                5, 3, 3, 400, "fake", tmp_path / "d.jsonl", run_id=RUN_ID)
     _check_header(recs[0], "D", retrieval_is_none=False)
@@ -144,6 +144,8 @@ def test_d_queries_return_is_accepted_without_extra_query():
     for fn in (d.retrieve_low_level, d.retrieve_high_level):
         src = inspect.getsource(fn)
         assert "a.isAccepted AS is_accepted" in src and src.count("session.run(") == 1, fn.__name__
+    # v4: low level wraps the v3 query; the high level fetches the chosen neighbours' answers in its own query
+    assert "a.isAccepted AS is_accepted" in inspect.getsource(d.retrieve_high_level_v4)
 
 
 def test_end_to_end_latency_excludes_evaluation_steps(tmp_path, quiet, monkeypatch):

@@ -101,11 +101,11 @@ const CONDITIONS: ConditionSpec[] = [
     retrieval: [
       {
         heading: 'Low-level retrieval',
-        body: 'Identical entity anchoring to Condition C (FAISS vector search → top-N_LOW_LEVEL Question anchors), then a single 1-hop lookup of each anchor\'s directly attached answers. The relevance score used for ranking is the anchor\'s own cosine similarity from the vector search — never an edge weight or trust score.',
+        body: 'Identical entity anchoring to Condition C (FAISS vector search → top-N_LOW_LEVEL Question anchors), then a single 1-hop lookup of each anchor\'s directly attached answers. Since retrieval v4 the relevance score is the cosine between the query and the anchor question (the same quantity as at the high level) — never an edge weight or trust score.',
       },
       {
         heading: 'High-level retrieval',
-        body: 'From the same anchors, a 2-hop traversal via TAG_COOCCUR / IS_RELATED_TO edges reaches thematically related questions (capped to the top-N_HIGH_LEVEL by raw edge weight), and their answers are collected. The relevance score is the raw edge weight itself (a similarity/Jaccard-style score between two questions) — it is never combined with an answer\'s trust score the way Condition C\'s traversal is.',
+        body: 'From the same anchors, a 2-hop traversal via IS_RELATED_TO / TAG_COOCCUR / EMBED_SIM edges collects the neighbour questions that have an answer (at most 100 are scored per query). Each neighbour is scored by the cosine between the query and the neighbour question — the same score as the low level, so the two levels are comparable — and the top N_HIGH_LEVEL are kept with their answers. Edge weights are not used as scores, and nothing is combined with an answer\'s trust score.',
       },
       {
         heading: 'Fusion',

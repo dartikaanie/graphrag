@@ -178,7 +178,7 @@ export function RunAllConditionsPage() {
       <div className="flex gap-1 mb-4 border-b border-border">
         {(
           [
-            { key: 'factorial' as const, label: 'Factorial Batch (9 runs)' },
+            { key: 'factorial' as const, label: 'Factorial Batch (4 official runs)' },
             { key: 'all' as const, label: 'All Conditions (4)' },
           ]
         ).map((t) => (

@@ -9,7 +9,7 @@ export interface ThreeNumbers {
   abstain: number
   rate_excl_abstain: number | null
   abstain_rate: number | null
-  rate_all_answers: number | null
+  rate_abstain_as_failed: number | null // (hallucinated + ABSTAIN) / usable answers
 }
 
 export interface FrozenParameter {
@@ -73,13 +73,30 @@ export interface ReportRun {
     run_duration_per_answer_sec: number | null
     schema_r3_answers: number
   }
-  reliability: { fleiss_kappa_3cat: number | null; n_complete: number; krippendorff_alpha_nominal: number | null }
+  reliability: {
+    fleiss_kappa_3cat: number | null
+    n_complete: number
+    krippendorff_alpha_nominal: number | null
+    all_three_judges_same?: { n_complete: number; same_label: number | null; same_3cat_label: number | null }
+  }
+}
+
+export interface PairedCounts {
+  c_better: number
+  equal: number
+  c_worse: number
+  n_pairs: number
+  n_excluded: number
+  cells: { only_c: number; only_other: number; both: number; neither: number }
 }
 
 export interface Comparison {
   comparison: string
+  name?: string
   available: boolean
   difference_panel?: number | null
+  difference_panel_abstain_as_failed?: number | null
+  paired?: { primary_excl_abstain: PairedCounts; abstain_as_failed: PairedCounts }
   difference_by_judge?: Record<string, number | null>
   flag?: 'consistent' | 'inconclusive'
 }

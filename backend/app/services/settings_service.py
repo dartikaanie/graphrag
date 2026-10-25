@@ -61,6 +61,9 @@ DEFAULTS: dict[str, Any] = {
     # module's "RESOURCE BUDGET" docstring describes, just from the judge
     # side instead of the generator side.
     "judges_wait_for_heavy_run": True,
+    # Amendment 16: the Question-level trustScore is stored in the graph but is NOT part of the design (retrieval
+    # never reads it). The dashboard hides it unless this display setting is turned on.
+    "show_question_trust_score": False,
 }
 
 

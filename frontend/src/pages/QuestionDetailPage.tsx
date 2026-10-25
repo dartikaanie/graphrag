@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useNodeSubgraph, useQuestionAnswers, useQuestionDetail } from '@/api/hooks'
+import { useNodeSubgraph, useQuestionAnswers, useQuestionDetail, useShowQuestionTrust } from '@/api/hooks'
 import { AttributePanel } from '@/components/AttributePanel'
 import { Badge } from '@/components/Badge'
 import { GraphView } from '@/components/GraphView'
@@ -14,6 +14,7 @@ export function QuestionDetailPage() {
   const { data: detail, isLoading, isError } = useQuestionDetail(id)
   const { data: answers } = useQuestionAnswers(id)
   const { data: graph, isLoading: graphLoading } = useNodeSubgraph('question', id, 2)
+  const showQuestionTrust = useShowQuestionTrust()
 
   const handleNodeClick = (node: GraphNode) => {
     if (node.type === 'Question') navigate(`/questions/${node.properties.id}`)
@@ -57,7 +58,7 @@ export function QuestionDetailPage() {
         <div>
           <div className="border border-border rounded-lg bg-surface p-4 mb-4">
             <h2 className="text-sm font-medium text-text-secondary mb-2">Attributes</h2>
-            <AttributePanel attributes={attrs} priorityFields={PRIORITY_FIELDS} hideFields={['body']} />
+            <AttributePanel attributes={attrs} priorityFields={PRIORITY_FIELDS} hideFields={showQuestionTrust ? ['body'] : ['body', 'trustScore', 'trustScoreVersion']} />
           </div>
           {body && (
             <div className="border border-border rounded-lg bg-surface p-4">

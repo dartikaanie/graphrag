@@ -131,8 +131,10 @@ class RunCreateRequest(BaseModel):
     # process_sample() as-is; see those functions' docstrings for the
     # config_hash backward-compatibility rule (a key is included in the
     # hash only when it differs from its default).
-    c_retrieval_version: str = "v2"  # "v2" | "v3"
+    c_retrieval_version: str = "v3"  # "v2" | "v3" (default v3 since Amendment 16)
     alpha: float | None = None
+    # Amendment 16: legacy matrix cells (plain, C-ablation) on the test sample need this explicit flag
+    allow_legacy_cells: bool = False
     sample_split: str = "test"  # "test" | "dev"
     max_hops: int = 2
     edge_types: list[str] | None = None
@@ -240,6 +242,7 @@ class SettingsUpdate(BaseModel):
     kappa_sample_size: int | None = None
     judge_majority_rounds: int | None = None
     judges_wait_for_heavy_run: bool | None = None
+    show_question_trust_score: bool | None = None
 
 
 class ArchiveRequest(BaseModel):

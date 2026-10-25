@@ -136,6 +136,22 @@ D_RETRIEVAL_VERSION
        hanya menentukan pemenang saat skor benar-benar sama (bukan mengubah
        skor atau urutan berdasarkan skor berbeda). Direkam sbg field
        `d_retrieval_version` di run_history.jsonl.
+"v4" (D_RETRIEVAL_VERSION saat ini; Amendment 16) = SATU skor untuk kedua level:
+       cosine antara embedding kueri dan embedding Question PEMILIK jawaban
+       (anchor utk low-level, tetangga utk high-level), dari cache embedding
+       yang sama dgn indeks FAISS (title + body[:1000], ternormalisasi).
+       Bobot sisi TIDAK lagi dipakai sbg skor atau pemilih: v3 memberi skor
+       high-level 0.6 (TAG_COOCCUR) / 0.4 (EMBED_SIM) / 1.0 atau cosine
+       (IS_RELATED_TO), skala yg tidak sebanding dgn cosine low-level. Di v4
+       high-level mengumpulkan tetangga unik anchor lewat IS_RELATED_TO |
+       TAG_COOCCUR | EMBED_SIM yg punya >= 1 jawaban tak-terkecualikan (maks
+       HIGH_LEVEL_CANDIDATE_CAP = 100 Question per kueri; bila lebih, yg
+       ber-id terkecil dipertahankan -- deterministik, buta konten; tercatat
+       di record sbg high_level_cap_hit), menilai semuanya dgn cosine tsb,
+       lalu mengambil n_high_level teratas (skor menurun, id naik). Tetap:
+       graf/indeks/aturan leakage sama dgn C, tanpa trust, tanpa bonus
+       accepted, tanpa semantic expansion, dedup skor tertinggi, tie
+       answer_id naik, top-5. v3 tetap bisa direproduksi (--d-retrieval-version v3).
 """
 
 import argparse
@@ -175,7 +191,9 @@ from llm.common import item_provenance as iprov  # per-item retrieval provenance
 from llm.sample_split import SampleMismatchError, verify_sample
 
 TOKEN_LIMIT = 2048  # kriteria eksklusi pertanyaan evaluasi, IDENTIK Kondisi A/B/C
-D_RETRIEVAL_VERSION = "v3"  # lihat docstring modul ini bagian "D_RETRIEVAL_VERSION"
+D_RETRIEVAL_VERSION = "v4"  # lihat docstring modul ini bagian "D_RETRIEVAL_VERSION"
+D_RETRIEVAL_VERSIONS = ("v3", "v4")
+HIGH_LEVEL_CANDIDATE_CAP = 100  # v4: max distinct neighbour Questions scored per query (see docstring)
 EMBED_DIM = 384  # all-MiniLM-L6-v2, HARUS sama dgn 11_densify_embedding_similarity.py
 
 log = print
@@ -499,6 +517,112 @@ def retrieve_high_level(driver, database, anchors: list, exclude_question_ids: s
 
 
 # ---------------------------------------------------------------------
+# v4 -- ONE score for both levels: cosine(query, owner Question), from the
+# FAISS-cache embeddings. No edge weight is read or used.
+# ---------------------------------------------------------------------
+
+def question_scores(query_emb: np.ndarray, embeddings, id_to_row: dict, qids) -> dict:
+    """{question_id: cosine(query, that Question's cached embedding)}; both sides L2-normalised. Questions without a
+    cached embedding are absent from the result (the cache covers the whole KG, so this is a safety net)."""
+    q = np.asarray(query_emb, dtype=np.float32).reshape(-1)
+    norm = float(np.linalg.norm(q))
+    if norm > 0:
+        q = q / norm
+    out = {}
+    for qid in qids:
+        row = id_to_row.get(int(qid))
+        if row is not None:
+            out[int(qid)] = float(np.dot(q, np.array(embeddings[row], dtype=np.float32)))
+    return out
+
+
+def retrieve_low_level_v4(driver, database, anchors: list, exclude_answer_ids: set, query_emb, embeddings,
+                          id_to_row: dict) -> list:
+    """Same 1-hop answers as v3, scored by question_scores() of the anchor (not the FAISS return value, so the
+    SAME function scores both levels and a Question reached at both levels gets the same number)."""
+    candidates = retrieve_low_level(driver, database, anchors, exclude_answer_ids)
+    scores = question_scores(query_emb, embeddings, id_to_row, {c["via_question_id"] for c in candidates})
+    anchor_cos = dict(anchors)
+    for c in candidates:
+        c["relevance_score"] = scores.get(c["via_question_id"], anchor_cos.get(c["via_question_id"], 0.0))
+    return candidates
+
+
+def select_high_level_questions(neighbours: dict, anchor_cos: dict, scores: dict, n_high_level: int,
+                                cap: int = HIGH_LEVEL_CANDIDATE_CAP) -> tuple[list, dict]:
+    """Pure selection step of v4 high level. `neighbours`: {q2 id: [(anchor id, edge type), ...]}. Keeps the `cap`
+    smallest ids (deterministic, content-blind; the natural bound -- out-degree <= 20 TAG_COOCCUR + 10 EMBED_SIM +
+    the question's links per anchor -- rarely reaches it), scores them, returns the top n_high_level by
+    (score desc, id asc) as (q2 id, score, primary (anchor, edge type), other (anchor, edge type) links)."""
+    ids = sorted(neighbours)
+    cap_hit = len(ids) > cap
+    ids = ids[:cap]
+    ranked = sorted((q for q in ids if q in scores), key=lambda q: (-scores[q], q))[:n_high_level]
+    chosen = []
+    for q in ranked:
+        links = sorted(set(neighbours[q]), key=lambda l: (-anchor_cos.get(l[0], 0.0), l[0], l[1]))
+        chosen.append((q, scores[q], links[0], links[1:]))
+    return chosen, {"n_neighbours": len(neighbours), "n_scored": sum(1 for q in ids if q in scores),
+                    "cap": cap, "cap_hit": cap_hit}
+
+
+def retrieve_high_level_v4(driver, database, anchors: list, exclude_question_ids: set, exclude_answer_ids: set,
+                           n_high_level: int, query_emb, embeddings, id_to_row: dict,
+                           cap: int = HIGH_LEVEL_CANDIDATE_CAP, stats: dict | None = None) -> list:
+    """Neighbour Questions of the anchors over IS_RELATED_TO | TAG_COOCCUR | EMBED_SIM (excluded questions and
+    questions without a non-excluded answer are dropped IN the query, as in v3), scored by cosine to the query,
+    top n_high_level taken, then their non-excluded answers fetched. Edge weights are neither returned nor used."""
+    if not anchors:
+        return []
+    anchor_ids = [qid for qid, _ in anchors]
+    anchor_cos = {qid: score for qid, score in anchors}
+    exclude_q = list(exclude_question_ids) or [-1]
+    exclude_a = list(exclude_answer_ids) or [-1]
+    with driver.session(database=database) as session:
+        rows = session.run(
+            """
+            UNWIND $anchor_ids AS anchor_id
+            MATCH (anchor:Question {id: anchor_id})-[r2:IS_RELATED_TO|TAG_COOCCUR|EMBED_SIM]->(q2:Question)
+            WHERE NOT q2.id IN $exclude_q
+              AND EXISTS {
+                MATCH (q2)-[:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(ax:Answer)
+                WHERE NOT ax.id IN $exclude_a
+              }
+            RETURN q2.id AS qid, anchor_id, type(r2) AS r2_type
+            ORDER BY qid ASC, anchor_id ASC, r2_type ASC
+            """,
+            anchor_ids=anchor_ids, exclude_q=exclude_q, exclude_a=exclude_a,
+        ).data()
+        neighbours: dict = {}
+        for r in rows:
+            neighbours.setdefault(int(r["qid"]), []).append((int(r["anchor_id"]), r["r2_type"]))
+        scores = question_scores(query_emb, embeddings, id_to_row, neighbours)
+        chosen, info = select_high_level_questions(neighbours, anchor_cos, scores, n_high_level, cap)
+        if stats is not None:
+            stats.update(info)
+        if not chosen:
+            return []
+        answers = session.run(
+            """
+            UNWIND $qids AS qid
+            MATCH (q2:Question {id: qid})-[r3:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
+            WHERE NOT a.id IN $exclude_a
+            RETURN q2.id AS via_question_id, q2.title AS via_question_title, a.id AS answer_id,
+                   a.body AS answer_body, a.isAccepted AS is_accepted, type(r3) AS r3_type
+            ORDER BY via_question_id ASC, answer_id ASC
+            """,
+            qids=[q for q, *_ in chosen], exclude_a=exclude_a,
+        ).data()
+    by_q = {q: (score, primary, others) for q, score, primary, others in chosen}
+    candidates = []
+    for r in answers:
+        score, (anchor_id, edge_type), others = by_q[int(r["via_question_id"])]
+        candidates.append({**r, "hop": 2, "rel_type": edge_type, "relevance_score": score, "anchor_id": anchor_id,
+                           "alt_anchor_ids": [a for a, _ in others], "alt_links": others})
+    return candidates
+
+
+# ---------------------------------------------------------------------
 # FUSION -- dedup by answer_id (keep HIGHEST relevance score -- selalu
 # murni skor similarity, TIDAK PERNAH ada trustScore/is_accepted yang ikut),
 # label source_stage, sort desc, cap top-K, chunking.
@@ -544,6 +668,11 @@ def fuse_dual_level(low_level_candidates: list, high_level_candidates: list,
     # alternatives for alt_paths only (never ranked): the other anchors behind a high-level candidate
     alt_pool = list(all_candidates)
     for c in all_candidates:
+        if c.get("alt_links") is not None:  # v4: other (anchor, edge type) links to the same neighbour Question
+            for other_anchor, other_type in c["alt_links"]:
+                alt = {**c, "anchor_id": other_anchor, "rel_type": other_type}
+                alt_pool.append({**alt, "_path": _candidate_path(alt)})
+            continue
         for other_anchor in c.get("alt_anchor_ids") or []:
             alt_pool.append({**c, "anchor_id": other_anchor, "_path": _candidate_path({**c, "anchor_id": other_anchor})})
 
@@ -611,6 +740,14 @@ def compute_similarity(embed_model, text_a: str, text_b: str) -> float:
 # Proses per-pertanyaan (dipakai CLI main() DAN dashboard backend/engine_service)
 # ---------------------------------------------------------------------
 
+def _hl_fields(version: str, hl_stats: dict) -> dict:
+    """Record fields of the v4 high level (the neighbours scored and whether the cap bound); none for v3."""
+    if version != "v4":
+        return {}
+    return {"d_retrieval_version": version, "high_level_neighbours": hl_stats.get("n_neighbours"),
+            "high_level_scored": hl_stats.get("n_scored"), "high_level_cap_hit": hl_stats.get("cap_hit")}
+
+
 def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model, driver, database,
                     faiss_index, faiss_ids, faiss_embeddings, id_to_row: dict, all_answer_ids_map: dict,
                     top_k: int, n_low_level: int, n_high_level: int, token_chunk_limit: int,
@@ -618,8 +755,10 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     on_progress=None, check_cancel=None, require_grounding: bool = True,
                     config: dict | None = None, config_hash: str | None = None,
                     leakage: LeakageContext | None = None, retrieval_only: bool = False,
-                    run_id: str | None = None) -> tuple[list[dict], dict]:
-    """Pola SAMA PERSIS process_sample() Kondisi C: retrieval (dual-level, bukan
+                    run_id: str | None = None,
+                    d_retrieval_version: str = D_RETRIEVAL_VERSION) -> tuple[list[dict], dict]:
+    """`d_retrieval_version`: "v4" (default; one cosine score for both levels) or "v3" (edge-weight scores, kept
+    reproducible). Pola SAMA PERSIS process_sample() Kondisi C: retrieval (dual-level, bukan
     trust-weighted) + prompt (grounded/ungrounded sesuai require_grounding) +
     hitung cosine similarity + validasi sitasi, tulis ke output_path (append,
     resumable).
@@ -633,6 +772,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     `run_id`: UUID of this run, written into every record and the manifest
     (llm/record_schema.py); a fresh one when not given.
     """
+    if d_retrieval_version not in D_RETRIEVAL_VERSIONS:
+        raise ValueError(f"d_retrieval_version must be one of {D_RETRIEVAL_VERSIONS}, got {d_retrieval_version!r}")
     already_done = already_done or set()
     run_id = run_id or new_run_id()
     leakage = leakage or LEGACY_CONTEXT
@@ -675,16 +816,26 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     exclude_question_ids, stats=leak_stats,
                 )
 
-                # --- Low-level retrieval ---
-                low_level_candidates = retrieve_low_level(
-                    driver, database, anchors[:n_low_level], exclude_answer_ids,
-                )
-
-                # --- High-level retrieval ---
-                high_level_candidates = retrieve_high_level(
-                    driver, database, anchors[:n_high_level], exclude_question_ids,
-                    exclude_answer_ids, n_high_level,
-                )
+                hl_stats: dict = {}
+                if d_retrieval_version == "v4":
+                    # --- Low-level + high-level retrieval: ONE score (cosine query <-> owner Question) ---
+                    low_level_candidates = retrieve_low_level_v4(
+                        driver, database, anchors[:n_low_level], exclude_answer_ids, query_emb,
+                        faiss_embeddings, id_to_row,
+                    )
+                    high_level_candidates = retrieve_high_level_v4(
+                        driver, database, anchors[:n_high_level], exclude_question_ids, exclude_answer_ids,
+                        n_high_level, query_emb, faiss_embeddings, id_to_row, stats=hl_stats,
+                    )
+                else:
+                    # --- v3 (edge-weight scores), kept reproducible ---
+                    low_level_candidates = retrieve_low_level(
+                        driver, database, anchors[:n_low_level], exclude_answer_ids,
+                    )
+                    high_level_candidates = retrieve_high_level(
+                        driver, database, anchors[:n_high_level], exclude_question_ids,
+                        exclude_answer_ids, n_high_level,
+                    )
 
                 # --- Fusi + cap top-K + chunking ---
                 trace: dict = {}
@@ -709,7 +860,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "retrieved_context": retrieved, "provenance_version": iprov.PROVENANCE_VERSION, **trace,
                         "anchor_question_ids": [int(a) for a, _ in anchors],
                         "n_low_level_candidates": len(low_level_candidates),
-                        "n_high_level_candidates": len(high_level_candidates),
+                        "n_high_level_candidates": len(high_level_candidates), **_hl_fields(d_retrieval_version, hl_stats),
                         **latency_fields(retrieval_latency, None, time.time() - t_query_start),
                         "leakage": leakage_log, "config": config, "config_hash": config_hash,
                     }
@@ -765,7 +916,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "prompt_messages": messages,
                     "leakage": leakage_log,
                     "n_low_level_candidates": len(low_level_candidates),
-                    "n_high_level_candidates": len(high_level_candidates),
+                    "n_high_level_candidates": len(high_level_candidates), **_hl_fields(d_retrieval_version, hl_stats),
                     # Actual number of context items sent to the LLM in this
                     # prompt, AFTER fuse_dual_level()'s top_k cutoff -- always
                     # <= top_k regardless of how large n_low_level/
@@ -841,7 +992,8 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
                   top_k: int, n_low_level: int, n_high_level: int, require_grounding: bool,
                   sample_split: str = "test", leakage_mode: str | None = None,
-                  provenance_version: str | None = iprov.PROVENANCE_VERSION) -> dict:
+                  provenance_version: str | None = iprov.PROVENANCE_VERSION,
+                  d_retrieval_version: str = D_RETRIEVAL_VERSION) -> dict:
     """The full set of parameters that affect Condition D's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists. Includes D_RETRIEVAL_VERSION since a retrieval
@@ -858,7 +1010,7 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
         "condition": "D", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
         "oversample_pool": oversample_pool, "top_k": top_k, "n_low_level": n_low_level,
         "n_high_level": n_high_level, "require_grounding": require_grounding,
-        "d_retrieval_version": D_RETRIEVAL_VERSION,
+        "d_retrieval_version": d_retrieval_version,
     }
     config.update(config_leakage_key(leakage_mode))
     if provenance_version is not None:
@@ -870,7 +1022,8 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        require_grounding: bool = True, oversample_pool: int | None = None,
                        top_k: int = 5, n_low_level: int = 3, n_high_level: int = 3,
                        sample_split: str = "test", leakage_mode: str | None = None,
-                       provenance_version: str | None = iprov.PROVENANCE_VERSION) -> Path:
+                       provenance_version: str | None = iprov.PROVENANCE_VERSION,
+                       d_retrieval_version: str = D_RETRIEVAL_VERSION) -> Path:
     """Nama file menyertakan varian grounding supaya run grounded/ungrounded
     tidak saling menimpa file .jsonl satu sama lain -- plus prompt_version +
     config_hash (see llm.manifest.read_already_done's docstring for why --
@@ -882,7 +1035,8 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     suffix = ("grounded" if require_grounding else "ungrounded") + split_filename_tag(sample_split)
     config_hash = compute_config_hash(
         build_config(provider, model, n_sample, seed, oversample_pool, top_k, n_low_level,
-                     n_high_level, require_grounding, sample_split, leakage_mode, provenance_version)
+                     n_high_level, require_grounding, sample_split, leakage_mode, provenance_version,
+                     d_retrieval_version)
     )
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
@@ -914,12 +1068,23 @@ def main():
                          help="True (default): dual-constraint grounding+citation SAMA PERSIS Kondisi C. "
                               "False: hanya instruksi citation (identik Kondisi B require_citation=True), "
                               "TANPA instruksi grounding.")
+    parser.add_argument("--d-retrieval-version", choices=list(D_RETRIEVAL_VERSIONS), default=D_RETRIEVAL_VERSION,
+                         help="v4 (default, official): ONE score for both levels = cosine(query, owner Question). "
+                              "v3: edge-weight scores of the earlier runs, kept reproducible.")
     parser.add_argument("--retrieval-only", action="store_true",
                          help="Retrieval saja tanpa LLM (audit leakage) -- record retrieval per pertanyaan.")
     from llm.sample_split import add_split_arguments
     add_split_arguments(parser)
     add_leakage_arguments(parser)
+    from llm.official_run_matrix import add_legacy_argument
+    add_legacy_argument(parser)
     args = parser.parse_args()
+    from llm.official_run_matrix import legacy_cell_error
+    _legacy = legacy_cell_error("D", sample_split=args.sample_split, require_citation=True,
+                                require_grounding=args.require_grounding, allow_legacy=args.allow_legacy_cells)
+    if _legacy:
+        print(f"[ERROR] {_legacy}")
+        sys.exit(2)
     leakage_mode = leakage_mode_from_args(args)
 
     global log
@@ -943,7 +1108,8 @@ def main():
                                              args.n_sample, args.seed, args.require_grounding,
                                              oversample_pool=oversample_pool, top_k=args.top_k,
                                              n_low_level=args.n_low_level, n_high_level=args.n_high_level,
-                                             sample_split=args.sample_split, leakage_mode=leakage_mode))
+                                             sample_split=args.sample_split, leakage_mode=leakage_mode,
+                                             d_retrieval_version=args.d_retrieval_version))
         log(f"[config] output auto-generated -> '{args.output}'")
 
     if not args.questions_parquet or not args.answers_parquet:
@@ -999,7 +1165,7 @@ def main():
     from llm.manifest import compute_config_hash
     config = build_config(args.provider, args.model, args.n_sample, args.seed, oversample_pool,
                            args.top_k, args.n_low_level, args.n_high_level, args.require_grounding,
-                           args.sample_split, leakage_mode)
+                           args.sample_split, leakage_mode, d_retrieval_version=args.d_retrieval_version)
     config_hash = compute_config_hash(config)
     leakage = LeakageContext.from_mode(leakage_mode)
     log(f"[config] leakage mode = {leakage_mode}, sample_split = {args.sample_split}")
@@ -1023,7 +1189,7 @@ def main():
         args.model, output_path, already_done,
         require_grounding=args.require_grounding,
         config=config, config_hash=config_hash, leakage=leakage, retrieval_only=args.retrieval_only,
-        run_id=run_id,
+        run_id=run_id, d_retrieval_version=args.d_retrieval_version,
     )
     interrupted = stats["interrupted"]
     if args.retrieval_only:
@@ -1044,7 +1210,7 @@ def main():
         history_path = append_run_history({
             "run_id": run_id,
             "prompt_version": PROMPT_VERSION,
-            "d_retrieval_version": D_RETRIEVAL_VERSION,
+            "d_retrieval_version": args.d_retrieval_version,
             "sample_split": args.sample_split, "leakage_mode": leakage_mode,
             "run_started_at": run_started_at.isoformat(), "condition": "D", "status": "no_results",
             "provider": args.provider, "model": args.model, "n_sample_target": args.n_sample,
@@ -1102,7 +1268,7 @@ def main():
     history_path = append_run_history({
         "run_id": run_id,
         "prompt_version": PROMPT_VERSION,
-        "d_retrieval_version": D_RETRIEVAL_VERSION,
+        "d_retrieval_version": args.d_retrieval_version,
         "sample_split": args.sample_split, "leakage_mode": leakage_mode,
         "run_started_at": run_started_at.isoformat(), "condition": "D",
         "status": "interrupted" if interrupted else "success",

@@ -765,6 +765,13 @@ export function useSettings() {
   })
 }
 
+/** Question-level trustScore is stored in the graph but unused by retrieval (Amendment 16); hidden unless the
+ * Settings toggle "Show Question trustScore" is on. False while settings load or fail. */
+export function useShowQuestionTrust(): boolean {
+  const { data } = useSettings()
+  return data?.show_question_trust_score === true
+}
+
 export interface OfficialCParams {
   /** "pending_selection" (stage 2 not done -- the Official preset and every
    * test-sample C run are refused) or "selected" (the Outcome section and

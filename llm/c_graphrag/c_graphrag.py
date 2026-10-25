@@ -189,7 +189,7 @@ DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST = 0.3
 #        bukan cuma re-order tapi item BERBEDA yg lolos dedup by-answer_id),
 #        hasil akhir bergantung pada urutan return Neo4j yang TIDAK dijamin
 #        stabil antar eksekusi query yang identik.
-# "v2" (C_RETRIEVAL_VERSION saat ini) = SEMUA query Cypher ber-ORDER BY+LIMIT
+# "v2" = SEMUA query Cypher ber-ORDER BY+LIMIT
 #        (2-hop traverse_graph) diberi tie-break sekunder (a.id ASC), 1-hop
 #        traverse_graph()/semantic_expansion() diberi ORDER BY eksplisit
 #        (a.id ASC, sebelumnya tidak ada sama sekali), dan fuse_and_rank()'s
@@ -197,7 +197,9 @@ DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST = 0.3
 #        RANKING/TRUST LOGIC TIDAK DIUBAH -- ini murni membuat urutan akhir
 #        deterministik/reproducible, bukan mengubah kriteria pemeringkatan.
 #        Direkam sbg field `c_retrieval_version` di run_history.jsonl.
-C_RETRIEVAL_VERSION = "v2"
+# "v3" (C_RETRIEVAL_VERSION saat ini) = ranking relevansi+kepercayaan (1-alpha)*sim_norm + alpha*trust, lihat
+#        docs/DECISION_C_SCORING.md. Default CLI/API sejak Amendment 16, supaya run tanpa flag tidak diam-diam v2.
+C_RETRIEVAL_VERSION = "v3"
 # Proxy trust utk kandidat yang HANYA ditemukan lewat semantic expansion
 # (tidak lewat edge graf eksplisit) -- disamakan dgn tier EMBED_SIM
 # (trust "terendah" di antara 3 sumber densifikasi, lihat
@@ -1558,7 +1560,8 @@ def official_role_for_args(args, official: dict | None = None) -> str | None:
     return check_c_test_run(
         official, c_retrieval_version=args.c_retrieval_version, alpha=args.alpha, max_hops=args.max_hops,
         edge_types=tuple(args.edge_types) if args.edge_types else DEFAULT_EDGE_TYPES,
-        use_author_trust=args.use_author_trust, accepted_only=args.accepted_only)
+        use_author_trust=args.use_author_trust, accepted_only=args.accepted_only,
+        allow_legacy=getattr(args, "allow_legacy_cells", False))
 
 
 def main():
@@ -1630,13 +1633,13 @@ def main():
     # --- C retrieval v3 (docs/DECISION_C_SCORING.md) -- all default to
     # v2's exact current behavior; see build_config()'s backward-
     # compatibility docstring for why defaults never change config_hash.
-    parser.add_argument("--c-retrieval-version", choices=["v2", "v3"], default="v2",
-                         help="'v2' (default): unchanged trust-only ranking. 'v3': adds the "
-                              "(1-alpha)*sim_norm + alpha*trust scoring -- see --alpha.")
+    parser.add_argument("--c-retrieval-version", choices=["v2", "v3"], default=C_RETRIEVAL_VERSION,
+                         help="'v3' (default since Amendment 16): (1-alpha)*sim_norm + alpha*trust scoring -- see "
+                              "--alpha. 'v2': the older trust-only ranking, kept reproducible.")
     parser.add_argument("--alpha", type=float, default=None,
                          help="v3 only: final_score = (1-alpha)*sim_norm + alpha*trust, alpha in [0,1]. "
                               "alpha=1 matches v2 trust_weighted's own ranking; alpha=0 ranks purely by "
-                              "similarity. Required for --c-retrieval-version v3 (defaults to 1 if omitted).")
+                              "similarity. Required for --c-retrieval-version v3 (defaults to 1 if omitted; always pass it).")
     parser.add_argument("--sample-split", choices=["test", "dev"], default="test",
                          help="'test' (default): positions 1..n, unchanged. 'dev': positions "
                               "385..385+n-1 (see --dev-offset) -- a separate, disjoint development "
@@ -1665,6 +1668,8 @@ def main():
         help="v3 only: SQLite cache path for candidate-text embeddings (shared across an alpha sweep). "
              "Default: C_EMBEDDING_CACHE_PATH, else a local non-synced cache dir (see embedding_cache.py).")
     add_leakage_arguments(parser)
+    from llm.official_run_matrix import add_legacy_argument
+    add_legacy_argument(parser)
     parser.add_argument("--expansion-require-answer", action=argparse.BooleanOptionalAction,
                         default=expansion_require_answer_default(),
                         help="Amendment 9: semantic expansion picks only Questions with >= 1 non-excluded Answer "
@@ -1693,6 +1698,12 @@ def main():
         sys.exit(2)
     if official_role:
         log(f"[config] official C run: {official_role} (alpha={args.alpha}, official_params.json)")
+    from llm.official_run_matrix import legacy_cell_error
+    _legacy = legacy_cell_error("C", sample_split=args.sample_split, require_grounding=args.require_grounding,
+                                c_role=official_role, allow_legacy=args.allow_legacy_cells)
+    if _legacy:
+        log(f"[ERROR] {_legacy}")
+        sys.exit(2)
 
     # PENTING utk NESTED SAMPLING -- IDENTIK Kondisi A/B, lihat komentar
     # lengkap di a_baseline_replication.py. Pool FIXED thd MAX_PLANNED_N_SAMPLE,

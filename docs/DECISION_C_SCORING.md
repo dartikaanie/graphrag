@@ -765,6 +765,77 @@ Q 35278729 (Duplicate 59533843), Q 20528668 (near-duplicate 66893076, answer 668
 
 ---
 
+## Amendment 16 (2026-10-25): the four-run design; Condition D scored by one cosine; secondary metrics
+
+**Status: DRAFT, awaiting author confirmation.** Written BEFORE stage 2 and BEFORE any official run; no stage-2 or official
+run exists and `official_params.json` is still `pending_selection`. This is a note that follows the thesis design of
+Bab III; it does not edit the text of any earlier amendment (history stays as written).
+
+### What changes for the official evaluation
+| | Before (Amendments 10, 11, 14 draft) | Amendment 16 |
+|---|---|---|
+| Official runs | nine cells R1-R9: A, B/C/D each plain and grounded, C at two alphas | **four**: A, B-grounded, C-primary-grounded, D-grounded (cells R1, R3, R5, R9) |
+| Grounding + citation instructions | on and off | **on** for B, C, D (A has none) |
+| Alpha | C-primary (alpha\*) and C-ablation | **one alpha, alpha\***. Stage 2 still produces the second candidate and `official_params.json` still stores it, but **no official run uses it** |
+| Pre-registered comparisons | R5 vs R1, R3, R9, R7; R4 vs R2, R8, R6 | **C vs A, C vs B, C vs D** (R5 vs R1, R3, R9) |
+| Legacy cells | part of the matrix | still defined (R2, R4, R6, R7, R8) so old hashes and data stay reproducible; refused on the test sample unless `--allow-legacy-cells` (API `allow_legacy_cells`) is passed; never started by the Official preset, the default listings or "Run all" |
+| `C_RETRIEVAL_VERSION` default | v2 | **v3** (CLI and API) |
+
+Amendment 10 ("trust ablation on the official evaluation") is therefore **not applied** to the official evaluation: its
+C-ablation runs are legacy cells. Its stage-2 candidate rule (two candidates, 0.25 and 0) is unchanged, and so is its
+statement that stage 2 alone is not evidence for an effect of trust. The thesis claims no effect of trustScore on the
+basis of a trust ablation; the C vs D comparison differs in several components at once (Bab III).
+
+### Condition D, retrieval version v4 (v3 stays reproducible)
+v3 scored the low level by the cosine of the anchor and the high level by the raw weight of the edge (constants 0.6 for
+TAG_COOCCUR, 0.4 for EMBED_SIM; 1.0 or a cosine for IS_RELATED_TO): two scales that cannot be compared, and an edge
+type fixed the order whatever the similarity. v4 scores **both levels by the same quantity: the cosine between the
+query embedding and the embedding of the question that owns the answer** (the anchor for the low level, the neighbour
+question for the high level), from the cached embeddings of the FAISS index (title + first 1,000 characters,
+normalised). Edge weights are neither read nor used. The high level collects the distinct neighbour questions of the
+anchors over IS_RELATED_TO, TAG_COOCCUR and EMBED_SIM that have at least one non-excluded answer, **scores at most 100
+of them per query** (`HIGH_LEVEL_CANDIDATE_CAP`; the natural bound is 20 TAG_COOCCUR + 10 EMBED_SIM + the question's
+links per anchor; when exceeded the smallest question ids are kept, deterministic and blind to content, and the record
+stores `high_level_cap_hit`), and keeps the three best (`N_HIGH_LEVEL`). Unchanged: same graph, index and leakage rule
+as C; no trust; no accepted-answer bonus; no semantic expansion; dedup keeps the highest score; ties by answer id;
+top-5; `N_LOW_LEVEL = N_HIGH_LEVEL = 3`. `d_retrieval_version` is part of `config_hash`; the official matrix pins v4
+(`--d-retrieval-version v4`). No retrieval has been run with v4 yet: before the official run, run a retrieval-only dev
+check (`--retrieval-only`, no LLM call).
+
+### Reporting (`llm/evaluation/official_report.py`)
+* Hallucination rate in two versions: (a) ABSTAIN excluded from the denominator (primary), (b) ABSTAIN counted as failed =
+  (hallucinated + ABSTAIN) / all usable answers. The earlier "all answers" figure counted ABSTAIN as not hallucinated;
+  that was an error against the thesis definition and is replaced by (b). Also the severity split (full / partial) and the
+  share of unverifiable claims per run.
+* Faithfulness and citation support (B, C, D) aggregated from the per-claim labels of the panel records, no new call.
+  Denominators: faithfulness = claims with `supported_by_context = YES` / claims rated YES or NO; citation support = cited
+  claims with `cited_item_supports = YES` / cited claims rated YES or NO; null values are left out, never imputed.
+* Paired counts per question for C vs A, B, D (C better / equal / worse on the binary label of the panel; version (a)
+  leaves out pairs with an ABSTAIN or unusable answer and counts them, version (b) counts ABSTAIN as failed) and the share
+  of answers on which all three judges gave the same label. Fleiss, Krippendorff, bias probes and the
+  consistent / inconclusive flag are unchanged.
+* Secondary metrics, one judge (`meta-llama/Llama-3.3-70B-Instruct`, temperature 0), blinded: context relevance (B, C, D;
+  ctxrel-v2) and answer relevance (A-D; question + blinded answer only). `llm/evaluation/secondary_metrics.py`
+  (dry run prints the number of calls; official files are refused until Amendment 14 is approved).
+* Latency unchanged: NF3 = p95 of end-to-end latency of Condition C <= 15 s; retrieval p50 / p95 for every run.
+
+### Other
+* The 63-item confirmation set of Amendment 11 (7 per run x 9 runs) belonged to the human-agreement gate that Amendment 14
+  removes; the code (`annotation_tool.py`) is kept but dormant and is not used by the official evaluation.
+* Densification script defaults now equal the values of the final graph (tag df <= 200, Jaccard >= 0.6, top-20; embedding
+  cosine >= 0.7, top-10). The graph was not rebuilt.
+* The Question-level trustScore stays in the data but is hidden in the dashboard unless a setting is turned on; retrieval
+  never reads it.
+* Stage 1 of record (Amendment 9 recheck) ran with leakage mode `dup+neardup0.95` (the default at the time); on the 50 dev
+  questions that exclusion equals the `thread` exclusion (every record: `n_excluded_q = 1`; 0 Duplicate and 0 near-duplicate
+  in `results/leakage/exclusion_sets.parquet`). See `IMPLEMENTATION_STATUS.md`.
+
+### Record
+* Confirmation by the author: [ ]
+* Commit: [ ]
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 

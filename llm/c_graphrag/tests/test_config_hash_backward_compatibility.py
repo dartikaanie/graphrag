@@ -26,7 +26,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 def _pilot_v3_records(path: Path) -> list[dict]:
     records = []
-    with open(archive_paths.resolve(path)) as f:  # run histories are in the pre-official archive
+    # The 9 pilot runs live in the pre-official ARCHIVE. A live llm/<cond>/logs/run_history.jsonl (written by any
+    # later run, e.g. a retrieval-only smoke test) must not shadow it: read the archived copy explicitly.
+    with open(archive_paths.archived(path) or path) as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -81,6 +83,7 @@ def test_all_9_real_pilot_run_config_hashes_unchanged():
         config = d_lightrag.build_config(
             r["provider"], r["model"], r["n_sample_target"], r["seed"], r["oversample_pool"],
             r["top_k"], r["n_low_level"], r["n_high_level"], r["require_grounding"], provenance_version=None,
+            d_retrieval_version="v3",  # the version these pilot runs were made with (v4 is the current default)
         )
         assert compute_config_hash(config) == r["config_hash"], f"D run {r['output_path']} hash changed"
         checked += 1

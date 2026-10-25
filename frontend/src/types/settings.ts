@@ -24,6 +24,7 @@ export interface SettingsState {
   kappa_sample_size: number
   judge_majority_rounds: number
   judges_wait_for_heavy_run: boolean
+  show_question_trust_score: boolean
 }
 
 export interface TestConnectionResult {

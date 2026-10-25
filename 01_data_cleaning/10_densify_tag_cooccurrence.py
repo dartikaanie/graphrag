@@ -28,14 +28,14 @@ METODOLOGI
 1. Tarik semua edge TAGGED_WITH (question_id, tag_name) dari Neo4j.
 2. Hitung document frequency (df) tiap tag = jumlah Question unik yang
    memakainya.
-3. "Tag informatif" = tag dengan df <= --max-df (default 10.000) --
+3. "Tag informatif" = tag dengan df <= --max-df (default 200, the value of the final graph) --
    analog stopword TF-IDF, mencegah tag mega-populer (mis. 'python',
    'javascript') memicu combinatorial explosion candidate pair.
 4. Untuk tiap pasang Question yang share >=1 tag informatif, hitung
    Jaccard = |tag_A ∩ tag_B| / |tag_A ∪ tag_B| (union/intersection
    dihitung HANYA atas himpunan tag informatif -- tag mega-populer yang
    dibuang di langkah 3 tidak ikut menghitung union/intersection).
-5. Filter Jaccard >= --jaccard-threshold (default 0.3).
+5. Filter Jaccard >= --jaccard-threshold (default 0.6, the value of the final graph).
 6. Per Question (sebagai node SUMBER), ranking tetangga by Jaccard desc,
    cap top --top-k (default 20) -- EDGE DIRECTED (q1 -> q2), bukan
    gabungan dua sisi. Ini konsisten dengan makna "outgoing edge" di
@@ -74,7 +74,7 @@ CARA PAKAI
     python 10_densify_tag_cooccurrence.py
 
     # Kalau safety check abort, coba max-df lebih ketat dulu
-    python 10_densify_tag_cooccurrence.py --max-df 5000 --dry-run
+    python 10_densify_tag_cooccurrence.py --max-df 100 --dry-run
 """
 
 import argparse
@@ -92,8 +92,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 LOG_DIR = Path("logs")
-DEFAULT_MAX_DF = 10_000
-DEFAULT_JACCARD_THRESHOLD = 0.3
+DEFAULT_MAX_DF = 200  # the value of the final graph (run 20260830T073110Z); earlier tuning runs used 10000/1000/500
+DEFAULT_JACCARD_THRESHOLD = 0.6  # the value of the final graph (earlier tuning runs: 0.3 / 0.5)
 DEFAULT_TOP_K = 20
 DEFAULT_TRUST_WEIGHT = 0.6  # "menengah" -- di antara IS_RELATED_TO (1.0/cosine) dan EMBED_SIM (rencana lebih rendah)
 DEFAULT_MAX_CANDIDATE_PAIRS = 500_000_000

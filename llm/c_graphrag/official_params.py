@@ -1,7 +1,7 @@
 """Official Condition C parameters (docs/DECISION_C_SCORING.md, Amendment 10).
 
 official_params.json holds the frozen C parameters for the test sample:
-C-primary runs at `alpha_primary` (the stage-2 winner, α*) and C-ablation at
+C-primary runs at `alpha_primary` (the only alpha of the 4-run design, Amendment 16) (the stage-2 winner, α*) and C-ablation at
 `alpha_ablation` (the other stage-2 candidate). Both are null and `status` is
 "pending_selection" until the Outcome section and the Amendment 10 Record are
 filled in; then `status` becomes "selected".
@@ -67,9 +67,11 @@ def _norm(key, value):
 
 
 def check_c_test_run(official: dict | None, *, c_retrieval_version: str, alpha, max_hops, edge_types,
-                     use_author_trust: bool, accepted_only: bool, sample_split: str = "test") -> str:
+                     use_author_trust: bool, accepted_only: bool, sample_split: str = "test",
+                     allow_legacy: bool = False) -> str:
     """Role ("c_primary" / "c_ablation") of a test-sample C run, or
-    OfficialParamsError explaining why it may not run."""
+    OfficialParamsError explaining why it may not run. The four-run design uses only c_primary; c_ablation is a
+    legacy cell and is refused unless allow_legacy (--allow-legacy-cells)."""
     if sample_split != "test":
         raise ValueError("check_c_test_run is for --sample-split test only")
     if official is None:
@@ -97,6 +99,10 @@ def check_c_test_run(official: dict | None, *, c_retrieval_version: str, alpha, 
             f"alpha_ablation={roles[ROLE_ABLATION]!r} are not two distinct values (Amendment 10).")
     for role, value in roles.items():
         if alpha is not None and float(alpha) == float(value):
+            if role == ROLE_ABLATION and not allow_legacy:
+                raise OfficialParamsError(
+                    f"alpha={alpha!r} is alpha_ablation: a legacy cell, not part of the four official runs "
+                    "(Amendment 16). Pass --allow-legacy-cells to run it deliberately.")
             return role
     raise OfficialParamsError(
         f"alpha={alpha!r} is not an official alpha: alpha_primary={official['alpha_primary']!r}, "

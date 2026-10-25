@@ -6,13 +6,14 @@ cooccurrence.py & 11_densify_embedding_similarity.py dijalankan) terhadap
 TARGET VALIDASI yang ditentukan di awal:
 
   LEVEL KORPUS
-    - % Question isolated turun dari 91,96% jadi <=30%
+    - % Question isolated turun dari 91,96% (tanpa edge IS_RELATED_TO masuk maupun keluar; dengan derajat keluar
+      seperti pengukuran di bawah: 94,88%, diukur 2026-10-25) jadi <=30%
     - mean degree >=3, median degree >=1
     (dihitung atas gabungan edge Question-Question: IS_RELATED_TO +
     TAG_COOCCUR + EMBED_SIM -- outdegree, konsisten dgn desain directed
     top-K per node di kedua skrip densifikasi)
 
-  LEVEL SAMPEL EVALUASI
+  LEVEL SAMPEL EVALUASI (INFORMASI SAJA -- BUKAN kriteria penerimaan; Amendment 16)
     - dari top-k hasil vector search untuk N pertanyaan evaluasi
       (default 384, seed=42), >=80% dari node hasil retrieval punya
       minimal 1 edge outgoing
@@ -66,8 +67,8 @@ DEFAULT_TOP_K = 5
 TARGET_ISOLATED_PCT = 30.0
 TARGET_MEAN_DEGREE = 3.0
 TARGET_MEDIAN_DEGREE = 1.0
-TARGET_SAMPLE_OUTGOING_PCT = 80.0
-TARGET_AVG_2HOP_REACHABLE = 5.0
+TARGET_SAMPLE_OUTGOING_PCT = 80.0  # informational only (Amendment 16)
+TARGET_AVG_2HOP_REACHABLE = 5.0  # informational only (Amendment 16)
 TARGET_LATENCY_SEC = 15.0
 
 
@@ -269,11 +270,9 @@ def validate_sample_level(driver, database, question_ids, top_k):
 
     log(f"\nNode unik hasil top-{top_k} retrieval (gabungan {len(question_ids):,} query): {n_retrieved:,}")
     log(f"  -> punya >=1 edge outgoing: {n_with_outgoing:,} ({pct_outgoing:.2f}%) "
-        f"[target: >= {TARGET_SAMPLE_OUTGOING_PCT}%] "
-        f"{'PASS' if pct_outgoing >= TARGET_SAMPLE_OUTGOING_PCT else 'FAIL'}")
+        f"[informasi, bukan kriteria penerimaan; acuan awal >= {TARGET_SAMPLE_OUTGOING_PCT}%]")
     log(f"Rata-rata node terjangkau dalam 2-hop (per query): {avg_reachable:.2f} "
-        f"[target: >= {TARGET_AVG_2HOP_REACHABLE}] "
-        f"{'PASS' if avg_reachable >= TARGET_AVG_2HOP_REACHABLE else 'FAIL'}")
+        f"[informasi, bukan kriteria penerimaan; acuan awal >= {TARGET_AVG_2HOP_REACHABLE}]")
     log(f"Latency traversal 2-hop -- rata-rata: {avg_latency * 1000:.1f}ms, "
         f"p95: {p95_latency * 1000:.1f}ms, MAX: {max(latencies, default=0)*1000:.1f}ms "
         f"[target rata-rata: <= {TARGET_LATENCY_SEC}s] "
@@ -319,12 +318,10 @@ def main():
             and corpus_results["median_degree"] >= TARGET_MEDIAN_DEGREE
         )
         if sample_results:
-            all_pass = all_pass and (
-                sample_results["pct_with_outgoing"] >= TARGET_SAMPLE_OUTGOING_PCT
-                and sample_results["avg_2hop_reachable"] >= TARGET_AVG_2HOP_REACHABLE
-                and sample_results["avg_latency_sec"] <= TARGET_LATENCY_SEC
-            )
-        log(f"Semua target validasi terpenuhi: {'YA' if all_pass else 'TIDAK'}")
+            # sample-level coverage (>= 80% with an outgoing edge, mean 2-hop reach >= 5) is informational only
+            # (Amendment 16); only the NF3 latency target still counts here
+            all_pass = all_pass and sample_results["avg_latency_sec"] <= TARGET_LATENCY_SEC
+        log(f"Semua kriteria penerimaan terpenuhi (level korpus{' + latency NF3' if sample_results else ''}): {'YA' if all_pass else 'TIDAK'}")
         if not all_pass:
             log("-> Kalau belum tercapai setelah maksimal 2 iterasi penyesuaian threshold "
                 "(--jaccard-threshold / --max-df di skrip 10, --cosine-threshold di skrip 11), "

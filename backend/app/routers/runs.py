@@ -77,9 +77,20 @@ def create_run(body: RunCreateRequest):
             check_c_test_run(
                 load_official_params(), c_retrieval_version=body.c_retrieval_version, alpha=body.alpha,
                 max_hops=body.max_hops, edge_types=tuple(body.edge_types) if body.edge_types else DEFAULT_EDGE_TYPES,
-                use_author_trust=body.use_author_trust, accepted_only=body.accepted_only)
+                use_author_trust=body.use_author_trust, accepted_only=body.accepted_only,
+                allow_legacy=body.allow_legacy_cells)
         except OfficialParamsError as e:
             raise HTTPException(status_code=400, detail=str(e))
+
+    if condition in ("B", "C", "D") and body.mode == "batch" and body.sample_split == "test":
+        # Amendment 16: plain B/C/D and C-ablation are LEGACY cells, refused unless allow_legacy_cells
+        from llm.official_run_matrix import legacy_cell_error
+
+        grounding = body.require_grounding if body.require_grounding is not None else condition != "B"
+        reason = legacy_cell_error(condition, sample_split="test", require_citation=body.require_citation,
+                                   require_grounding=grounding, allow_legacy=body.allow_legacy_cells)
+        if reason:
+            raise HTTPException(status_code=400, detail=reason)
 
     params = body.model_dump()
     run_id = run_registry.create_run(condition, body.mode, params)
