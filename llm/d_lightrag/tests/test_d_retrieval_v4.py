@@ -169,14 +169,16 @@ def test_config_hash_changes_with_the_retrieval_version():
     v4 = dl.build_config(*args, d_retrieval_version="v4")
     assert v3["d_retrieval_version"] == "v3" and v4["d_retrieval_version"] == "v4"
     assert compute_config_hash(v3) != compute_config_hash(v4)
-    assert dl.build_config(*args) == v4 and dl.D_RETRIEVAL_VERSION == "v4"  # v4 is the default / current version
+    v5 = dl.build_config(*args, d_retrieval_version="v5")
+    assert len({compute_config_hash(c) for c in (v3, v4, v5)}) == 3
+    assert dl.build_config(*args) == v5 and dl.D_RETRIEVAL_VERSION == "v5"  # v5 (Amendment 17) is the default now
     assert dl.build_output_path("r", "openai", "gpt-4o-mini", 384, 42, True, d_retrieval_version="v3") != \
         dl.build_output_path("r", "openai", "gpt-4o-mini", 384, 42, True, d_retrieval_version="v4")
 
 
 def test_v3_stays_reproducible_and_unknown_versions_are_refused():
     assert callable(dl.retrieve_high_level) and callable(dl.retrieve_low_level)
-    assert dl.D_RETRIEVAL_VERSIONS == ("v3", "v4")
+    assert dl.D_RETRIEVAL_VERSIONS == ("v3", "v4", "v5")
     with pytest.raises(ValueError):
         dl.process_sample(None, None, None, None, None, "g", None, None, None, {}, {}, 5, 3, 3, 400, "m", None,
                           d_retrieval_version="v9")
@@ -187,4 +189,4 @@ def test_official_matrix_pins_the_same_version():
 
     assert orm.D_RETRIEVAL_VERSION == dl.D_RETRIEVAL_VERSION
     d = [r for r in orm.build_matrix(None) if r["condition"] == "D"][0]
-    assert d["argv"][d["argv"].index("--d-retrieval-version") + 1] == "v4"
+    assert d["argv"][d["argv"].index("--d-retrieval-version") + 1] == "v5"

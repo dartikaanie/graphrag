@@ -11,8 +11,8 @@ ctxrel_sweep.select_stage2_winner() -- the same helper the procedure names.
 INPUT (all required)
 ------------------------------------------------------------
 --run-files    The 4 C generation runs on the dev split: for each stage-2
-               candidate α (STAGE2_ALPHAS: 0.25 and 0.0, the top_two of the
-               Amendment 9 stage-1 recheck), one run with grounding on
+               candidate α (STAGE2_ALPHAS: the top_two of the stage-1
+               report of record, see stage2_candidates.py), one run with grounding on
                and one with grounding off.
 --judge-files  judge-v2.x output file(s) (llm_judge_hallucination_v2_1.py
                --out ...) containing the PRIMARY judge's records for those
@@ -86,13 +86,13 @@ from judge_binary import (CATEGORY_ABSTAIN, CATEGORY_HALLUCINATED,  # noqa: E402
 from trust_formulas import TRUST_SCORE_VERSION  # noqa: E402
 
 from llm.official_run_matrix import LEAKAGE_MODE as OFFICIAL_LEAKAGE_MODE  # noqa: E402
+from llm.c_graphrag.official_params import OFFICIAL_C_RETRIEVAL_VERSION  # noqa: E402
 from llm.sample_split import load_frozen_ids  # noqa: E402
 
-# Stage-2 candidates. Amendment 9: the stage-1 recheck with answerable-only
-# semantic expansion gave top_two = [0.25, 0.0] (report results/expansion_check/
-# stage1_expansion_report_20261018T042953Z.md), replacing Amendment 6's
-# [0.5, 0.25].
-STAGE2_ALPHAS = (0.25, 0.0)
+# Stage-2 candidates: DERIVED from the stage-1 report of record (llm/c_graphrag/stage2_candidates.py; Amendment 17:
+# C v4 with answerable-only anchors, top_two = [0.5, 0.25]), never written by hand. EXPLORATORY_ALPHAS (alpha 0) are
+# run the same way as a pre-declared reference and are reported separately; the selection rule never sees them.
+from llm.c_graphrag.stage2_candidates import EXPLORATORY_ALPHAS, STAGE2_ALPHAS  # noqa: E402
 N_DEV = 50
 JUDGE_ID = "primary"
 # The APPLIED_AT line printed by `01_data_cleaning/14_apply_logscore_trust.py
@@ -187,7 +187,7 @@ def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str | Non
         if len(configs) != 1:
             raise Stage2Error(f"{path.name}: records carry {len(configs)} different configs")
         cfg = recs[0]["config"]
-        problems = [k for k, want in (("condition", "C"), ("c_retrieval_version", "v3"), ("sample_split", "dev"))
+        problems = [k for k, want in (("condition", "C"), ("c_retrieval_version", OFFICIAL_C_RETRIEVAL_VERSION), ("sample_split", "dev"))
                     if cfg.get(k) != want]
         if problems:
             raise Stage2Error(f"{path.name}: wrong {problems} (config {cfg})")
@@ -198,8 +198,9 @@ def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str | Non
             raise Stage2Error(f"{path.name}: leakage mode {cfg.get('leakage')!r}, not the official "
                               f"{OFFICIAL_LEAKAGE_MODE!r} (Amendment 15)")
         alpha = cfg.get("alpha")
-        if alpha not in alphas:
-            raise Stage2Error(f"{path.name}: alpha {alpha} is not a stage-2 candidate {list(alphas)}")
+        if alpha not in (*alphas, *EXPLORATORY_ALPHAS):
+            raise Stage2Error(f"{path.name}: alpha {alpha} is not a stage-2 candidate {list(alphas)} "
+                              f"(or an exploratory reference {list(EXPLORATORY_ALPHAS)})")
         key = (alpha, _grounding(cfg))
         if key in runs:
             raise Stage2Error(f"two runs for alpha={key[0]}, grounding={key[1]}: {runs[key]['path'].name}, {path.name}")
@@ -224,6 +225,9 @@ def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str | Non
         runs[key] = {"path": path, "question_ids": set(qids), "started_at": started}
         qid_sets.append(set(qids))
     expected = {(a, g) for a in alphas for g in ("on", "off")}
+    extra = {k for k in runs if k[0] in EXPLORATORY_ALPHAS}          # exploratory reference runs: all-or-nothing per alpha
+    for a in {k[0] for k in extra}:
+        expected |= {(a, g) for g in ("on", "off")}
     if set(runs) != expected:
         raise Stage2Error(f"missing runs for {sorted(expected - set(runs))}")
     if any(s != qid_sets[0] for s in qid_sets):
@@ -374,7 +378,7 @@ def draft_official_params(selection: dict, alphas=STAGE2_ALPHAS) -> dict:
     others = [a for a in alphas if a != winner]
     if winner not in alphas or len(others) != 1:
         raise Stage2Error(f"winner {winner!r} must be one of the two stage-2 candidates {list(alphas)}")
-    return {"status": "selected", "c_retrieval_version": "v3", "alpha_primary": winner, "alpha_ablation": others[0],
+    return {"status": "selected", "c_retrieval_version": OFFICIAL_C_RETRIEVAL_VERSION, "alpha_primary": winner, "alpha_ablation": others[0],
             "selection_record": {"path": SELECTION_RECORD_PATH, "commit": None}, **OFFICIAL_DEFAULTS}
 
 
@@ -385,7 +389,7 @@ def draft_official_params(selection: dict, alphas=STAGE2_ALPHAS) -> dict:
 def build_markdown(pooled, per_run, selection, runs, judge_version, judge_files, official) -> str:
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     lines = [
-        "# Stage 2 Report -- C retrieval v3 alpha selection", "",
+        "# Stage 2 Report -- C retrieval v4 alpha selection", "",
         f"Generated: {stamp}  |  judge: {judge_version} (primary)  |  pooled over grounding on + off", "",
         "Runs:", *[f"- alpha={a}, grounding={g}: `{info['path'].name}` (started {info['started_at']})"
                    for (a, g), info in sorted(runs.items())],
@@ -410,7 +414,7 @@ def build_markdown(pooled, per_run, selection, runs, judge_version, judge_files,
               f"- reasoning: {selection['reasoning']}", "",
               "## DRAFT -- Outcome section for docs/DECISION_C_SCORING.md (review, then paste)", "",
               "```markdown",
-              f"- Stage 1 of record: Amendment 9 recheck (trustScore {TRUST_SCORE_VERSION}, answerable-only expansion), "
+              f"- Stage 1 of record: Amendment 17 re-run (C v4, answerable-only anchors; trustScore {TRUST_SCORE_VERSION}), "
               f"top_two = {list(STAGE2_ALPHAS)}.",
               f"- Stage 2: {judge_version}, pooled grounding on + off, n = "
               f"{next(iter(pooled.values()))['n']} answers per alpha.",
@@ -454,12 +458,19 @@ def main() -> int:
     except (Stage2Error, run_registry.RegistryError) as e:
         print(f"[STOP] {e}")
         return 1
+    expl = sorted({a for a, _ in runs if a in EXPLORATORY_ALPHAS})
+    every = (*STAGE2_ALPHAS, *expl)
     if args.panel:
-        pooled, per_run = stage2_metrics(judged, category=_panel_category, severity=_panel_severity)
-        per_judge_metrics = {j: stage2_metrics(recs)[0] for j, recs in per_judge.items()}
+        pooled, per_run = stage2_metrics(judged, alphas=STAGE2_ALPHAS, category=_panel_category, severity=_panel_severity)
+        expl_pooled, expl_per_run = stage2_metrics(judged, alphas=expl, category=_panel_category, severity=_panel_severity)
+        per_judge_metrics = {j: stage2_metrics(recs, alphas=every)[0] for j, recs in per_judge.items()}
+        per_judge_per_run = {j: stage2_metrics(recs, alphas=every)[1] for j, recs in per_judge.items()}
     else:
-        pooled, per_run = stage2_metrics(judged)
-        per_judge_metrics = {}
+        pooled, per_run = stage2_metrics(judged, alphas=STAGE2_ALPHAS)
+        expl_pooled, expl_per_run = stage2_metrics(judged, alphas=expl)
+        per_judge_metrics, per_judge_per_run = {}, {}
+    context_items = {f"{a}|{g}": round(sum(len(r.get("retrieved_context") or []) for r in _read_jsonl(info["path"]))
+                                       / N_DEV, 3) for (a, g), info in runs.items()}
     selection = select_stage2_winner(pooled)
     official = draft_official_params(selection)
     label = f"{args.judge_version}, {args.panel} PANEL label" if args.panel else f"{args.judge_version} (primary)"
@@ -469,6 +480,19 @@ def main() -> int:
         md += "\n".join(f"| {j} | {a} | {m['rate_excl_abstain']} ({m['hallucination_count_excl_abstain']}/{m['n_excl_abstain']}) | "
                         f"{m['abstain_rate']} | {m['rate_incl_abstain']} |" for j, pm in per_judge_metrics.items()
                         for a, m in pm.items()) + "\n"
+    if expl:
+        md += ("\n## EXPLORATORY reference (alpha " + ", ".join(map(str, expl)) + ") -- pre-declared, NOT eligible for "
+               "selection; the rule above never saw it\n\n| alpha | n | hallucinated | not hallucinated | ABSTAIN | "
+               "rate excl. ABSTAIN | rate incl. ABSTAIN |\n|---|---|---|---|---|---|---|\n")
+        md += "\n".join(f"| {a} | {m['n']} | {m['n_hallucinated']} | {m['n_not_hallucinated']} | {m['n_abstain']} | "
+                        f"{m['rate_excl_abstain']} ({m['hallucination_count_excl_abstain']}/{m['n_excl_abstain']}) | "
+                        f"{m['rate_incl_abstain']} ({m['hallucination_count_incl_abstain']}/{m['n_incl_abstain']}) |"
+                        for a, m in expl_pooled.items()) + "\n"
+        md += ("\n| alpha | grounding | hallucinated | ABSTAIN | rate excl. ABSTAIN | severity |\n|---|---|---|---|---|---|\n"
+               + "\n".join(f"| {k.split('|')[0]} | {k.split('|')[1]} | {m['n_hallucinated']} | {m['n_abstain']} | "
+                           f"{m['rate_excl_abstain']} | {m['severity']} |" for k, m in expl_per_run.items()) + "\n")
+    md += ("\n## Mean context items per answer (retrieval, per run)\n\n| alpha | grounding | items |\n|---|---|---|\n"
+           + "\n".join(f"| {k.split('|')[0]} | {k.split('|')[1]} | {v} |" for k, v in sorted(context_items.items())) + "\n")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     stem = OUT_DIR / f"stage2_report_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     Path(f"{stem}.md").write_text(md)
@@ -479,6 +503,9 @@ def main() -> int:
         "judge_files": [str(j) for j in args.judge_files], "panel": args.panel,
         "per_judge_pooled": {j: {str(a): m for a, m in pm.items()} for j, pm in per_judge_metrics.items()},
         "tie_rule_used": selection.get("reasoning"),
+        "exploratory": {"alphas": expl, "note": "pre-declared reference, not eligible for selection",
+                        "pooled": {str(a): m for a, m in expl_pooled.items()}, "per_run": expl_per_run},
+        "per_judge_per_run": per_judge_per_run, "context_items_per_answer": context_items,
     }, indent=2, default=str))
     if args.apply:
         import subprocess

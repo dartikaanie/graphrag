@@ -12,7 +12,7 @@ export const PARAM_GLOSSARY = {
   model: 'The specific LLM model name to use, e.g. gpt-4o-mini.',
   question_id: 'Stack Overflow question ID to run a single evaluation against, instead of a batch.',
   top_k: 'Number of retrieved context chunks (answers) included in the prompt sent to the LLM.',
-  n_anchor: 'Number of similar questions used as entry points ("anchors") into the knowledge graph before traversal.',
+  n_anchor: 'Number of similar questions used as entry points ("anchors") into the knowledge graph before traversal. Since retrieval v4 only questions with at least one answer qualify (the scan continues down the same similarity list).',
   n_semantic_expansion: 'Number of extra candidates pulled in by embedding similarity, in addition to graph traversal, to fill out the retrieved context.',
   require_citation:
     'Require the LLM to cite its sources inline as [SO-<id>] for each claim, so citation compliance (NF2) can be measured and compared against Condition C.',
@@ -25,9 +25,9 @@ export const PARAM_GLOSSARY = {
   semantic_expansion_trust_cap:
     'Maximum trust score assignable to candidates found only via semantic (embedding) expansion, since they lack a graph path to derive trust from. Only used in "trust_weighted" mode.',
   n_low_level:
-    'Number of similar questions used as entry points ("anchors") for low-level retrieval — the answers directly attached to each anchor question, scored by the cosine between the query and the anchor question (the same score as the high level; no trust score).',
+    'Number of similar questions used as entry points ("anchors") for low-level retrieval — the answers directly attached to each anchor question, scored by the cosine between the query and the anchor question (the same score as the high level; no trust score). Since retrieval v5 the anchors are the first questions of the similarity list that have at least one answer (the same rule as Condition C v4).',
   n_high_level:
-    'Number of related questions (via tag co-occurrence / relatedness edges) used for high-level retrieval — broader, theme-level context beyond the direct anchors. The neighbours are scored by the cosine between the query and the neighbour question itself (retrieval v4), not by edge weight (no trust score).',
+    'Number of related questions (via tag co-occurrence / relatedness edges) used for high-level retrieval — broader, theme-level context beyond the direct anchors. The neighbours are scored by the cosine between the query and the neighbour question itself (retrieval v4+), not by edge weight (no trust score). Since v5 more neighbours are added in score order until at least k = 5 distinct answers exist.',
   require_grounding:
     'Whether the LLM is instructed to ground its answer ONLY in the retrieved context, in addition to citing sources. Turning this off keeps the citation instruction but drops the "don’t introduce facts outside the context" constraint — isolating the effect of the grounding constraint itself.',
   enable_semantic_expansion:

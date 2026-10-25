@@ -24,10 +24,10 @@ Instruksi *grounding* dan *citation* AKTIF untuk B, C, dan D. Tidak ada run tanp
 | R4 | R9 | D-grounded | D | on | — | `D-grounded` |
 
 - Perbandingan utama yang didaftarkan: **C vs A, C vs B, C vs D** (R5 vs R1, R5 vs R3, R5 vs R9), pada *hallucination rate* panel (ABSTAIN dikeluarkan).
-- C v3 dengan `fusion_mode = trust_weighted` (v3 mengabaikan `fusion_mode` untuk ranking, tetapi nilainya masuk `config_hash`; dengan nilai yang sama, run CLI dan dashboard untuk sel yang sama berbagi `config_hash` dan berkas output).
+- C **v4** (Amendment 17: ranking v3 + anchor hanya dari Question yang punya jawaban; v3 tetap bisa direproduksi) dengan `fusion_mode = trust_weighted` (v3 mengabaikan `fusion_mode` untuk ranking, tetapi nilainya masuk `config_hash`; dengan nilai yang sama, run CLI dan dashboard untuk sel yang sama berbagi `config_hash` dan berkas output).
 - Parameter C lain dikunci oleh `official_params.json`: `max_hops = 2`, `edge_types` = kelima tipe, `use_author_trust = false`, `accepted_only = false`. Expansion answerable-only (Amendment 9) aktif.
 - Leakage: `thread` (Amendment 15) untuk B, C, D: hanya pertanyaan evaluasi dan semua jawabannya yang dikecualikan.
-- Condition D memakai retrieval **v4** (`--d-retrieval-version v4`): satu skor cosine (kueri vs Question pemilik jawaban) untuk kedua level; v3 tetap bisa direproduksi.
+- Condition D memakai retrieval **v5** (`--d-retrieval-version v5`): satu skor cosine (kueri vs Question pemilik jawaban) untuk kedua level (sejak v4), anchor hanya dari Question yang punya jawaban (fungsi yang sama dengan C v4, `llm/common/anchors.py`, kedalaman scan 400), dan high level menambah tetangga sampai ada minimal k = 5 jawaban unik. v4 dan v3 tetap bisa direproduksi.
 - Tahap 2 pemilihan α tetap menghasilkan kandidat kedua (`alpha_ablation`) dan `official_params.json` tetap menyimpannya, **tetapi tidak ada run resmi yang memakainya**.
 
 ## Perintah CLI (dari root repo)
@@ -44,11 +44,11 @@ Perintah mem-*pin* semua parameter yang bisa ditimpa `.env` (`OVERSAMPLE_POOL`, 
 
 **R5 · C-primary-grounded** (run tesis R3)
 
-`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v3 --alpha <alpha_primary> --fusion-mode trust_weighted --require-grounding --expansion-require-answer --leakage-mode thread`
+`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_primary> --fusion-mode trust_weighted --no-require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
 
 **R9 · D-grounded** (run tesis R4)
 
-`cd llm/d_lightrag && python d_lightrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-low-level 3 --n-high-level 3 --d-retrieval-version v4 --no-require-grounding --leakage-mode thread --allow-legacy-cells`
+`cd llm/d_lightrag && python d_lightrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-low-level 3 --n-high-level 3 --d-retrieval-version v5 --no-require-grounding --leakage-mode thread --allow-legacy-cells`
 
 ## Sel legacy (BUKAN bagian evaluasi resmi)
 
@@ -60,23 +60,23 @@ Lima sel dari matriks sembilan sel Amendment 10 tetap ada di kode supaya data da
 
 **R4 · C-primary-plain** (LEGACY)
 
-`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v3 --alpha <alpha_primary> --fusion-mode trust_weighted --no-require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
+`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_primary> --fusion-mode trust_weighted --require-grounding --expansion-require-answer --leakage-mode thread`
 
 **R6 · C-ablation-plain** (LEGACY)
 
-`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v3 --alpha <alpha_ablation> --fusion-mode trust_weighted --no-require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
+`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_ablation> --fusion-mode trust_weighted --no-require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
 
 **R7 · C-ablation-grounded** (LEGACY)
 
-`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v3 --alpha <alpha_ablation> --fusion-mode trust_weighted --require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
+`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_ablation> --fusion-mode trust_weighted --require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
 
 **R8 · D-plain** (LEGACY)
 
-`cd llm/d_lightrag && python d_lightrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-low-level 3 --n-high-level 3 --d-retrieval-version v4 --require-grounding --leakage-mode thread`
+`cd llm/d_lightrag && python d_lightrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-low-level 3 --n-high-level 3 --d-retrieval-version v5 --require-grounding --leakage-mode thread`
 
 ## Padanan di dashboard
 
-Halaman **Factorial Batch** → preset **Official (n=384)** → *Confirm & Launch*. Preset membaca `official_params.json` lewat `GET /api/config/defaults` (`official_c_params`, dan `official_run_matrix` = keempat sel dalam bentuk JSON), mengisi `c_retrieval_version = v3`, `alpha (C-primary)`, `n_sample = 384`, `sample_split = test`, lalu menyusun **4 sel** (`A`, `B-grounded`, `C-primary-grounded`, `D-grounded`). Satu sel bisa juga diluncurkan langsung dengan `POST /api/runs` memakai objek `dashboard` dari `official_run_matrix`. Di dashboard, mode leakage dan saklar expansion diambil dari `LEAKAGE_*` / `EXPANSION_REQUIRE_ANSWER` (env); nilai bawaannya sama dengan yang di-*pin* di CLI.
+Halaman **Factorial Batch** → preset **Official (n=384)** → *Confirm & Launch*. Preset membaca `official_params.json` lewat `GET /api/config/defaults` (`official_c_params`, dan `official_run_matrix` = keempat sel dalam bentuk JSON), mengisi `c_retrieval_version = v4`, `alpha (C-primary)`, `n_sample = 384`, `sample_split = test`, lalu menyusun **4 sel** (`A`, `B-grounded`, `C-primary-grounded`, `D-grounded`). Satu sel bisa juga diluncurkan langsung dengan `POST /api/runs` memakai objek `dashboard` dari `official_run_matrix`. Di dashboard, mode leakage dan saklar expansion diambil dari `LEAKAGE_*` / `EXPANSION_REQUIRE_ANSWER` (env); nilai bawaannya sama dengan yang di-*pin* di CLI.
 
 ## Catatan P0-4: perbedaan prompt A vs B/C/D adalah bagian dari intervensi
 

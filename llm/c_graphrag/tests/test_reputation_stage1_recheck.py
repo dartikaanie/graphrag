@@ -35,7 +35,10 @@ def test_unjudged_items_dedups_and_skips_known():
 
 
 def test_stage1_files_and_report_parse_match_committed_outputs():
-    files = {a: rs.stage1_file_for_alpha(a) for a in rs.ALPHAS}
+    # the stage-1 outputs are in the pre-official archive; live stage-2 runs now share the file-name pattern, so the
+    # lookup is pointed at the archive explicitly
+    from llm import archive_paths
+    files = {a: rs.stage1_file_for_alpha(a, archive_paths.archived_dir(rs.RESULTS)) for a in rs.ALPHAS}
     assert len(set(files.values())) == 5
     assert all(len(rs.selected_ids(f)) == 50 for f in files.values())
     reported = rs.parse_stage1_report(REPORT)

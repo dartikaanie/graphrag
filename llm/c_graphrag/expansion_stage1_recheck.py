@@ -56,6 +56,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
+from llm import archive_paths  # noqa: E402
 import c_graphrag as cg  # noqa: E402
 import logscore_stage1_recheck as lsr  # noqa: E402
 import reputation_stage1_recheck as rsr  # noqa: E402
@@ -66,19 +67,24 @@ JUDGE_ID = rsr.JUDGE_ID
 N_DEV = 50
 OUT_DIR = rsr.RESULTS / "expansion_check"
 NEW_JUDGMENTS = OUT_DIR / "ctxrel_v2_expansion_primary.jsonl"
-JUDGMENT_FILES = (*lsr.JUDGMENT_FILES, NEW_JUDGMENTS)
+# The earlier labels and the Amendment 6 result of record were moved to the pre-official archive (2026-10-19): read
+# them through the archive resolver. New labels are appended to the LIVE NEW_JUDGMENTS file, which is read after the
+# archived copy (a later usable record for a key replaces an earlier one).
+JUDGMENT_FILES = (*(archive_paths.resolve(p) for p in lsr.JUDGMENT_FILES), archive_paths.resolve(NEW_JUDGMENTS),
+                  NEW_JUDGMENTS)
 RECORD_DIR = lsr.OUT_DIR  # Amendment 6 stage-1 result of record
 RECORD_REPORT = "stage1_logscore_report_*.json"
 
 
 def record_file(alpha: float) -> Path:
-    return RECORD_DIR / f"stage1_logscore_alpha{str(alpha).replace('.', '-')}.jsonl"
+    return archive_paths.resolve(RECORD_DIR / f"stage1_logscore_alpha{str(alpha).replace('.', '-')}.jsonl")
 
 
 def recorded_metrics() -> dict:
-    reports = sorted(RECORD_DIR.glob(RECORD_REPORT))
+    record_dir = RECORD_DIR if list(RECORD_DIR.glob(RECORD_REPORT)) else (archive_paths.archived_dir(RECORD_DIR) or RECORD_DIR)
+    reports = sorted(record_dir.glob(RECORD_REPORT))
     if len(reports) != 1:
-        raise FileNotFoundError(f"need exactly 1 {RECORD_REPORT} in {RECORD_DIR}, found {len(reports)}")
+        raise FileNotFoundError(f"need exactly 1 {RECORD_REPORT} in {record_dir}, found {len(reports)}")
     d = json.loads(reports[0].read_text())
     return {float(a): m for a, m in d["v3"].items()}, d["selection_v3"]
 

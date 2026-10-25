@@ -1,0 +1,16 @@
+{
+  "n_items": 254,
+  "mean_prompt_tokens": 1002.6,
+  "mean_completion_tokens": 54.3,
+  "price_per_m_input": 0.1,
+  "price_per_m_output": 0.32,
+  "est_cost_usd": 0.0299,
+  "per_alpha": {
+    "0.0": 124,
+    "0.25": 124,
+    "0.5": 127,
+    "0.75": 138,
+    "1.0": 146
+  },
+  "judge_model": "meta-llama/Llama-3.3-70B-Instruct"
+}

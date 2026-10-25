@@ -11,7 +11,7 @@ import c_graphrag as cg
 from llm.c_graphrag.official_params import OfficialParamsError, check_c_test_run
 
 EDGES = ["EMBED_SIM", "HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR"]
-PENDING = {"status": "pending_selection", "c_retrieval_version": "v3", "alpha_primary": None,
+PENDING = {"status": "pending_selection", "c_retrieval_version": "v4", "alpha_primary": None,
            "alpha_ablation": None, "selection_record": {"path": "x", "commit": None}, "sample_split": "test",
            "max_hops": 2, "edge_types": EDGES, "use_author_trust": False, "accepted_only": False}
 SELECTED = {**PENDING, "status": "selected", "alpha_primary": 0.25, "alpha_ablation": 0.0,
@@ -19,7 +19,7 @@ SELECTED = {**PENDING, "status": "selected", "alpha_primary": 0.25, "alpha_ablat
 
 
 def _args(**kw):
-    base = dict(sample_split="test", c_retrieval_version="v3", alpha=0.25, max_hops=2, edge_types=None,
+    base = dict(sample_split="test", c_retrieval_version="v4", alpha=0.25, max_hops=2, edge_types=None,
                 use_author_trust=False, accepted_only=False)
     return Namespace(**{**base, **kw})
 
@@ -34,7 +34,7 @@ def test_official_alphas_give_their_roles():
 
 
 def test_test_split_refuses_v2():
-    with pytest.raises(OfficialParamsError, match="requires --c-retrieval-version v3"):
+    with pytest.raises(OfficialParamsError, match="requires --c-retrieval-version v4"):
         cg.official_role_for_args(_args(c_retrieval_version="v2", alpha=None), SELECTED)
 
 
@@ -62,7 +62,7 @@ def test_test_split_refuses_other_locked_param_changes():
 
 def test_selected_params_need_two_distinct_alphas():
     with pytest.raises(OfficialParamsError, match="two distinct"):
-        check_c_test_run({**SELECTED, "alpha_ablation": 0.25}, c_retrieval_version="v3", alpha=0.25, max_hops=2,
+        check_c_test_run({**SELECTED, "alpha_ablation": 0.25}, c_retrieval_version="v4", alpha=0.25, max_hops=2,
                          edge_types=EDGES, use_author_trust=False, accepted_only=False)
 
 

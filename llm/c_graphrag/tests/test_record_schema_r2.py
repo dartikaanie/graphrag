@@ -126,11 +126,13 @@ def test_condition_c_retrieval_only_record(tmp_path, quiet, monkeypatch):
 def test_condition_d_record_and_is_accepted(tmp_path, quiet, monkeypatch):
     monkeypatch.setattr(d, "embed_query", lambda text, model: np.ones((1, 384), dtype="float32"))
     monkeypatch.setattr(d, "anchor_via_vector_search", lambda *x, **k: [(900, 0.9)])
+    monkeypatch.setattr(d, "select_answerable_anchors", lambda *x, **k: [(900, 0.9)])  # v5 (the default)
     low = [{"via_question_id": 900, "via_question_title": "x?", "answer_id": 901, "answer_body": "do x", "hop": 1,
             "rel_type": "HAS_ACCEPTED_ANSWER", "relevance_score": 0.9, "is_accepted": True}]
     high = [{"via_question_id": 902, "via_question_title": "y?", "answer_id": 903, "answer_body": "do y", "hop": 2,
              "rel_type": "EMBED_SIM", "relevance_score": 0.4, "is_accepted": False}]
-    for name in ("retrieve_low_level", "retrieve_high_level", "retrieve_low_level_v4", "retrieve_high_level_v4"):
+    for name in ("retrieve_low_level", "retrieve_high_level", "retrieve_low_level_v4", "retrieve_high_level_v4",
+                 "retrieve_high_level_v5"):
         monkeypatch.setattr(d, name, lambda *x, _r=(low if "low" in name else high), **k: _r)  # v3 and v4 alike
     recs, _ = d.process_sample(_sample(), None, _fake_llm, None, None, "db", None, None, None, {}, {100: [101]},
                                5, 3, 3, 400, "fake", tmp_path / "d.jsonl", run_id=RUN_ID)

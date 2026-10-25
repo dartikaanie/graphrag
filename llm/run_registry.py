@@ -188,7 +188,7 @@ def expected_generation_config(status: str, condition: str) -> dict:
     if condition == "B" and status == STATUS_OFFICIAL:
         exp.update(require_citation=True)
     if condition == "C":
-        exp.update(c_retrieval_version="v3", n_anchor=orm.N_ANCHOR, n_semantic_expansion=orm.N_SEMANTIC_EXPANSION,
+        exp.update(c_retrieval_version=orm.C_RETRIEVAL_VERSION, n_anchor=orm.N_ANCHOR, n_semantic_expansion=orm.N_SEMANTIC_EXPANSION,
                    expansion_require_answer=True, fusion_mode="trust_weighted")
     if condition == "D":
         exp.update(d_retrieval_version=orm.D_RETRIEVAL_VERSION, n_low_level=orm.N_LOW_LEVEL,
@@ -219,8 +219,12 @@ def generation_entry(run_file, status: str) -> dict:
         if official.get("status") != "selected" or cfg.get("alpha") != official.get("alpha_primary"):
             wrong["alpha"] = (cfg.get("alpha"), f"alpha_primary of a 'selected' official_params.json "
                                                 f"({official.get('status')}, {official.get('alpha_primary')})")
-    if status == STATUS_DEV_STAGE2 and (cond != "C" or cfg.get("alpha") not in (0.25, 0.0)):
-        wrong["condition/alpha"] = ((cond, cfg.get("alpha")), "C with alpha 0.25 or 0")
+    if status == STATUS_DEV_STAGE2:
+        from llm.c_graphrag.stage2_candidates import EXPLORATORY_ALPHAS, STAGE2_ALPHAS
+        allowed = (*STAGE2_ALPHAS, *EXPLORATORY_ALPHAS)
+        if cond != "C" or cfg.get("alpha") not in allowed:
+            wrong["condition/alpha"] = ((cond, cfg.get("alpha")), f"C with alpha in {list(allowed)} (stage-2 candidates "
+                                        f"{list(STAGE2_ALPHAS)} + exploratory {list(EXPLORATORY_ALPHAS)})")
     if wrong:
         raise RegistryError(f"{path.name}: config differs from the frozen values (got, expected): {wrong}")
     no_timing = sum(1 for r in recs if r.get("end_to_end_latency_sec") is None or r.get("answer_started_at_utc") is None)

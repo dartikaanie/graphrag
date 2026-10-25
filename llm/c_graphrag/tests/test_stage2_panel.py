@@ -73,7 +73,7 @@ def test_apply_writes_selected_params_once(tmp_path):
     official = s2.draft_official_params({"winner": 0.25, "keep_current": False})
     s2.apply_official_params(official, "abc123", path)
     written = json.loads(path.read_text())
-    assert written["status"] == "selected" and written["alpha_primary"] == 0.25 and written["alpha_ablation"] == 0.0
+    assert written["status"] == "selected" and written["alpha_primary"] == 0.25 and written["alpha_ablation"] == 0.5
     assert written["selection_record"]["commit"] == "abc123"
     with pytest.raises(s2.Stage2Error, match="already applied"):
         s2.apply_official_params(official, "abc123", path)

@@ -357,7 +357,7 @@ def _stage1_dev_ids_stub(monkeypatch):
 
 
 def _run(tmp, alpha, grounded, started, **manifest_extra) -> Path:
-    cfg = {"condition": "C", "c_retrieval_version": "v3", "sample_split": "dev", "alpha": alpha,
+    cfg = {"condition": "C", "c_retrieval_version": "v4", "sample_split": "dev", "alpha": alpha,
            "require_grounding": grounded, "expansion_require_answer": True, "leakage": "thread"}
     path = tmp / f"run_a{alpha}_{'g' if grounded else 'p'}.jsonl"
     path.write_text("".join(json.dumps({"question_id": q, "config": cfg}) + "\n" for q in QIDS))

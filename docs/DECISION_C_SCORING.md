@@ -836,6 +836,49 @@ check (`--retrieval-only`, no LLM call).
 
 ---
 
+## Amendment 17 (2026-10-25): answerable anchors for C and D; D fills up to k
+
+**Status: DRAFT, awaiting author confirmation.** Written BEFORE stage 2 and BEFORE any official run. Earlier amendments are
+not edited.
+
+### Reason
+Dev-set diagnosis (50 questions, `thread`, read-only): only **28% of the entity anchors had an answer** (42 of 150; 22 of
+50 questions had no answered anchor at all), so the 1-hop step contributed 1.12 answers per question; and a neighbour
+question has one answer in 75% of cases. Condition D therefore returned only **3.94 context items per question** on
+average (20 of 50 questions had 5). C reached 5 items in 48 of 50 questions only through its answerable-only expansion.
+
+### Change (nothing else changes: trust, expansion in C, fusion, alpha, prompts, leakage rule)
+1. **Entity anchoring, C and D** (`llm/common/anchors.py::select_answerable_anchors`, one shared function): a question can
+   be a seed only if it has at least one non-excluded answer. Questions without an answer are skipped and the scan
+   continues down the same FAISS list until `n_anchor` (3) answerable seeds are found, scanning at most **400** candidates.
+   If fewer are found, the ones found are used and `anchors_found` / `anchors_requested` are recorded. The evaluation
+   question (and its answers) stays excluded as before.
+2. **Condition D high level**: from the neighbours (which already need an answer), take the top 3 by cosine to the query,
+   then keep adding neighbours in score order until at least **k = 5 distinct answers** exist (answers already found by the
+   low level count), or no neighbours are left; then keep the top 5 answers by score. The 100-candidate cap stays.
+3. **Version labels**: **C retrieval `v4`** (= v3 ranking + answerable anchors) and **D retrieval `v5`** (= v4 scoring +
+   answerable anchors + fill up to k). v3 (C) and v3 / v4 (D) stay reproducible with `--c-retrieval-version v3` and
+   `--d-retrieval-version v3|v4`. The versions are part of `config_hash`, pinned in the run matrix and in the frozen
+   parameters; `official_params.json` now carries `c_retrieval_version: "v4"`.
+
+### Consequence for stage 1
+The stage-1 result of record (Amendment 9 recheck) was made with plain anchors (C v3). Because C's retrieval changes, stage 1
+is repeated with v4 anchors, the same judge (ctxrel-v2, Llama-3.3-70B-Instruct, temperature 0) and the same label cache;
+only new items are judged. The rule is unchanged and the result is accepted whatever it is. Report:
+`llm/c_graphrag/results/anchors_check/`.
+
+**Result (2026-10-25, dev set, `thread`, 254 new items judged, $0.03):** % of questions with at least one RELEVANT item
+and mean score per alpha: 0: 56.0 / 0.376; 0.25: 56.0 / 0.374; 0.5: 58.0 / 0.372; 0.75: 56.0 / 0.332; 1: 40.0 / 0.256.
+Under the unchanged rule the two best alphas are **0.5 and 0.25** (previously 0.25 and 0). They are the stage-2
+candidates of record (`llm/c_graphrag/stage2_candidates.py` reads them from `stage1_anchors_report_20261025T165734Z.json`).
+Alpha 0 is run in stage 2 as a pre-declared exploratory reference, not eligible for selection.
+
+### Record
+* Confirmation by the author: [ ]
+* Commit: [ ]
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 
@@ -848,7 +891,7 @@ Schema (Amendment 10, 2026-10-18; values unchanged, still pending): `alpha` is r
 ```json official_params
 {
   "status": "pending_selection",
-  "c_retrieval_version": "v3",
+  "c_retrieval_version": "v4",
   "alpha_primary": null,
   "alpha_ablation": null,
   "selection_record": {"path": "docs/DECISION_C_SCORING.md#amendment-10-2026-10-18-trust-ablation-on-the-official-evaluation", "commit": null},

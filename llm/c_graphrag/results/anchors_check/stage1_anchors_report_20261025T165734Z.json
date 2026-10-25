@@ -1,0 +1,876 @@
+{
+  "meta": {
+    "stamp": "20261025T165734Z",
+    "judge_model": "meta-llama/Llama-3.3-70B-Instruct",
+    "leakage_mode": "thread",
+    "c_retrieval_version": "v4",
+    "anchor_scan_depth": 400,
+    "duration_sec": 492.4,
+    "new_items_judged": 254,
+    "estimated_cost_usd": 0.0299,
+    "actual_cost_usd": 0.02994,
+    "n_excluded_q_all_1": true
+  },
+  "plan": {
+    "n_items": 254,
+    "mean_prompt_tokens": 1002.6,
+    "mean_completion_tokens": 54.3,
+    "price_per_m_input": 0.1,
+    "price_per_m_output": 0.32,
+    "est_cost_usd": 0.0299
+  },
+  "previous": {
+    "report": "stage1_expansion_report_20261025T160942Z.json",
+    "metrics": {
+      "0.0": {
+        "n_questions": 50,
+        "n_questions_with_relevant": 25,
+        "pct_questions_with_relevant": 50.0,
+        "pct_relevant": 23.77,
+        "pct_partial": 22.95,
+        "pct_irrelevant": 53.28,
+        "mean_relevance_score": 0.3525,
+        "mean_sim_selected": 0.5985,
+        "mean_trust_selected": 0.3399,
+        "pct_accepted_selected": 38.52,
+        "jaccard_vs_alpha1": 0.2153,
+        "jaccard_vs_alpha0": 1.0,
+        "by_hop": {
+          "2": {
+            "n": 122,
+            "n_relevant": 33,
+            "n_partial": 25
+          },
+          "1": {
+            "n": 32,
+            "n_relevant": 7,
+            "n_partial": 12
+          },
+          "semantic": {
+            "n": 90,
+            "n_relevant": 18,
+            "n_partial": 19
+          }
+        },
+        "by_edge_type": {
+          "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+            "n": 42,
+            "n_relevant": 9,
+            "n_partial": 14
+          },
+          "HAS_ANSWER": {
+            "n": 76,
+            "n_relevant": 13,
+            "n_partial": 21
+          },
+          "IS_RELATED_TO->HAS_ANSWER": {
+            "n": 7,
+            "n_relevant": 5,
+            "n_partial": 0
+          },
+          "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+            "n": 6,
+            "n_relevant": 0,
+            "n_partial": 0
+          },
+          "TAG_COOCCUR->HAS_ANSWER": {
+            "n": 6,
+            "n_relevant": 2,
+            "n_partial": 1
+          },
+          "EMBED_SIM->HAS_ANSWER": {
+            "n": 61,
+            "n_relevant": 17,
+            "n_partial": 10
+          },
+          "HAS_ACCEPTED_ANSWER": {
+            "n": 46,
+            "n_relevant": 12,
+            "n_partial": 10
+          }
+        }
+      },
+      "0.25": {
+        "n_questions": 50,
+        "n_questions_with_relevant": 24,
+        "pct_questions_with_relevant": 48.0,
+        "pct_relevant": 23.36,
+        "pct_partial": 23.36,
+        "pct_irrelevant": 53.28,
+        "mean_relevance_score": 0.3504,
+        "mean_sim_selected": 0.5954,
+        "mean_trust_selected": 0.3888,
+        "pct_accepted_selected": 47.13,
+        "jaccard_vs_alpha1": 0.2829,
+        "jaccard_vs_alpha0": 0.8114,
+        "by_hop": {
+          "1": {
+            "n": 36,
+            "n_relevant": 9,
+            "n_partial": 13
+          },
+          "2": {
+            "n": 120,
+            "n_relevant": 32,
+            "n_partial": 26
+          },
+          "semantic": {
+            "n": 88,
+            "n_relevant": 16,
+            "n_partial": 18
+          }
+        },
+        "by_edge_type": {
+          "HAS_ANSWER": {
+            "n": 68,
+            "n_relevant": 12,
+            "n_partial": 19
+          },
+          "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+            "n": 49,
+            "n_relevant": 14,
+            "n_partial": 15
+          },
+          "IS_RELATED_TO->HAS_ACCEPTED_ANSWER": {
+            "n": 1,
+            "n_relevant": 0,
+            "n_partial": 1
+          },
+          "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+            "n": 9,
+            "n_relevant": 0,
+            "n_partial": 0
+          },
+          "TAG_COOCCUR->HAS_ANSWER": {
+            "n": 5,
+            "n_relevant": 2,
+            "n_partial": 0
+          },
+          "EMBED_SIM->HAS_ANSWER": {
+            "n": 49,
+            "n_relevant": 12,
+            "n_partial": 9
+          },
+          "HAS_ACCEPTED_ANSWER": {
+            "n": 56,
+            "n_relevant": 13,
+            "n_partial": 12
+          },
+          "IS_RELATED_TO->HAS_ANSWER": {
+            "n": 7,
+            "n_relevant": 4,
+            "n_partial": 1
+          }
+        }
+      },
+      "0.5": {
+        "n_questions": 50,
+        "n_questions_with_relevant": 24,
+        "pct_questions_with_relevant": 48.0,
+        "pct_relevant": 21.31,
+        "pct_partial": 23.36,
+        "pct_irrelevant": 55.33,
+        "mean_relevance_score": 0.3299,
+        "mean_sim_selected": 0.5779,
+        "mean_trust_selected": 0.4588,
+        "pct_accepted_selected": 61.89,
+        "jaccard_vs_alpha1": 0.3713,
+        "jaccard_vs_alpha0": 0.5746,
+        "by_hop": {
+          "1": {
+            "n": 40,
+            "n_relevant": 10,
+            "n_partial": 13
+          },
+          "2": {
+            "n": 122,
+            "n_relevant": 24,
+            "n_partial": 26
+          },
+          "semantic": {
+            "n": 82,
+            "n_relevant": 18,
+            "n_partial": 18
+          }
+        },
+        "by_edge_type": {
+          "HAS_ANSWER": {
+            "n": 52,
+            "n_relevant": 13,
+            "n_partial": 14
+          },
+          "IS_RELATED_TO->HAS_ACCEPTED_ANSWER": {
+            "n": 3,
+            "n_relevant": 1,
+            "n_partial": 2
+          },
+          "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+            "n": 63,
+            "n_relevant": 14,
+            "n_partial": 17
+          },
+          "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+            "n": 15,
+            "n_relevant": 0,
+            "n_partial": 0
+          },
+          "TAG_COOCCUR->HAS_ANSWER": {
+            "n": 7,
+            "n_relevant": 2,
+            "n_partial": 0
+          },
+          "HAS_ACCEPTED_ANSWER": {
+            "n": 70,
+            "n_relevant": 15,
+            "n_partial": 17
+          },
+          "EMBED_SIM->HAS_ANSWER": {
+            "n": 29,
+            "n_relevant": 5,
+            "n_partial": 6
+          },
+          "IS_RELATED_TO->HAS_ANSWER": {
+            "n": 5,
+            "n_relevant": 2,
+            "n_partial": 1
+          }
+        }
+      },
+      "0.75": {
+        "n_questions": 50,
+        "n_questions_with_relevant": 22,
+        "pct_questions_with_relevant": 44.0,
+        "pct_relevant": 18.03,
+        "pct_partial": 20.9,
+        "pct_irrelevant": 61.07,
+        "mean_relevance_score": 0.2848,
+        "mean_sim_selected": 0.5317,
+        "mean_trust_selected": 0.5193,
+        "pct_accepted_selected": 76.23,
+        "jaccard_vs_alpha1": 0.5488,
+        "jaccard_vs_alpha0": 0.3816,
+        "by_hop": {
+          "2": {
+            "n": 126,
+            "n_relevant": 20,
+            "n_partial": 25
+          },
+          "1": {
+            "n": 35,
+            "n_relevant": 10,
+            "n_partial": 10
+          },
+          "semantic": {
+            "n": 83,
+            "n_relevant": 14,
+            "n_partial": 16
+          }
+        },
+        "by_edge_type": {
+          "IS_RELATED_TO->HAS_ACCEPTED_ANSWER": {
+            "n": 3,
+            "n_relevant": 1,
+            "n_partial": 2
+          },
+          "HAS_ANSWER": {
+            "n": 37,
+            "n_relevant": 9,
+            "n_partial": 9
+          },
+          "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+            "n": 39,
+            "n_relevant": 0,
+            "n_partial": 0
+          },
+          "IS_RELATED_TO->HAS_ANSWER": {
+            "n": 5,
+            "n_relevant": 3,
+            "n_partial": 1
+          },
+          "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+            "n": 63,
+            "n_relevant": 13,
+            "n_partial": 20
+          },
+          "HAS_ACCEPTED_ANSWER": {
+            "n": 81,
+            "n_relevant": 15,
+            "n_partial": 17
+          },
+          "EMBED_SIM->HAS_ANSWER": {
+            "n": 11,
+            "n_relevant": 1,
+            "n_partial": 2
+          },
+          "TAG_COOCCUR->HAS_ANSWER": {
+            "n": 5,
+            "n_relevant": 2,
+            "n_partial": 0
+          }
+        }
+      },
+      "1.0": {
+        "n_questions": 50,
+        "n_questions_with_relevant": 14,
+        "pct_questions_with_relevant": 28.0,
+        "pct_relevant": 13.11,
+        "pct_partial": 14.34,
+        "pct_irrelevant": 72.54,
+        "mean_relevance_score": 0.2029,
+        "mean_sim_selected": 0.4536,
+        "mean_trust_selected": 0.5452,
+        "pct_accepted_selected": 85.66,
+        "jaccard_vs_alpha1": 1.0,
+        "jaccard_vs_alpha0": 0.2153,
+        "by_hop": {
+          "2": {
+            "n": 129,
+            "n_relevant": 14,
+            "n_partial": 19
+          },
+          "1": {
+            "n": 23,
+            "n_relevant": 8,
+            "n_partial": 8
+          },
+          "semantic": {
+            "n": 92,
+            "n_relevant": 10,
+            "n_partial": 8
+          }
+        },
+        "by_edge_type": {
+          "IS_RELATED_TO->HAS_ACCEPTED_ANSWER": {
+            "n": 4,
+            "n_relevant": 1,
+            "n_partial": 2
+          },
+          "HAS_ANSWER": {
+            "n": 21,
+            "n_relevant": 4,
+            "n_partial": 6
+          },
+          "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+            "n": 55,
+            "n_relevant": 0,
+            "n_partial": 0
+          },
+          "TAG_COOCCUR->HAS_ANSWER": {
+            "n": 8,
+            "n_relevant": 2,
+            "n_partial": 0
+          },
+          "HAS_ACCEPTED_ANSWER": {
+            "n": 94,
+            "n_relevant": 14,
+            "n_partial": 10
+          },
+          "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+            "n": 56,
+            "n_relevant": 10,
+            "n_partial": 16
+          },
+          "IS_RELATED_TO->HAS_ANSWER": {
+            "n": 4,
+            "n_relevant": 1,
+            "n_partial": 1
+          },
+          "EMBED_SIM->HAS_ANSWER": {
+            "n": 2,
+            "n_relevant": 0,
+            "n_partial": 0
+          }
+        }
+      }
+    },
+    "selection": {
+      "ranked": [
+        [
+          0.25,
+          48.0
+        ],
+        [
+          0.0,
+          50.0
+        ],
+        [
+          0.5,
+          48.0
+        ],
+        [
+          0.75,
+          44.0
+        ],
+        [
+          1.0,
+          28.0
+        ]
+      ],
+      "top_two": [
+        0.25,
+        0.0
+      ],
+      "keep_current": false,
+      "reasoning": "Ranked by primary criterion (% questions with >=1 RELEVANT item; tied within 2.0 pp), then mean relevance score among primary ties (tied within 0.02), then larger alpha among ties on both. Full ranking: 0.25, 0.0, 0.5, 0.75, 1.0. alpha=0.25 (48.0%, mean score 0.3504) and alpha=0.0 (50.0%, mean score 0.3525) advance to stage 2."
+    }
+  },
+  "metrics": {
+    "0.0": {
+      "n_questions": 50,
+      "n_questions_with_relevant": 28,
+      "pct_questions_with_relevant": 56.0,
+      "pct_relevant": 26.0,
+      "pct_partial": 23.2,
+      "pct_irrelevant": 50.8,
+      "mean_relevance_score": 0.376,
+      "mean_sim_selected": 0.6194,
+      "mean_trust_selected": 0.4095,
+      "pct_accepted_selected": 36.8,
+      "jaccard_vs_alpha1": null,
+      "jaccard_vs_alpha0": null,
+      "by_hop": {
+        "2": {
+          "n": 82,
+          "n_relevant": 22,
+          "n_partial": 18
+        },
+        "1": {
+          "n": 105,
+          "n_relevant": 30,
+          "n_partial": 28
+        },
+        "semantic": {
+          "n": 63,
+          "n_relevant": 13,
+          "n_partial": 12
+        }
+      },
+      "by_edge_type": {
+        "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+          "n": 30,
+          "n_relevant": 5,
+          "n_partial": 7
+        },
+        "HAS_ANSWER": {
+          "n": 107,
+          "n_relevant": 25,
+          "n_partial": 28
+        },
+        "IS_RELATED_TO->HAS_ANSWER": {
+          "n": 5,
+          "n_relevant": 3,
+          "n_partial": 0
+        },
+        "EMBED_SIM->HAS_ANSWER": {
+          "n": 42,
+          "n_relevant": 14,
+          "n_partial": 9
+        },
+        "HAS_ACCEPTED_ANSWER": {
+          "n": 61,
+          "n_relevant": 18,
+          "n_partial": 12
+        },
+        "TAG_COOCCUR->HAS_ANSWER": {
+          "n": 4,
+          "n_relevant": 0,
+          "n_partial": 2
+        },
+        "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+          "n": 1,
+          "n_relevant": 0,
+          "n_partial": 0
+        }
+      }
+    },
+    "0.25": {
+      "n_questions": 50,
+      "n_questions_with_relevant": 28,
+      "pct_questions_with_relevant": 56.0,
+      "pct_relevant": 25.6,
+      "pct_partial": 23.6,
+      "pct_irrelevant": 50.8,
+      "mean_relevance_score": 0.374,
+      "mean_sim_selected": 0.6142,
+      "mean_trust_selected": 0.505,
+      "pct_accepted_selected": 51.2,
+      "jaccard_vs_alpha1": null,
+      "jaccard_vs_alpha0": null,
+      "by_hop": {
+        "1": {
+          "n": 118,
+          "n_relevant": 31,
+          "n_partial": 30
+        },
+        "2": {
+          "n": 76,
+          "n_relevant": 23,
+          "n_partial": 17
+        },
+        "semantic": {
+          "n": 56,
+          "n_relevant": 10,
+          "n_partial": 12
+        }
+      },
+      "by_edge_type": {
+        "HAS_ANSWER": {
+          "n": 90,
+          "n_relevant": 22,
+          "n_partial": 23
+        },
+        "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+          "n": 39,
+          "n_relevant": 8,
+          "n_partial": 8
+        },
+        "IS_RELATED_TO->HAS_ACCEPTED_ANSWER": {
+          "n": 3,
+          "n_relevant": 2,
+          "n_partial": 1
+        },
+        "HAS_ACCEPTED_ANSWER": {
+          "n": 84,
+          "n_relevant": 19,
+          "n_partial": 19
+        },
+        "EMBED_SIM->HAS_ANSWER": {
+          "n": 26,
+          "n_relevant": 10,
+          "n_partial": 7
+        },
+        "TAG_COOCCUR->HAS_ANSWER": {
+          "n": 3,
+          "n_relevant": 0,
+          "n_partial": 1
+        },
+        "IS_RELATED_TO->HAS_ANSWER": {
+          "n": 3,
+          "n_relevant": 2,
+          "n_partial": 0
+        },
+        "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+          "n": 2,
+          "n_relevant": 1,
+          "n_partial": 0
+        }
+      }
+    },
+    "0.5": {
+      "n_questions": 50,
+      "n_questions_with_relevant": 29,
+      "pct_questions_with_relevant": 58.0,
+      "pct_relevant": 24.8,
+      "pct_partial": 24.8,
+      "pct_irrelevant": 50.4,
+      "mean_relevance_score": 0.372,
+      "mean_sim_selected": 0.6003,
+      "mean_trust_selected": 0.5711,
+      "pct_accepted_selected": 59.6,
+      "jaccard_vs_alpha1": null,
+      "jaccard_vs_alpha0": null,
+      "by_hop": {
+        "1": {
+          "n": 128,
+          "n_relevant": 32,
+          "n_partial": 37
+        },
+        "2": {
+          "n": 70,
+          "n_relevant": 20,
+          "n_partial": 13
+        },
+        "semantic": {
+          "n": 52,
+          "n_relevant": 10,
+          "n_partial": 12
+        }
+      },
+      "by_edge_type": {
+        "HAS_ANSWER": {
+          "n": 81,
+          "n_relevant": 22,
+          "n_partial": 24
+        },
+        "IS_RELATED_TO->HAS_ACCEPTED_ANSWER": {
+          "n": 3,
+          "n_relevant": 2,
+          "n_partial": 1
+        },
+        "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+          "n": 41,
+          "n_relevant": 9,
+          "n_partial": 8
+        },
+        "HAS_ACCEPTED_ANSWER": {
+          "n": 99,
+          "n_relevant": 20,
+          "n_partial": 25
+        },
+        "TAG_COOCCUR->HAS_ANSWER": {
+          "n": 4,
+          "n_relevant": 1,
+          "n_partial": 1
+        },
+        "EMBED_SIM->HAS_ANSWER": {
+          "n": 12,
+          "n_relevant": 5,
+          "n_partial": 2
+        },
+        "IS_RELATED_TO->HAS_ANSWER": {
+          "n": 4,
+          "n_relevant": 2,
+          "n_partial": 0
+        },
+        "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+          "n": 6,
+          "n_relevant": 1,
+          "n_partial": 1
+        }
+      }
+    },
+    "0.75": {
+      "n_questions": 50,
+      "n_questions_with_relevant": 28,
+      "pct_questions_with_relevant": 56.0,
+      "pct_relevant": 21.6,
+      "pct_partial": 23.2,
+      "pct_irrelevant": 55.2,
+      "mean_relevance_score": 0.332,
+      "mean_sim_selected": 0.5701,
+      "mean_trust_selected": 0.6144,
+      "pct_accepted_selected": 71.2,
+      "jaccard_vs_alpha1": null,
+      "jaccard_vs_alpha0": null,
+      "by_hop": {
+        "2": {
+          "n": 86,
+          "n_relevant": 16,
+          "n_partial": 15
+        },
+        "1": {
+          "n": 117,
+          "n_relevant": 29,
+          "n_partial": 35
+        },
+        "semantic": {
+          "n": 47,
+          "n_relevant": 9,
+          "n_partial": 8
+        }
+      },
+      "by_edge_type": {
+        "IS_RELATED_TO->HAS_ACCEPTED_ANSWER": {
+          "n": 4,
+          "n_relevant": 2,
+          "n_partial": 2
+        },
+        "HAS_ANSWER": {
+          "n": 57,
+          "n_relevant": 16,
+          "n_partial": 18
+        },
+        "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+          "n": 19,
+          "n_relevant": 1,
+          "n_partial": 1
+        },
+        "IS_RELATED_TO->HAS_ANSWER": {
+          "n": 4,
+          "n_relevant": 2,
+          "n_partial": 0
+        },
+        "HAS_ACCEPTED_ANSWER": {
+          "n": 107,
+          "n_relevant": 22,
+          "n_partial": 25
+        },
+        "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+          "n": 48,
+          "n_relevant": 8,
+          "n_partial": 10
+        },
+        "TAG_COOCCUR->HAS_ANSWER": {
+          "n": 6,
+          "n_relevant": 1,
+          "n_partial": 1
+        },
+        "EMBED_SIM->HAS_ANSWER": {
+          "n": 5,
+          "n_relevant": 2,
+          "n_partial": 1
+        }
+      }
+    },
+    "1.0": {
+      "n_questions": 50,
+      "n_questions_with_relevant": 20,
+      "pct_questions_with_relevant": 40.0,
+      "pct_relevant": 15.6,
+      "pct_partial": 20.0,
+      "pct_irrelevant": 64.4,
+      "mean_relevance_score": 0.256,
+      "mean_sim_selected": 0.5027,
+      "mean_trust_selected": 0.6368,
+      "pct_accepted_selected": 82.8,
+      "jaccard_vs_alpha1": null,
+      "jaccard_vs_alpha0": null,
+      "by_hop": {
+        "2": {
+          "n": 99,
+          "n_relevant": 11,
+          "n_partial": 15
+        },
+        "1": {
+          "n": 94,
+          "n_relevant": 22,
+          "n_partial": 28
+        },
+        "semantic": {
+          "n": 57,
+          "n_relevant": 6,
+          "n_partial": 7
+        }
+      },
+      "by_edge_type": {
+        "IS_RELATED_TO->HAS_ACCEPTED_ANSWER": {
+          "n": 4,
+          "n_relevant": 2,
+          "n_partial": 2
+        },
+        "HAS_ANSWER": {
+          "n": 35,
+          "n_relevant": 9,
+          "n_partial": 11
+        },
+        "TAG_COOCCUR->HAS_ACCEPTED_ANSWER": {
+          "n": 42,
+          "n_relevant": 2,
+          "n_partial": 2
+        },
+        "TAG_COOCCUR->HAS_ANSWER": {
+          "n": 4,
+          "n_relevant": 1,
+          "n_partial": 0
+        },
+        "HAS_ACCEPTED_ANSWER": {
+          "n": 116,
+          "n_relevant": 19,
+          "n_partial": 24
+        },
+        "EMBED_SIM->HAS_ACCEPTED_ANSWER": {
+          "n": 45,
+          "n_relevant": 5,
+          "n_partial": 11
+        },
+        "IS_RELATED_TO->HAS_ANSWER": {
+          "n": 4,
+          "n_relevant": 1,
+          "n_partial": 0
+        }
+      }
+    }
+  },
+  "selection": {
+    "ranked": [
+      [
+        0.5,
+        58.0
+      ],
+      [
+        0.25,
+        56.0
+      ],
+      [
+        0.0,
+        56.0
+      ],
+      [
+        0.75,
+        56.0
+      ],
+      [
+        1.0,
+        40.0
+      ]
+    ],
+    "top_two": [
+      0.5,
+      0.25
+    ],
+    "keep_current": false,
+    "reasoning": "Ranked by primary criterion (% questions with >=1 RELEVANT item; tied within 2.0 pp), then mean relevance score among primary ties (tied within 0.02), then larger alpha among ties on both. Full ranking: 0.5, 0.25, 0.0, 0.75, 1.0. alpha=0.5 (58.0%, mean score 0.372) and alpha=0.25 (56.0%, mean score 0.374) advance to stage 2."
+  },
+  "retrieval_stats": {
+    "0.0": {
+      "expansion_q": 449,
+      "expansion_q_empty": 0,
+      "pct_expansion_empty": 0.0,
+      "expansion_items_in_top5_total": 63,
+      "expansion_items_in_top5_per_q": 1.26,
+      "final_k_total": 250,
+      "final_k_lt_5": 0,
+      "final_k_0": 0,
+      "latency_mean": 1.682,
+      "latency_p95": 2.779,
+      "questions_with_fewer_than_3_seeds": 0,
+      "skipped_unanswered_mean": 9.92
+    },
+    "0.25": {
+      "expansion_q": 449,
+      "expansion_q_empty": 0,
+      "pct_expansion_empty": 0.0,
+      "expansion_items_in_top5_total": 56,
+      "expansion_items_in_top5_per_q": 1.12,
+      "final_k_total": 250,
+      "final_k_lt_5": 0,
+      "final_k_0": 0,
+      "latency_mean": 0.559,
+      "latency_p95": 1.006,
+      "questions_with_fewer_than_3_seeds": 0,
+      "skipped_unanswered_mean": 9.92
+    },
+    "0.5": {
+      "expansion_q": 449,
+      "expansion_q_empty": 0,
+      "pct_expansion_empty": 0.0,
+      "expansion_items_in_top5_total": 52,
+      "expansion_items_in_top5_per_q": 1.04,
+      "final_k_total": 250,
+      "final_k_lt_5": 0,
+      "final_k_0": 0,
+      "latency_mean": 0.811,
+      "latency_p95": 2.357,
+      "questions_with_fewer_than_3_seeds": 0,
+      "skipped_unanswered_mean": 9.92
+    },
+    "0.75": {
+      "expansion_q": 449,
+      "expansion_q_empty": 0,
+      "pct_expansion_empty": 0.0,
+      "expansion_items_in_top5_total": 47,
+      "expansion_items_in_top5_per_q": 0.94,
+      "final_k_total": 250,
+      "final_k_lt_5": 0,
+      "final_k_0": 0,
+      "latency_mean": 0.786,
+      "latency_p95": 1.277,
+      "questions_with_fewer_than_3_seeds": 0,
+      "skipped_unanswered_mean": 9.92
+    },
+    "1.0": {
+      "expansion_q": 449,
+      "expansion_q_empty": 0,
+      "pct_expansion_empty": 0.0,
+      "expansion_items_in_top5_total": 57,
+      "expansion_items_in_top5_per_q": 1.14,
+      "final_k_total": 250,
+      "final_k_lt_5": 0,
+      "final_k_0": 0,
+      "latency_mean": 0.828,
+      "latency_p95": 1.532,
+      "questions_with_fewer_than_3_seeds": 0,
+      "skipped_unanswered_mean": 9.92
+    }
+  }
+}

@@ -63,9 +63,14 @@ def build() -> list[dict]:
 
     # --- alpha selection ---
     v, s = const("llm/c_graphrag/stage1_sweep.py", "DEFAULT_ALPHA_VALUES")
-    add("Alpha selection", "stage-1 alpha grid", list(v), s, "done", "Selection procedure; stage 1 of record: Amendment 9")
-    v, s = const("llm/c_graphrag/stage2_report.py", "STAGE2_ALPHAS")
-    add("Alpha selection", "stage-2 candidates", list(v), s, "candidate (stage 2 not run)", "Amendment 9 recheck")
+    add("Alpha selection", "stage-1 alpha grid", list(v), s, "done", "Selection procedure; stage 1 of record: Amendment 17 (C v4 re-run)")
+    from llm.c_graphrag.stage2_candidates import EXPLORATORY_ALPHAS, STAGE1_REPORT_OF_RECORD, STAGE2_ALPHAS
+    add("Alpha selection", "stage-2 candidates", list(STAGE2_ALPHAS),
+        _line_of("llm/c_graphrag/stage2_candidates.py", "STAGE2_ALPHAS = stage1_top_two()"), "candidate (stage 2 not run)",
+        f"derived from the top_two of {STAGE1_REPORT_OF_RECORD} (Amendment 17); never written by hand")
+    add("Alpha selection", "exploratory reference alphas (not eligible for selection)", list(EXPLORATORY_ALPHAS),
+        _line_of("llm/c_graphrag/stage2_candidates.py", "EXPLORATORY_ALPHAS ="), "frozen (pre-declared)",
+        "run like the candidates, reported separately, never an input of the selection rule")
     add("Alpha selection", "alpha* (C-primary; the only alpha of the official runs)", official["alpha_primary"], f"{OFFICIAL_PARAMS}#alpha_primary",
         official["status"], "set by stage2_report.py (Amendment 10)")
     add("Alpha selection", "alpha_abl (second stage-2 candidate)", official["alpha_ablation"],
@@ -103,7 +108,12 @@ def build() -> list[dict]:
     # --- C retrieval ---
     cg = "llm/c_graphrag/c_graphrag.py"
     add("C retrieval", "C retrieval version (official)", official["c_retrieval_version"],
-        f"{OFFICIAL_PARAMS}#c_retrieval_version", "frozen", "Amendment 6")
+        f"{OFFICIAL_PARAMS}#c_retrieval_version", "frozen (Amendment 17)",
+        "v4 = v3 ranking + answerable-only anchors; v3 (Amendment 16) stays reproducible")
+    v, s = const("llm/common/anchors.py", "ANCHOR_SCAN_DEPTH")
+    add("C retrieval", "entity anchoring (C v4 and D v5, one shared function)",
+        f"first n_anchor questions with >= 1 non-excluded answer, scanning {v} candidates of the same FAISS list", s,
+        "frozen (Amendment 17)", "llm/common/anchors.py::select_answerable_anchors; fewer found -> use what was found, recorded")
     add("C retrieval", "traversal depth (max_hops)", official["max_hops"], f"{OFFICIAL_PARAMS}#max_hops")
     add("C retrieval", "edge types (5)", official["edge_types"], f"{OFFICIAL_PARAMS}#edge_types")
     add("C retrieval", "use_author_trust", official["use_author_trust"], f"{OFFICIAL_PARAMS}#use_author_trust",
@@ -133,11 +143,18 @@ def build() -> list[dict]:
     add("Retrieval (B, C, D)", "D n_low_level / n_high_level", [orm.N_LOW_LEVEL, orm.N_HIGH_LEVEL],
         _line_of("llm/official_run_matrix.py", "N_LOW_LEVEL ="))
     v, s = const("llm/d_lightrag/d_lightrag.py", "D_RETRIEVAL_VERSION")
-    add("Retrieval (B, C, D)", "D retrieval version (official)", v, s, "frozen (Amendment 16)",
-        "v4: one score on both levels = cosine(query, owner Question); v3 (edge-weight scores) stays reproducible")
+    add("Retrieval (B, C, D)", "D retrieval version (official)", v, s, "frozen (Amendment 17)",
+        "v5 = v4 (one cosine score on both levels) + answerable-only anchors + the high level fills up to k answers; "
+        "v4 and v3 (edge-weight scores) stay reproducible")
+    add("Retrieval (B, C, D)", "D v5 high level: fill rule", "top n_high_level neighbours by cosine, then more neighbours in "
+        "score order until >= k distinct answers (low-level answers count) or none left; top-k answers kept",
+        _line_of("llm/d_lightrag/d_lightrag.py", "def select_high_level_fill"), "frozen (Amendment 17)", "k = top_k = 5")
     add("Retrieval (B, C, D)", "D retrieval version pinned in the run matrix", orm.D_RETRIEVAL_VERSION,
-        _line_of("llm/official_run_matrix.py", "D_RETRIEVAL_VERSION ="), "frozen (Amendment 16)",
-        "test_d_retrieval_v4 checks it equals d_lightrag.D_RETRIEVAL_VERSION")
+        _line_of("llm/official_run_matrix.py", "D_RETRIEVAL_VERSION ="), "frozen (Amendment 17)",
+        "test_d_retrieval_v5 checks it equals d_lightrag.D_RETRIEVAL_VERSION")
+    add("Retrieval (B, C, D)", "C retrieval version pinned in the run matrix", orm.C_RETRIEVAL_VERSION,
+        _line_of("llm/official_run_matrix.py", "C_RETRIEVAL_VERSION ="), "frozen (Amendment 17)",
+        "test_c_retrieval_v4 checks it equals c_graphrag.C_RETRIEVAL_VERSION")
     v, s = const("llm/d_lightrag/d_lightrag.py", "HIGH_LEVEL_CANDIDATE_CAP")
     add("Retrieval (B, C, D)", "D v4 cap on neighbour Questions scored per query", v, s, "frozen (Amendment 16)",
         "smallest question ids kept when exceeded; recorded as high_level_cap_hit")

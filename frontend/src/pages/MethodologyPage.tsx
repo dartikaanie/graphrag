@@ -66,7 +66,7 @@ const CONDITIONS: ConditionSpec[] = [
     retrieval: [
       {
         heading: 'a. Entity anchoring',
-        body: 'A FAISS vector search (reusing the same index built during graph densification) over the evaluation question\'s embedding finds the top-N_ANCHOR most similar Question nodes already in the graph — these become entry points into the KG. The evaluation question\'s own id is excluded from the results (leakage prevention #1).',
+        body: 'A FAISS vector search (reusing the same index built during graph densification) over the evaluation question\'s embedding finds the N_ANCHOR most similar Question nodes that have at least one answer (retrieval v4, Amendment 17: questions without an answer are skipped and the scan continues down the same list, up to 400 candidates; Condition D v5 uses the same function) — these become entry points into the KG. The evaluation question\'s own id is excluded from the results (leakage prevention #1).',
       },
       {
         heading: 'b. Graph traversal',
@@ -101,11 +101,11 @@ const CONDITIONS: ConditionSpec[] = [
     retrieval: [
       {
         heading: 'Low-level retrieval',
-        body: 'Identical entity anchoring to Condition C (FAISS vector search → top-N_LOW_LEVEL Question anchors), then a single 1-hop lookup of each anchor\'s directly attached answers. Since retrieval v4 the relevance score is the cosine between the query and the anchor question (the same quantity as at the high level) — never an edge weight or trust score.',
+        body: 'Identical entity anchoring to Condition C (FAISS vector search → the first N_LOW_LEVEL Question anchors that have at least one answer, scanning down the same list; one shared function since Amendment 17), then a single 1-hop lookup of each anchor\'s directly attached answers. Since retrieval v4 the relevance score is the cosine between the query and the anchor question (the same quantity as at the high level) — never an edge weight or trust score.',
       },
       {
         heading: 'High-level retrieval',
-        body: 'From the same anchors, a 2-hop traversal via IS_RELATED_TO / TAG_COOCCUR / EMBED_SIM edges collects the neighbour questions that have an answer (at most 100 are scored per query). Each neighbour is scored by the cosine between the query and the neighbour question — the same score as the low level, so the two levels are comparable — and the top N_HIGH_LEVEL are kept with their answers. Edge weights are not used as scores, and nothing is combined with an answer\'s trust score.',
+        body: 'From the same anchors, a 2-hop traversal via IS_RELATED_TO / TAG_COOCCUR / EMBED_SIM edges collects the neighbour questions that have an answer (at most 100 are scored per query). Each neighbour is scored by the cosine between the query and the neighbour question — the same score as the low level, so the two levels are comparable — and the top N_HIGH_LEVEL are kept with their answers; since retrieval v5 more neighbours are added in score order until at least k = 5 distinct answers exist. Edge weights are not used as scores, and nothing is combined with an answer\'s trust score.',
       },
       {
         heading: 'Fusion',

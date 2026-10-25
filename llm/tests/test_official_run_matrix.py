@@ -7,7 +7,7 @@ from llm.official_run_matrix import LEGACY_FLAG, build_matrix, cli_command, lega
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EDGES = ["EMBED_SIM", "HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR"]
-PENDING = {"status": "pending_selection", "c_retrieval_version": "v3", "alpha_primary": None,
+PENDING = {"status": "pending_selection", "c_retrieval_version": "v4", "alpha_primary": None,
            "alpha_ablation": None, "selection_record": {"path": "x", "commit": None}, "sample_split": "test",
            "max_hops": 2, "edge_types": EDGES, "use_author_trust": False, "accepted_only": False}
 SELECTED = {**PENDING, "status": "selected", "alpha_primary": 0.0, "alpha_ablation": 0.25,
@@ -50,7 +50,7 @@ def test_c_cell_uses_the_primary_alpha_only():
     c = [r for r in build_matrix(SELECTED) if r["condition"] == "C"]
     assert [(r["role"], r["alpha"], r["grounding"]) for r in c] == [("c_primary", 0.0, True)]
     for r in c:
-        assert r["dashboard"]["c_retrieval_version"] == "v3"
+        assert r["dashboard"]["c_retrieval_version"] == "v4"
         assert r["dashboard"]["fusion_mode"] == "trust_weighted"
         assert r["argv"][r["argv"].index("--alpha") + 1] == f"{r['alpha']:g}"
         assert r["dashboard"]["edge_types"] == EDGES and r["dashboard"]["max_hops"] == 2

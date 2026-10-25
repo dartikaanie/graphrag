@@ -50,7 +50,7 @@ import sys
 import threading
 import time
 from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -565,8 +565,11 @@ def run_tasks(tasks: list[tuple], prepared_by_item: dict, clients: dict, out: Pa
             rec.update(record_extra)
         return rec
 
+    # as_completed, not pool.map: every finished call is written at once. With pool.map one stalled call at the head of
+    # the queue held back the writing of all later (already paid) results, and killing the run lost them.
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
-        for rec in pool.map(_one, tasks):
+        for fut in as_completed([pool.submit(_one, t) for t in tasks]):
+            rec = fut.result()
             if rec is None:
                 continue
             usable = rec["parse_ok"] and not rec["call_failed"]
@@ -575,6 +578,9 @@ def run_tasks(tasks: list[tuple], prepared_by_item: dict, clients: dict, out: Pa
             log(f"  {rec['item_id']} {rec['judge_id']:<8} label={rec['label']} parse_ok={rec['parse_ok']} "
                 f"finish={rec['finish_reason']} tokens={rec['prompt_tokens']}/{rec['completion_tokens']}")
     return new
+
+
+CLIENT_TIMEOUT_SEC = 180.0   # per request (the SDK default of 600 s let one stalled connection hold a run for ~30 minutes)
 
 
 def make_clients(judges=None) -> dict:
@@ -587,7 +593,7 @@ def make_clients(judges=None) -> dict:
         key = os.getenv(j.api_key_env)
         if not key:
             raise RuntimeError(f"{j.api_key_env} not set (repo-root .env)")
-        clients[j.judge_id] = OpenAI(api_key=key, base_url=j.base_url)
+        clients[j.judge_id] = OpenAI(api_key=key, base_url=j.base_url, timeout=CLIENT_TIMEOUT_SEC)
     return clients
 
 

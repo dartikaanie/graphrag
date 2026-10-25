@@ -55,7 +55,7 @@ from app.routers.config import check_official_c_params_lock  # noqa: E402
 
 _EDGES = ["EMBED_SIM", "HAS_ACCEPTED_ANSWER", "HAS_ANSWER", "IS_RELATED_TO", "TAG_COOCCUR"]
 _PENDING = {
-    "status": "pending_selection", "c_retrieval_version": "v3", "alpha_primary": None, "alpha_ablation": None,
+    "status": "pending_selection", "c_retrieval_version": "v4", "alpha_primary": None, "alpha_ablation": None,
     "selection_record": {"path": "docs/DECISION_C_SCORING.md", "commit": None},
     "sample_split": "test", "max_hops": 2, "edge_types": _EDGES,
     "use_author_trust": False, "accepted_only": False,
@@ -95,7 +95,7 @@ def test_lock_refuses_mismatched_alpha_once_selected():
 
 
 def test_lock_single_alpha_must_be_one_of_the_two():
-    base = {"c_retrieval_version": "v3", "sample_split": "test"}
+    base = {"c_retrieval_version": "v4", "sample_split": "test"}
     assert check_official_c_params_lock(_SELECTED, {**base, "alpha": 0.0})["allowed"] is True
     assert check_official_c_params_lock(_SELECTED, {**base, "alpha": 0.25})["allowed"] is True
     result = check_official_c_params_lock(_SELECTED, {**base, "alpha": 0.5})
@@ -115,7 +115,7 @@ def test_lock_edge_types_order_insensitive():
 
 
 def test_lock_allows_when_official_params_missing():
-    result = check_official_c_params_lock(None, {"c_retrieval_version": "v3", "alpha_primary": 0.9})
+    result = check_official_c_params_lock(None, {"c_retrieval_version": "v4", "alpha_primary": 0.9})
     assert result["allowed"] is True
 
 
@@ -146,7 +146,7 @@ def test_defaults_endpoint_returns_four_run_official_matrix(monkeypatch):
     assert not any(r["legacy"] for r in matrix)
     c = {r["run"]: r for r in matrix if r["condition"] == "C"}
     assert {k: (v["alpha"], v["grounding"]) for k, v in c.items()} == {"R5": (0.25, True)}
-    assert all(r["dashboard"]["c_retrieval_version"] == "v3" for r in c.values())
+    assert all(r["dashboard"]["c_retrieval_version"] == "v4" for r in c.values())
 
 
 def test_defaults_endpoint_matrix_alphas_null_while_pending(monkeypatch):
@@ -169,7 +169,7 @@ def _c_test_run(monkeypatch, official, tmp_path=None, **overrides):
 
     monkeypatch.setattr(runs_router.threading, "Thread", lambda **kw: type("T", (), {"start": lambda self: started.append(kw)})())
     body = {"condition": "C", "mode": "batch", "n_sample": 384, "seed": 42, "sample_split": "test",
-            "c_retrieval_version": "v3", "alpha": 0.25, **overrides}
+            "c_retrieval_version": "v4", "alpha": 0.25, **overrides}
     return client.post("/api/runs", json=body), started
 
 
@@ -180,7 +180,7 @@ def test_create_run_refuses_c_test_run_while_pending(monkeypatch):
 
 def test_create_run_refuses_c_test_run_v2_or_unlisted_alpha(monkeypatch):
     resp, _ = _c_test_run(monkeypatch, _SELECTED, c_retrieval_version="v2")
-    assert resp.status_code == 400 and "v3" in resp.json()["detail"]
+    assert resp.status_code == 400 and "v4" in resp.json()["detail"]
     resp, _ = _c_test_run(monkeypatch, _SELECTED, alpha=0.5)
     assert resp.status_code == 400 and "not an official alpha" in resp.json()["detail"]
 

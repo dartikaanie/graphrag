@@ -333,13 +333,14 @@ def test_condition_d_pilot_configs_produce_records_history_and_manifest(
     # a related question (201), not the evaluation question itself -- the per-query
     # leakage assert (llm/common/leakage.py) rejects a context item from q's own thread
     monkeypatch.setattr(cond, "anchor_via_vector_search", lambda *a, **k: [(201, 0.9)])
+    monkeypatch.setattr(cond, "select_answerable_anchors", lambda *a, **k: [(201, 0.9)])  # v5 (the default)
     low_level = lambda *a, **k: [{  # noqa: E731
         "answer_id": 9201, "via_question_id": 201, "via_question_title": "How do I do X?",
         "answer_body": "Reference answer for X.", "relevance_score": 0.9, "hop": 1, "rel_type": "ANSWERED",
     }]
     for name in ("retrieve_low_level", "retrieve_low_level_v4"):  # v3 and v4 (the default) alike
         monkeypatch.setattr(cond, name, low_level)
-    for name in ("retrieve_high_level", "retrieve_high_level_v4"):
+    for name in ("retrieve_high_level", "retrieve_high_level_v4", "retrieve_high_level_v5"):
         monkeypatch.setattr(cond, name, lambda *a, **k: [])
 
     params = {"condition": "D", "mode": "batch", "provider": "openai", "model": "gpt-4o-mini",

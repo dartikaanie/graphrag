@@ -2,7 +2,7 @@
 
 **Judul tesis:** *Pengembangan GraphRAG Framework Berbasis Pengetahuan Komunitas Stack Overflow untuk Mereduksi Halusinasi pada LLM* (ITB, Informatika, S2)
 
-Dokumen ini menjelaskan kondisi implementasi sekarang, diverifikasi ke kode dan dokumen keputusan di repo (2026-10-25, branch `master`, HEAD `84e58ae` "amandement 14" ditambah perubahan working tree Amendment 16 yang belum di-commit). Sumber ditulis `path` atau `path:baris`. Tidak ada API key atau secret di dokumen ini.
+Dokumen ini menjelaskan kondisi implementasi sekarang, diverifikasi ke kode dan dokumen keputusan di repo (2026-10-26, branch `master`, HEAD `29f59a1` ditambah perubahan working tree Amendment 17 dan stage 2 yang belum di-commit). Sumber ditulis `path` atau `path:baris`. Tidak ada API key atau secret di dokumen ini.
 
 ---
 
@@ -10,9 +10,9 @@ Dokumen ini menjelaskan kondisi implementasi sekarang, diverifikasi ke kode dan 
 
 1. **Empat kondisi dan empat run resmi (Amendment 16, DRAFT):** A (LLM murni), B (RAG dense retrieval), C (GraphRAG trust-weighted, kontribusi utama), D (dual-level retrieval, adaptasi LightRAG). Run resmi: A, B-grounded, C-primary-grounded, D-grounded (sel R1, R3, R5, R9; run tesis R1-R4), dengan instruksi grounding dan citation AKTIF untuk B, C, D. B, C, dan D memakai prompt 4-turn yang sama (`llm/prompts.py`), model embedding `all-MiniLM-L6-v2`, generator `gpt-4o-mini`, dan sampel yang sama. Lima sel lain (B-plain, C-primary-plain, C-ablation plain/grounded, D-plain) adalah **legacy**: tetap ada di kode, ditolak pada sampel test tanpa `--allow-legacy-cells`.
 2. **Aturan leakage aktif: mode `thread`** (Amendment 15, status **DRAFT**): hanya pertanyaan evaluasi dan semua jawabannya yang dikecualikan. Duplicate, Linked, dan near-duplicate **tidak** dikecualikan. Alasan desain di Amendment 15 masih `TODO(author)`.
-3. **Status eksperimen:** stage 1 (pemilihan α, retrieval-only, dev set) selesai. **Stage 2 dan keempat run resmi belum dijalankan.** `results/run_registry.json` berisi 133 entri, semuanya `archived`; tidak ada `official` atau `dev-stage2`.
+3. **Status eksperimen:** stage 1 diulang pada Amendment 17 (C v4): top_two = 0,5 dan 0,25. **Stage 2 sudah dijalankan pada dev set (2026-10-26)**: 6 run C v4 (α 0,5 dan 0,25 sebagai kandidat; α 0 sebagai referensi eksploratif yang tidak ikut seleksi) × grounding on/off, dinilai panel-v2/judge-v2.3, terdaftar sebagai `dev-stage2`; laporan `llm/c_graphrag/results/stage2/stage2_report_20261025T221359Z.{md,json}`. Hasil ada di laporan itu; **α* belum ditulis ke `official_params.json`** (tetap `pending_selection`, menunggu keputusan penulis). Keempat run resmi belum dijalankan. `results/run_registry.json` memuat 12 entri `dev-stage2` selain 133 `archived`; tidak ada `official`.
 4. **Dua pagar yang sengaja menahan run resmi:** Kondisi C pada test sample berhenti (exit 2) selama `official_params.json` berstatus `pending_selection`; judging resmi ditolak selama `AMENDMENT14_APPROVED = False` dan `OFFICIAL_ALLOWED = ()` (`llm/evaluation/judge_versions.py`). Amendment 14 (`reports/amendment14_draft.md`, ditulis ulang untuk empat run dan tanpa gerbang manusia) masih DRAFT; perubahan persetujuannya sudah disiapkan di `docs/AMENDMENT14_APPROVAL_CHANGE.md` dan belum diterapkan. Judging stage 2 (dev set) tidak memerlukan gerbang itu.
-5. **Parameter dibekukan lewat tabel yang dihasilkan skrip** (`llm/frozen_parameters.py` → `docs/FROZEN_PARAMETERS.md`, `results/frozen_parameters.json`, hash tabel `8e84ee49913d`). Status "frozen (Amendment 14 draft)" baru mengikat setelah Amendment 14 disetujui.
+5. **Parameter dibekukan lewat tabel yang dihasilkan skrip** (`llm/frozen_parameters.py` → `docs/FROZEN_PARAMETERS.md`, `results/frozen_parameters.json`, hash tabel `d3b805af7798`). Status "frozen (Amendment 14 draft)" baru mengikat setelah Amendment 14 disetujui.
 
 ---
 
@@ -27,7 +27,7 @@ Sumber: `llm/official_run_matrix.py`, `docs/OFFICIAL_RUN_MATRIX.md`.
 | Generator | `openai` / `gpt-4o-mini` |
 | top-k, chunk | 5, 400 token (tiktoken `cl100k_base`) |
 | C | `n_anchor` 3, `n_semantic_expansion` 3, retrieval v3, `fusion_mode trust_weighted`, expansion answerable-only |
-| D | `n_low_level` 3, `n_high_level` 3, retrieval **v4** (satu skor cosine di kedua level; batas 100 tetangga yang dinilai per kueri) |
+| D | `n_low_level` 3, `n_high_level` 3, retrieval **v5** (satu skor cosine di kedua level, anchor ber-jawaban, high level mengisi sampai 5 jawaban; batas 100 tetangga yang dinilai per kueri) |
 | Leakage | `thread` |
 
 Run resmi (Amendment 16): **A** (sel R1), **B-grounded** (R3), **C-primary-grounded** (R5), **D-grounded** (R9); nomor run di tesis R1–R4. "Grounded" berarti instruksi grounding + sitasi. Sel **legacy** (R2 B-plain, R4 C-primary-plain, R6 dan R7 C-ablation, R8 D-plain) masih didefinisikan, tetapi ditolak pada sampel test tanpa `--allow-legacy-cells` (CLI) / `allow_legacy_cells` (API) dan tidak pernah dimulai oleh preset Official, daftar bawaan Factorial Batch, atau "Run all". Tahap 2 pemilihan α tetap menghasilkan kandidat kedua (`alpha_ablation`), tetapi tidak ada run resmi yang memakainya. Perbandingan terdaftar: C vs A, C vs B, C vs D.
@@ -47,9 +47,9 @@ Run resmi (Amendment 16): **A** (sel R1), **B-grounded** (R3), **C-primary-groun
 - Neo4j hanya dipakai offline untuk ekspor korpus; saat runtime B membaca index FAISS dan `kg_answers.parquet`.
 - Mode `--corpus legacy_sample` hanya untuk reproduksi run lama.
 
-### 3.3 Kondisi C — GraphRAG trust-weighted (retrieval v3)
+### 3.3 Kondisi C — GraphRAG trust-weighted (retrieval v4 = ranking v3 + anchor ber-jawaban)
 `llm/c_graphrag/c_graphrag.py`. Membaca KG Neo4j dan index FAISS yang sudah ada; tidak membangun apa pun.
-1. **Entity anchoring:** vector search atas embedding Title+Body pertanyaan, top-`n_anchor` Question (id pertanyaan evaluasi dibuang).
+1. **Entity anchoring (v4, Amendment 17):** vector search atas embedding Title+Body pertanyaan; anchor hanya Question yang punya ≥ 1 jawaban tak-terkecualikan: yang tanpa jawaban dilewati dan scan berlanjut di daftar FAISS yang sama (kedalaman 400) sampai `n_anchor` = 3 anchor ditemukan (kurang dari itu dicatat). Fungsi yang sama dipakai D v5. Alasan: hanya 28% anchor dev punya jawaban. v3 (anchor biasa) tetap bisa direproduksi.
 2. **Graph traversal:** 1-hop (jawaban langsung anchor via `HAS_ACCEPTED_ANSWER`/`HAS_ANSWER`) dan 2-hop (anchor → Question terkait via `IS_RELATED_TO`/`TAG_COOCCUR`/`EMBED_SIM` → jawabannya, `LIMIT 50`). Tie-break `a.id ASC`.
 3. **Semantic expansion** (Amendment 9): per seed, `n_semantic_expansion` Question paling mirip yang masih punya ≥ 1 Answer yang tidak dikecualikan (over-fetch faktor 20, `EXPANSION_OVERFETCH`). Setting `EXPANSION_REQUIRE_ANSWER` default True.
 4. **Fusi dan ranking v3:** dedup per `answer_id`, `final = (1 − α)·sim_norm + α·trust`; `sim` = cosine antara query dan teks kandidat yang dilihat LLM, `sim_norm` = min-max per pertanyaan, `trust` = 0,7·path trust + 0,3·trustScore Answer (kandidat expansion dibatasi 0,4). Urut `final` menurun, tie-break `answer_id` naik, ambil top-5 (`docs/DECISION_C_SCORING.md`).
@@ -59,10 +59,20 @@ Run resmi (Amendment 16): **A** (sel R1), **B-grounded** (R3), **C-primary-groun
 
 **KG:** 2.685.814 Question, 725.795 Answer, 602.900 Question dengan ≥ 1 Answer.
 
-**α:** kandidat stage 2 adalah **0,25 dan 0** (`STAGE2_ALPHAS = (0.25, 0.0)`, `llm/c_graphrag/stage2_report.py`), dari stage 1 yang dihitung ulang di Amendment 9 (% pertanyaan dengan ≥ 1 konteks RELEVANT: 48,0 untuk α 0,25 dan 50,0 untuk α 0). `alpha_primary` dan `alpha_ablation` di `official_params.json` masih `null`; keduanya diisi oleh hasil stage 2 (Amendment 10).
+**α:** kandidat stage 2 adalah **0,5 dan 0,25**, diturunkan (bukan ditulis tangan) dari top_two laporan stage 1 of record `stage1_anchors_report_20261025T165734Z.json` oleh `llm/c_graphrag/stage2_candidates.py` (`STAGE2_ALPHAS`). Stage 1 diulang pada Amendment 17 dengan C v4 (anchor hanya dari Question ber-jawaban): % pertanyaan dengan ≥ 1 konteks RELEVANT = 0,0: 56.0, 0,25: 56.0, 0,5: 58.0, 0,75: 56.0, 1,0: 40.0; skor rata-rata = 0,0: 0.376, 0,25: 0.374, 0,5: 0.372, 0,75: 0.332, 1,0: 0.256. Hasil sebelumnya (anchor biasa, C v3) memberi 0,25 dan 0. α 0 dijalankan sebagai **referensi eksploratif** yang dideklarasikan sebelumnya; aturan seleksi tidak pernah melihatnya. `alpha_primary` dan `alpha_ablation` di `official_params.json` masih `null`.
+
+**Hasil stage 2 (dev, n = 50 × grounding on/off = 100 jawaban per α, panel-v2 / judge-v2.3, C v4, `thread`; laporan `llm/c_graphrag/results/stage2/stage2_report_20261025T221359Z.{md,json}`):**
+
+| α | status | halusinasi (ABSTAIN dikeluarkan) | ABSTAIN | tingkat (a) | halusinasi + ABSTAIN | tingkat (b) | penuh / sebagian |
+|---|---|---|---|---|---|---|---|
+| 0,5 | kandidat | 23 / 91 | 9 | 0,2527 | 32 / 100 | 0,32 | 22 / 1 |
+| 0,25 | kandidat | 21 / 90 | 10 | 0,2333 | 31 / 100 | 0,31 | 20 / 1 |
+| 0 | eksploratif, tidak ikut seleksi | 21 / 90 | 10 | 0,2333 | 31 / 100 | 0,31 | 19 / 2 |
+
+Per grounding (halusinasi / ABSTAIN): α 0,5 on 11 / 9, off 12 / 0; α 0,25 on 8 / 10, off 13 / 0; α 0 on 8 / 10, off 13 / 0. Rata-rata item konteks per jawaban: 5,0 untuk keenam run. Hitungan per judge (ABSTAIN dikeluarkan, dipool): Llama 1/93, 1/91, 4/92; DeepSeek 26/88, 31/89, 31/90; Qwen3-235B 30/89, 32/88, 35/88 (urutan α 0,5; 0,25; 0). Aturan terdaftar menghasilkan **α = 0,5**, tetapi diputuskan pada langkah **pemutus seri (α lebih besar)**: selisih primer 2 jawaban (≤ margin 2) dan selisih sekunder 1 jawaban (≤ margin 2), jadi bukan keunggulan terukur. Kalimat alasan di laporan ("lowest pooled hallucination rate") adalah teks baku yang menyesatkan untuk kasus ini; α 0,25 yang tingkatnya lebih rendah. Biaya stage 2: generasi $0,164; judging sekitar $1,08 (estimasi per record; API DeepInfra menunjukkan sekitar $0,95–1,0); total sekitar $1,25. **α\* belum diterapkan** ke `official_params.json` (menunggu keputusan penulis).
 
 ### 3.4 Kondisi D — dual-level retrieval
-`llm/d_lightrag/d_lightrag.py` (`D_RETRIEVAL_VERSION = "v4"`; v3 tetap bisa direproduksi lewat `--d-retrieval-version v3`). Memakai KG dan FAISS yang sama dengan C; bukan LightRAG asli (tanpa ekstraksi entitas oleh LLM).
+`llm/d_lightrag/d_lightrag.py` (`D_RETRIEVAL_VERSION = "v5"` sejak Amendment 17 = v4 + anchor ber-jawaban yang sama dengan C v4 + high level menambah tetangga sampai ≥ 5 jawaban unik; v4 dan v3 tetap bisa direproduksi lewat `--d-retrieval-version`). Cek retrieval-only dev: 47 dari 50 pertanyaan mendapat 5 item (v4: 20), rata-rata 4,94; C v4: 50 dari 50. Memakai KG dan FAISS yang sama dengan C; bukan LightRAG asli (tanpa ekstraksi entitas oleh LLM).
 - **Satu skor untuk kedua level (v4):** cosine antara embedding kueri dan embedding Question pemilik jawaban (anchor untuk low-level, tetangga untuk high-level), dari cache embedding indeks FAISS. Bobot edge tidak lagi dibaca atau dipakai sebagai skor (v3 memberi 0,6 / 0,4 / 1,0 atau cosine, skala yang tidak sebanding).
 - **Low-level:** anchor yang sama dengan C (`n_low_level`), jawaban 1-hop.
 - **High-level:** dari anchor yang sama, tetangga unik via `IS_RELATED_TO`/`TAG_COOCCUR`/`EMBED_SIM` yang punya jawaban tak-terkecualikan; paling banyak `HIGH_LEVEL_CANDIDATE_CAP = 100` Question dinilai per kueri (bila lebih, id terkecil dipertahankan; tercatat sebagai `high_level_cap_hit`); `n_high_level` terbaik menurut cosine (id naik untuk seri) diambil beserta jawabannya.
@@ -137,6 +147,7 @@ Sumber: `docs/DECISION_C_SCORING.md` kecuali disebut lain.
 | 11–13 | Judge-v2.2, validasi satu anotator, set konfirmasi 63 item, kriteria penerimaan κ |
 | 12 | Panel LLM-as-Judge |
 | **15** | **Aturan leakage aktif: mode `thread`. Status DRAFT; rationale `TODO(author)`** |
+| **17** | **Anchor hanya dari Question ber-jawaban untuk C (retrieval v4) dan D (v5, satu fungsi bersama `llm/common/anchors.py`, kedalaman scan 400); D v5 mengisi high level sampai k = 5 jawaban; stage 1 diulang (dev, thread): top_two berubah menjadi 0,5 dan 0,25. Status DRAFT** |
 | **16** | **Empat run resmi (A, B-grounded, C-primary-grounded, D-grounded); D retrieval v4 (satu skor cosine); pelaporan dua versi hallucination rate, faithfulness / citation support, metrik sekunder, hitungan berpasangan; `C_RETRIEVAL_VERSION` bawaan v3. Status DRAFT** |
 | 14 (draf, di luar file ini) | `reports/amendment14_draft.md`: ditulis ulang untuk empat run, panel beku tanpa gerbang manusia; belum disetujui. Set konfirmasi 63 item (Amendment 11, 7 × 9 run) milik gerbang manusia yang dihapus; kodenya dorman |
 
@@ -152,11 +163,11 @@ Catatan: Amendment 8 (aturan eksklusi sebelumnya) tetap tercatat sebagai dokumen
 
 **Urutan menuju run resmi (belum dijalankan; tiap langkah menunggu persetujuan eksplisit penulis):**
 1. Amendment 14 (ditulis ulang), 15 (rationale diisi) dan 16 disetujui; perubahan gerbang judging di `docs/AMENDMENT14_APPROVAL_CHANGE.md` diterapkan. (Judging stage 2 pada dev set tidak memerlukan langkah ini.)
-2. Stage 2: empat run C dev (α ∈ {0,25; 0} × grounding), perintah di `reports/alpha_stage2_plan.md`; daftarkan sebagai `dev-stage2`, nilai dengan panel-v2, laporan `llm/c_graphrag/stage2_report.py`.
+2. Stage 2 (SUDAH dijalankan, 2026-10-26): enam run C v4 dev (α 0,5 dan 0,25 + α 0 eksploratif, × grounding), perintah di `reports/alpha_stage2_plan.md`, terdaftar sebagai `dev-stage2`, dinilai panel-v2, laporan di `llm/c_graphrag/results/stage2/`. Langkah berikutnya: keputusan penulis atas α\*.
 3. Isi `alpha_primary` (dan `alpha_ablation`, yang tidak dipakai run resmi) di `official_params.json` dan blok `official_params` di `DECISION_C_SCORING.md` (harus byte-identik; dijaga tes).
-4. Cek retrieval-only D v4 pada dev set (tanpa LLM), lalu empat run resmi pada sampel uji, daftarkan sebagai `official`, nilai dengan panel, jalankan metrik sekunder, dan buat laporan.
+4. (Cek retrieval-only D v5 pada dev set sudah dilakukan: 47 dari 50 pertanyaan dengan 5 item.) Empat empat run resmi pada sampel uji, daftarkan sebagai `official`, nilai dengan panel, jalankan metrik sekunder, dan buat laporan.
 
-**Tes:**
+**Tes (terakhir: 1543 lulus, 26 dilewati, 0 gagal; `python3 llm/frozen_parameters.py --check` mutakhir):**
 ```bash
 python3 -m pytest llm backend -q -p no:cacheprovider    # seluruh suite, sekitar 6 menit
 python3 -m pytest llm/tests -q                           # hanya tes tingkat repo (subset)
@@ -168,9 +179,11 @@ Sebagian tes (`*_live.py`) membutuhkan Neo4j dan volume data; tes lain berjalan 
 ## 10. Hal yang belum atau tidak bisa dipastikan
 
 - Rationale Amendment 15 belum ditulis (`TODO(author)`); Amendment 15 dan 16 belum dikonfirmasi penulis.
-- Stage 2 dan run resmi belum ada, sehingga belum ada hasil C-primary maupun perbandingan kondisi. Retrieval D v4 belum pernah dijalankan terhadap Neo4j (hanya tes dengan driver palsu); lakukan cek retrieval-only pada dev set sebelum run resmi.
+- Run resmi belum ada, sehingga belum ada hasil C-primary maupun perbandingan kondisi. Stage 2 (dev) sudah ada; α* belum dipilih secara resmi. Retrieval D v5 sudah dicek retrieval-only terhadap Neo4j pada dev set (tanpa LLM), tetapi belum pernah dijalankan dengan generasi.
 - Judging resmi diblokir sampai Amendment 14 disetujui (`docs/AMENDMENT14_APPROVAL_CHANGE.md`); anggaran DeepInfra $9,00 cukup untuk empat run (lihat bagian 6).
 - Dua tes lama yang gagal karena `run_history.jsonl` (`test_all_9_real_pilot_run_config_hashes_unchanged`, `test_calibration_generate_plan_and_registry`) sudah diisolasi: keduanya sekarang membaca riwayat run pra-resmi dari arsip, bukan berkas live (perilaku produksi tidak berubah).
+- `llm/evaluation/judge_panel.py` sempat macet berkali-kali pada panggilan terakhir (satu koneksi menggantung; timeout bawaan SDK 600 detik). Perbaikan (2026-10-26): timeout klien 180 detik dan hasil ditulis begitu selesai (`as_completed`, bukan `pool.map` berurutan). Prompt, parser, panggilan, dan agregasi tidak berubah. Saat macet, proses dapat dimatikan dan dijalankan ulang (hasil yang sudah ditulis tidak dibayar lagi). Biaya judging tidak sepenuhnya tercatat di ledger registri ($0,595 tercatat; sekitar $0,107 dari run yang dibatalkan tidak tercatat).
+- Kalimat `reasoning` di `select_stage2_winner` tidak menyebut langkah seleksi mana yang memutuskan (lihat hasil stage 2); belum diubah.
 - Versi FAISS saat indeks dibangun (Agustus 2026) tidak tercatat; yang terpasang sekarang dan dipakai saat retrieval adalah `faiss-cpu 1.12.0`.
 
 ---

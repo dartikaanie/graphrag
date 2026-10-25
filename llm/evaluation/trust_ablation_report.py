@@ -91,7 +91,8 @@ def load_runs(run_files: list[Path], official: dict | None) -> dict:
         if len({json.dumps(r.get("config"), sort_keys=True) for r in recs}) != 1:
             raise AblationError(f"{path.name}: records carry more than one config")
         cfg = recs[0]["config"]
-        wrong = [k for k, want in (("condition", "C"), ("c_retrieval_version", "v3"), ("sample_split", "test"),
+        wrong = [k for k, want in (("condition", "C"), ("c_retrieval_version", cfg.get("c_retrieval_version") if cfg.get("c_retrieval_version") in ("v3", "v4") else "v3"),
+                                   ("sample_split", "test"),
                                    ("expansion_require_answer", True), ("leakage", LEAKAGE_MODE))
                  if cfg.get(k) != want]
         if wrong:

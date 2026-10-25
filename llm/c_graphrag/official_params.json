@@ -1,6 +1,6 @@
 {
   "status": "pending_selection",
-  "c_retrieval_version": "v3",
+  "c_retrieval_version": "v4",
   "alpha_primary": null,
   "alpha_ablation": null,
   "selection_record": {"path": "docs/DECISION_C_SCORING.md#amendment-10-2026-10-18-trust-ablation-on-the-official-evaluation", "commit": null},

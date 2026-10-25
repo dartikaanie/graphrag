@@ -777,7 +777,7 @@ export interface OfficialCParams {
    * test-sample C run are refused) or "selected" (the Outcome section and
    * the Amendment 10 Record of docs/DECISION_C_SCORING.md are filled in). */
   status: 'pending_selection' | 'selected'
-  /** "v3" (Amendment 10: both stage-2 candidates are v3 values). */
+  /** "v4" (Amendment 17: v3 ranking + answerable-only anchors; Amendment 10: both stage-2 candidates are values of it). */
   c_retrieval_version: string | null
   /** C-primary (alpha*) and C-ablation alphas; null until "selected". */
   alpha_primary: number | null

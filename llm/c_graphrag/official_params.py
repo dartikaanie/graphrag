@@ -20,6 +20,7 @@ from pathlib import Path
 
 OFFICIAL_PARAMS_PATH = Path(__file__).resolve().parent / "official_params.json"
 
+OFFICIAL_C_RETRIEVAL_VERSION = "v4"  # Amendment 17: v3 ranking + answerable anchors (v3 stays reproducible)
 STATUS_PENDING = "pending_selection"
 STATUS_SELECTED = "selected"
 STATUSES = (STATUS_PENDING, STATUS_SELECTED)
@@ -76,9 +77,9 @@ def check_c_test_run(official: dict | None, *, c_retrieval_version: str, alpha, 
         raise ValueError("check_c_test_run is for --sample-split test only")
     if official is None:
         raise OfficialParamsError(f"{OFFICIAL_PARAMS_PATH} not found -- an official C run needs it.")
-    if c_retrieval_version != "v3":
+    if c_retrieval_version != OFFICIAL_C_RETRIEVAL_VERSION:
         raise OfficialParamsError(
-            f"Condition C on the test sample requires --c-retrieval-version v3 (got {c_retrieval_version!r}); "
+            f"Condition C on the test sample requires --c-retrieval-version {OFFICIAL_C_RETRIEVAL_VERSION} (got {c_retrieval_version!r}); "
             "see docs/DECISION_C_SCORING.md, Amendment 10.")
     if official.get("status") != STATUS_SELECTED:
         raise OfficialParamsError(

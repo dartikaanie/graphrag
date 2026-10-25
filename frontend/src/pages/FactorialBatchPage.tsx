@@ -129,8 +129,8 @@ function buildFactorialRuns(shared: SharedParams, cParams: CParams, dParams: DPa
   // Amendment 16: the official evaluation has FOUR runs (A, B-grounded, C-primary-grounded, D-grounded). Every
   // other cell is legacy: only built when includeLegacy is ticked, and then sent with allow_legacy_cells.
   const legacy = { allow_legacy_cells: true }
-  includeLegacy = includeLegacy || cParams.cRetrievalVersion !== 'v3' // v2 is a pilot-only method: all cells legacy
-  const cRuns: FactorialRunConfig[] = cParams.cRetrievalVersion === 'v3'
+  includeLegacy = includeLegacy || cParams.cRetrievalVersion === 'v2' // v2 is a pilot-only method: all cells legacy
+  const cRuns: FactorialRunConfig[] = cParams.cRetrievalVersion !== 'v2'
     ? [
         cCell('C-primary-grounded', 'trust_weighted', true, cParams.alphaPrimary),
         ...(includeLegacy
@@ -209,7 +209,7 @@ export function FactorialBatchPage() {
   // Condition C retrieval v3 (docs/DECISION_C_SCORING.md) -- v2 is still
   // the default so an unchanged page keeps launching exactly what it
   // always did.
-  const [cRetrievalVersion, setCRetrievalVersion] = useState<'v2' | 'v3'>('v2')
+  const [cRetrievalVersion, setCRetrievalVersion] = useState<'v2' | 'v3' | 'v4'>('v2')
   // Amendment 10: C-primary / C-ablation alphas (the stage-2 candidates
   // until official_params.json is "selected", then the official values).
   const [alphaPrimary, setAlphaPrimary] = useState(0.25)
@@ -236,7 +236,7 @@ export function FactorialBatchPage() {
 
   const applyOfficialLock = (officialParams: OfficialCParams | null | undefined) => {
     if (!officialParams || officialParams.status !== 'selected') return
-    setCRetrievalVersion(officialParams.c_retrieval_version as 'v2' | 'v3')
+    setCRetrievalVersion(officialParams.c_retrieval_version as 'v2' | 'v3' | 'v4')
     if (officialParams.alpha_primary !== null) setAlphaPrimary(officialParams.alpha_primary)
     if (officialParams.alpha_ablation !== null) setAlphaAblation(officialParams.alpha_ablation)
     setSampleSplit(officialParams.sample_split as 'test' | 'dev')
@@ -282,8 +282,8 @@ export function FactorialBatchPage() {
     }
     const current = {
       c_retrieval_version: cRetrievalVersion,
-      alpha_primary: cRetrievalVersion === 'v3' ? alphaPrimary : null,
-      alpha_ablation: cRetrievalVersion === 'v3' ? alphaAblation : null,
+      alpha_primary: cRetrievalVersion !== 'v2' ? alphaPrimary : null,
+      alpha_ablation: cRetrievalVersion !== 'v2' ? alphaAblation : null,
       sample_split: sampleSplit, max_hops: maxHops,
       edge_types: [...edgeTypes].sort(), use_author_trust: useAuthorTrust, accepted_only: acceptedOnly,
     }
@@ -316,7 +316,7 @@ export function FactorialBatchPage() {
           cRetrievalVersion, alphaPrimary, alphaAblation, sampleSplit, maxHops, edgeTypes, useAuthorTrust, acceptedOnly,
         },
         { nLowLevel, nHighLevel },
-        { c_retrieval_version: cRetrievalVersion === 'v3' ? 'v3' : defaults?.c_retrieval_version, d_retrieval_version: defaults?.d_retrieval_version },
+        { c_retrieval_version: cRetrievalVersion !== 'v2' ? cRetrievalVersion : defaults?.c_retrieval_version, d_retrieval_version: defaults?.d_retrieval_version },
         includeLegacy,
       ),
     [
@@ -494,21 +494,22 @@ export function FactorialBatchPage() {
           <Field label="c_retrieval_version">
             <select
               className={inputClass} value={cRetrievalVersion}
-              onChange={(e) => { setCRetrievalVersion(e.target.value as 'v2' | 'v3'); setPreset('custom') }}
+              onChange={(e) => { setCRetrievalVersion(e.target.value as 'v2' | 'v3' | 'v4'); setPreset('custom') }}
             >
               <option value="v2">v2 (trust only)</option>
-              <option value="v3">v3 (relevance-aware, docs/DECISION_C_SCORING.md)</option>
+              <option value="v3">v3 (relevance-aware, plain anchors; docs/DECISION_C_SCORING.md)</option>
+              <option value="v4">v4 (v3 ranking + answerable-only anchors, Amendment 17; official)</option>
             </select>
           </Field>
           <Field label="alpha (C-primary)">
             <input
-              type="number" step="0.25" min="0" max="1" disabled={cRetrievalVersion !== 'v3'} className={inputClass}
+              type="number" step="0.25" min="0" max="1" disabled={cRetrievalVersion === 'v2'} className={inputClass}
               value={alphaPrimary} onChange={(e) => { setAlphaPrimary(Number(e.target.value)); setPreset('custom') }}
             />
           </Field>
           <Field label="alpha (C-ablation)">
             <input
-              type="number" step="0.25" min="0" max="1" disabled={cRetrievalVersion !== 'v3'} className={inputClass}
+              type="number" step="0.25" min="0" max="1" disabled={cRetrievalVersion === 'v2'} className={inputClass}
               value={alphaAblation} onChange={(e) => { setAlphaAblation(Number(e.target.value)); setPreset('custom') }}
             />
           </Field>
@@ -655,7 +656,7 @@ export function FactorialBatchPage() {
                   <td className="py-1 pr-3 whitespace-nowrap">
                     {r.condition === 'C' &&
                       `top_k=${r.params.top_k}, n_anchor=${r.params.n_anchor}, n_exp=${r.params.n_semantic_expansion}, path=${r.params.fusion_w_path_trust}, intrinsic=${r.params.fusion_w_intrinsic}, cap=${r.params.semantic_expansion_trust_cap}, exp_on=${r.params.enable_semantic_expansion}, `
-                      + `c_retrieval=${r.params.c_retrieval_version}${r.params.c_retrieval_version === 'v3' ? `, alpha=${r.params.alpha}` : ''}, split=${r.params.sample_split}`}
+                      + `c_retrieval=${r.params.c_retrieval_version}${r.params.c_retrieval_version !== 'v2' ? `, alpha=${r.params.alpha}` : ''}, split=${r.params.sample_split}`}
                     {r.condition === 'D' && `top_k=${r.params.top_k}, n_low=${r.params.n_low_level}, n_high=${r.params.n_high_level}`}
                     {r.condition !== 'C' && r.condition !== 'D' && `top_k=${r.params.top_k ?? '—'}`}
                   </td>

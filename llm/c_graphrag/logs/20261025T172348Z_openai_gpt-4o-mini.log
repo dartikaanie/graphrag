@@ -1,0 +1,244 @@
+00:23:48 | [logging] Log detail run ini -> /Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/logs/20261025T172348Z_openai_gpt-4o-mini.log
+00:23:48 | [config] output auto-generated -> 'results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-25_dev_v3_f23e8ff8ad.jsonl'
+00:23:48 | [config] n_sample=50 seed=42 provider=openai model=gpt-4o-mini
+00:23:48 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+00:23:48 | [config] fusion_mode=trust_weighted fusion_w_path_trust=0.7 fusion_w_intrinsic=0.3 semantic_expansion_trust_cap=0.4
+00:23:48 | [config] require_grounding=False enable_semantic_expansion=True
+00:23:49 | [1/9] Mengambil oversample pool (1536 kandidat)...
+00:23:54 |       Oversample pool diambil: 1,536 kandidat
+00:23:54 | [2/9] Menghitung token & filter <= 2048 token...
+00:23:54 |       1,536 -> 1,471 lolos filter token
+00:23:54 | [sample] 50 dev questions == frozen list llm/sample_ids/dev_ids_v1.json
+00:23:54 | [4/9] Mengambil teks accepted answer (ground truth)...
+00:23:58 |       Ditemukan 50 accepted answer
+00:23:58 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+00:23:58 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+00:24:02 | [5/9] Graph trustScoreVersion: v3-logscore
+00:24:09 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari /Volumes/T7 Shield/S2/THESIS GRAPHRAG/project/graphrag_old/01_data_cleaning/_kg_workspace
+00:24:15 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+00:24:21 | [config] v3 embedding cache -> /Users/dartikaanie/Library/Caches/graphrag/embedding_cache.sqlite3
+00:24:21 | [config] leakage mode = thread (llm/common/leakage.py)
+00:24:21 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 50 pertanyaan...
+00:24:21 |       [debug-init] cwd='/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag' output_path=PosixPath('results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-25_dev_v3_f23e8ff8ad.jsonl') resolved=PosixPath('/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-25_dev_v3_f23e8ff8ad.jsonl') fileno=13
+00:24:24 |       [leakage] Id=20952138 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:24:30 |       [latency] cond=C Id=20952138 retrieval_sec=3.015 total_sec=8.743
+00:24:30 |       [debug-write] Id=20952138 bytes_written_this_line=21445 file_size_now=21445 f_out.tell()=21445
+00:24:30 |       [1/50] Id=20952138 anchors=3 context=5 citation=True valid_citation=True similarity=0.782 retrieval=3.01s
+00:24:31 |       [leakage] Id=55753657 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:24:38 |       [latency] cond=C Id=55753657 retrieval_sec=0.983 total_sec=7.985
+00:24:38 |       [debug-write] Id=55753657 bytes_written_this_line=21978 file_size_now=43423 f_out.tell()=43423
+00:24:38 |       [2/50] Id=55753657 anchors=3 context=5 citation=True valid_citation=True similarity=0.694 retrieval=0.98s
+00:24:45 |       [leakage] Id=60887798 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:24:53 |       [latency] cond=C Id=60887798 retrieval_sec=6.191 total_sec=14.343
+00:24:53 |       [debug-write] Id=60887798 bytes_written_this_line=35331 file_size_now=78754 f_out.tell()=78754
+00:24:53 |       [3/50] Id=60887798 anchors=3 context=5 citation=True valid_citation=True similarity=0.511 retrieval=6.19s
+00:24:55 |       [leakage] Id=47712318 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:24:59 |       [latency] cond=C Id=47712318 retrieval_sec=1.732 total_sec=5.612
+00:24:59 |       [debug-write] Id=47712318 bytes_written_this_line=19527 file_size_now=98281 f_out.tell()=98281
+00:24:59 |       [4/50] Id=47712318 anchors=3 context=5 citation=True valid_citation=True similarity=0.685 retrieval=1.73s
+00:25:00 |       [leakage] Id=125143 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:25:03 |       [latency] cond=C Id=125143 retrieval_sec=1.277 total_sec=4.157
+00:25:03 |       [debug-write] Id=125143 bytes_written_this_line=18215 file_size_now=116496 f_out.tell()=116496
+00:25:03 |       [5/50] Id=125143 anchors=3 context=5 citation=True valid_citation=True similarity=0.760 retrieval=1.28s
+00:25:05 |       [leakage] Id=65032123 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:25:11 |       [latency] cond=C Id=65032123 retrieval_sec=1.216 total_sec=7.588
+00:25:11 |       [debug-write] Id=65032123 bytes_written_this_line=25914 file_size_now=142410 f_out.tell()=142410
+00:25:11 |       [6/50] Id=65032123 anchors=3 context=5 citation=True valid_citation=True similarity=0.538 retrieval=1.22s
+00:25:13 |       [leakage] Id=71829283 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:25:18 |       [latency] cond=C Id=71829283 retrieval_sec=0.854 total_sec=6.331
+00:25:18 |       [debug-write] Id=71829283 bytes_written_this_line=24529 file_size_now=166939 f_out.tell()=166939
+00:25:18 |       [7/50] Id=71829283 anchors=3 context=5 citation=True valid_citation=True similarity=0.531 retrieval=0.85s
+00:25:20 |       [leakage] Id=19951718 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:25:24 |       [latency] cond=C Id=19951718 retrieval_sec=1.364 total_sec=5.073
+00:25:24 |       [debug-write] Id=19951718 bytes_written_this_line=22547 file_size_now=189486 f_out.tell()=189486
+00:25:24 |       [8/50] Id=19951718 anchors=3 context=5 citation=True valid_citation=True similarity=0.433 retrieval=1.36s
+00:25:25 |       [leakage] Id=20372892 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=8 n_expansion_q_empty=0
+00:25:25 |       [expansion] Id=20372892 hanya 8/9 Question expansion ber-answer.
+00:25:30 |       [latency] cond=C Id=20372892 retrieval_sec=1.438 total_sec=6.474
+00:25:30 |       [debug-write] Id=20372892 bytes_written_this_line=28061 file_size_now=217547 f_out.tell()=217547
+00:25:30 |       [9/50] Id=20372892 anchors=3 context=5 citation=True valid_citation=True similarity=0.530 retrieval=1.44s
+00:25:32 |       [leakage] Id=73145269 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:25:37 |       [latency] cond=C Id=73145269 retrieval_sec=1.252 total_sec=5.762
+00:25:37 |       [debug-write] Id=73145269 bytes_written_this_line=24802 file_size_now=242349 f_out.tell()=242349
+00:25:37 |       [10/50] Id=73145269 anchors=3 context=5 citation=True valid_citation=True similarity=0.697 retrieval=1.25s
+00:25:38 |       [leakage] Id=30940698 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=12 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:25:44 |       [latency] cond=C Id=30940698 retrieval_sec=1.172 total_sec=6.516
+00:25:44 |       [debug-write] Id=30940698 bytes_written_this_line=31662 file_size_now=274011 f_out.tell()=274011
+00:25:44 |       [11/50] Id=30940698 anchors=3 context=5 citation=True valid_citation=True similarity=0.584 retrieval=1.17s
+00:25:45 |       [leakage] Id=45387122 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:25:53 |       [latency] cond=C Id=45387122 retrieval_sec=1.063 total_sec=8.891
+00:25:53 |       [debug-write] Id=45387122 bytes_written_this_line=21066 file_size_now=295077 f_out.tell()=295077
+00:25:53 |       [12/50] Id=45387122 anchors=3 context=5 citation=False valid_citation=False similarity=0.591 retrieval=1.06s
+00:25:55 |       [leakage] Id=72944746 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:00 |       [latency] cond=C Id=72944746 retrieval_sec=1.606 total_sec=6.703
+00:26:00 |       [debug-write] Id=72944746 bytes_written_this_line=28006 file_size_now=323083 f_out.tell()=323083
+00:26:00 |       [13/50] Id=72944746 anchors=3 context=5 citation=False valid_citation=False similarity=0.548 retrieval=1.61s
+00:26:04 |       [leakage] Id=65748781 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:09 |       [latency] cond=C Id=65748781 retrieval_sec=4.082 total_sec=8.760
+00:26:09 |       [debug-write] Id=65748781 bytes_written_this_line=25709 file_size_now=348792 f_out.tell()=348792
+00:26:09 |       [14/50] Id=65748781 anchors=3 context=5 citation=False valid_citation=False similarity=0.557 retrieval=4.08s
+00:26:11 |       [leakage] Id=74605353 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=13 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:17 |       [latency] cond=C Id=74605353 retrieval_sec=1.083 total_sec=7.374
+00:26:17 |       [debug-write] Id=74605353 bytes_written_this_line=28135 file_size_now=376927 f_out.tell()=376927
+00:26:17 |       [15/50] Id=74605353 anchors=3 context=5 citation=True valid_citation=True similarity=0.494 retrieval=1.08s
+00:26:19 |       [leakage] Id=55892278 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:26 |       [latency] cond=C Id=55892278 retrieval_sec=1.259 total_sec=8.613
+00:26:26 |       [debug-write] Id=55892278 bytes_written_this_line=26696 file_size_now=403623 f_out.tell()=403623
+00:26:26 |       [16/50] Id=55892278 anchors=3 context=5 citation=True valid_citation=True similarity=0.736 retrieval=1.26s
+00:26:28 |       [leakage] Id=44558343 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:33 |       [latency] cond=C Id=44558343 retrieval_sec=1.388 total_sec=6.250
+00:26:33 |       [debug-write] Id=44558343 bytes_written_this_line=29536 file_size_now=433159 f_out.tell()=433159
+00:26:33 |       [17/50] Id=44558343 anchors=3 context=5 citation=True valid_citation=True similarity=0.367 retrieval=1.39s
+00:26:34 |       [leakage] Id=22157590 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:39 |       [latency] cond=C Id=22157590 retrieval_sec=1.353 total_sec=5.493
+00:26:39 |       [debug-write] Id=22157590 bytes_written_this_line=22814 file_size_now=455973 f_out.tell()=455973
+00:26:39 |       [18/50] Id=22157590 anchors=3 context=5 citation=False valid_citation=False similarity=0.612 retrieval=1.35s
+00:26:40 |       [leakage] Id=42102028 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=2 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:46 |       [latency] cond=C Id=42102028 retrieval_sec=0.877 total_sec=7.076
+00:26:46 |       [debug-write] Id=42102028 bytes_written_this_line=37475 file_size_now=493448 f_out.tell()=493448
+00:26:46 |       [19/50] Id=42102028 anchors=3 context=5 citation=True valid_citation=True similarity=0.545 retrieval=0.88s
+00:26:47 |       [leakage] Id=71408390 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:52 |       [latency] cond=C Id=71408390 retrieval_sec=1.149 total_sec=6.015
+00:26:52 |       [debug-write] Id=71408390 bytes_written_this_line=17389 file_size_now=510837 f_out.tell()=510837
+00:26:52 |       [20/50] Id=71408390 anchors=3 context=5 citation=False valid_citation=False similarity=0.537 retrieval=1.15s
+00:26:54 |       [leakage] Id=49376836 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:26:59 |       [latency] cond=C Id=49376836 retrieval_sec=1.657 total_sec=6.060
+00:26:59 |       [debug-write] Id=49376836 bytes_written_this_line=23860 file_size_now=534697 f_out.tell()=534697
+00:26:59 |       [21/50] Id=49376836 anchors=3 context=5 citation=True valid_citation=True similarity=0.814 retrieval=1.66s
+00:27:00 |       [leakage] Id=52310342 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:04 |       [latency] cond=C Id=52310342 retrieval_sec=1.046 total_sec=4.707
+00:27:04 |       [debug-write] Id=52310342 bytes_written_this_line=22299 file_size_now=556996 f_out.tell()=556996
+00:27:04 |       [22/50] Id=52310342 anchors=3 context=5 citation=True valid_citation=True similarity=0.696 retrieval=1.05s
+00:27:05 |       [leakage] Id=44172515 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:10 |       [latency] cond=C Id=44172515 retrieval_sec=0.883 total_sec=5.164
+00:27:10 |       [debug-write] Id=44172515 bytes_written_this_line=20569 file_size_now=577565 f_out.tell()=577565
+00:27:10 |       [23/50] Id=44172515 anchors=3 context=5 citation=True valid_citation=True similarity=0.749 retrieval=0.88s
+00:27:11 |       [leakage] Id=16524192 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:17 |       [latency] cond=C Id=16524192 retrieval_sec=1.263 total_sec=6.838
+00:27:17 |       [debug-write] Id=16524192 bytes_written_this_line=21161 file_size_now=598726 f_out.tell()=598726
+00:27:17 |       [24/50] Id=16524192 anchors=3 context=5 citation=False valid_citation=False similarity=0.629 retrieval=1.26s
+00:27:18 |       [leakage] Id=14610888 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:24 |       [latency] cond=C Id=14610888 retrieval_sec=1.067 total_sec=6.885
+00:27:24 |       [debug-write] Id=14610888 bytes_written_this_line=22630 file_size_now=621356 f_out.tell()=621356
+00:27:24 |       [25/50] Id=14610888 anchors=3 context=5 citation=False valid_citation=False similarity=0.320 retrieval=1.07s
+00:27:26 |       [leakage] Id=24615005 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:29 |       [latency] cond=C Id=24615005 retrieval_sec=1.093 total_sec=4.814
+00:27:29 |       [debug-write] Id=24615005 bytes_written_this_line=24185 file_size_now=645541 f_out.tell()=645541
+00:27:29 |       [26/50] Id=24615005 anchors=3 context=5 citation=True valid_citation=True similarity=0.436 retrieval=1.09s
+00:27:31 |       [leakage] Id=62574045 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:36 |       [latency] cond=C Id=62574045 retrieval_sec=1.382 total_sec=5.822
+00:27:36 |       [debug-write] Id=62574045 bytes_written_this_line=26093 file_size_now=671634 f_out.tell()=671634
+00:27:36 |       [27/50] Id=62574045 anchors=3 context=5 citation=False valid_citation=False similarity=0.804 retrieval=1.38s
+00:27:37 |       [leakage] Id=14019246 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:40 |       [latency] cond=C Id=14019246 retrieval_sec=1.072 total_sec=4.409
+00:27:40 |       [debug-write] Id=14019246 bytes_written_this_line=23337 file_size_now=694971 f_out.tell()=694971
+00:27:40 |       [28/50] Id=14019246 anchors=3 context=5 citation=True valid_citation=True similarity=0.700 retrieval=1.07s
+00:27:41 |       [leakage] Id=57331553 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:47 |       [latency] cond=C Id=57331553 retrieval_sec=0.607 total_sec=6.223
+00:27:47 |       [debug-write] Id=57331553 bytes_written_this_line=21315 file_size_now=716286 f_out.tell()=716286
+00:27:47 |       [29/50] Id=57331553 anchors=3 context=5 citation=True valid_citation=True similarity=0.734 retrieval=0.61s
+00:27:48 |       [leakage] Id=50061146 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:53 |       [latency] cond=C Id=50061146 retrieval_sec=0.901 total_sec=5.217
+00:27:53 |       [debug-write] Id=50061146 bytes_written_this_line=23007 file_size_now=739293 f_out.tell()=739293
+00:27:53 |       [30/50] Id=50061146 anchors=3 context=5 citation=False valid_citation=False similarity=0.846 retrieval=0.90s
+00:27:54 |       [leakage] Id=40506059 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:27:58 |       [latency] cond=C Id=40506059 retrieval_sec=0.637 total_sec=5.245
+00:27:58 |       [debug-write] Id=40506059 bytes_written_this_line=22260 file_size_now=761553 f_out.tell()=761553
+00:27:58 |       [31/50] Id=40506059 anchors=3 context=5 citation=True valid_citation=True similarity=0.588 retrieval=0.64s
+00:28:00 |       [leakage] Id=69868179 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:28:08 |       [latency] cond=C Id=69868179 retrieval_sec=1.616 total_sec=9.332
+00:28:08 |       [debug-write] Id=69868179 bytes_written_this_line=25703 file_size_now=787256 f_out.tell()=787256
+00:28:08 |       [32/50] Id=69868179 anchors=3 context=5 citation=False valid_citation=False similarity=0.685 retrieval=1.62s
+00:28:09 |       [leakage] Id=2157289 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:28:16 |       [latency] cond=C Id=2157289 retrieval_sec=1.003 total_sec=7.157
+00:28:16 |       [debug-write] Id=2157289 bytes_written_this_line=32018 file_size_now=819274 f_out.tell()=819274
+00:28:16 |       [33/50] Id=2157289 anchors=3 context=5 citation=False valid_citation=False similarity=0.798 retrieval=1.00s
+00:28:17 |       [leakage] Id=56467081 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:28:25 |       [latency] cond=C Id=56467081 retrieval_sec=0.777 total_sec=9.297
+00:28:25 |       [debug-write] Id=56467081 bytes_written_this_line=25147 file_size_now=844421 f_out.tell()=844421
+00:28:25 |       [34/50] Id=56467081 anchors=3 context=5 citation=False valid_citation=False similarity=0.545 retrieval=0.78s
+00:28:27 |       [leakage] Id=60436134 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:28:33 |       [latency] cond=C Id=60436134 retrieval_sec=1.264 total_sec=6.935
+00:28:33 |       [debug-write] Id=60436134 bytes_written_this_line=20025 file_size_now=864446 f_out.tell()=864446
+00:28:33 |       [35/50] Id=60436134 anchors=3 context=5 citation=True valid_citation=True similarity=0.547 retrieval=1.26s
+00:28:34 |       [leakage] Id=67427589 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:28:39 |       [latency] cond=C Id=67427589 retrieval_sec=1.281 total_sec=5.637
+00:28:39 |       [debug-write] Id=67427589 bytes_written_this_line=22513 file_size_now=886959 f_out.tell()=886959
+00:28:39 |       [36/50] Id=67427589 anchors=3 context=5 citation=False valid_citation=False similarity=0.805 retrieval=1.28s
+00:28:40 |       [leakage] Id=66767217 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:28:44 |       [latency] cond=C Id=66767217 retrieval_sec=0.520 total_sec=4.771
+00:28:44 |       [debug-write] Id=66767217 bytes_written_this_line=23974 file_size_now=910933 f_out.tell()=910933
+00:28:44 |       [37/50] Id=66767217 anchors=3 context=5 citation=False valid_citation=False similarity=0.509 retrieval=0.52s
+00:28:45 |       [leakage] Id=26179020 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:28:50 |       [latency] cond=C Id=26179020 retrieval_sec=0.738 total_sec=5.407
+00:28:50 |       [debug-write] Id=26179020 bytes_written_this_line=28794 file_size_now=939727 f_out.tell()=939727
+00:28:50 |       [38/50] Id=26179020 anchors=3 context=5 citation=False valid_citation=False similarity=0.492 retrieval=0.74s
+00:28:51 |       [leakage] Id=12278877 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:28:55 |       [latency] cond=C Id=12278877 retrieval_sec=1.256 total_sec=4.920
+00:28:55 |       [debug-write] Id=12278877 bytes_written_this_line=24155 file_size_now=963882 f_out.tell()=963882
+00:28:55 |       [39/50] Id=12278877 anchors=3 context=5 citation=True valid_citation=True similarity=0.709 retrieval=1.26s
+00:28:56 |       [leakage] Id=25665494 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:01 |       [latency] cond=C Id=25665494 retrieval_sec=0.673 total_sec=5.278
+00:29:01 |       [debug-write] Id=25665494 bytes_written_this_line=23117 file_size_now=986999 f_out.tell()=986999
+00:29:01 |       [40/50] Id=25665494 anchors=3 context=5 citation=False valid_citation=False similarity=0.625 retrieval=0.67s
+00:29:02 |       [leakage] Id=33405250 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:09 |       [latency] cond=C Id=33405250 retrieval_sec=0.580 total_sec=7.395
+00:29:09 |       [debug-write] Id=33405250 bytes_written_this_line=28832 file_size_now=1015831 f_out.tell()=1015831
+00:29:09 |       [41/50] Id=33405250 anchors=3 context=5 citation=True valid_citation=True similarity=0.733 retrieval=0.58s
+00:29:10 |       [leakage] Id=27612931 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:16 |       [latency] cond=C Id=27612931 retrieval_sec=1.024 total_sec=6.612
+00:29:16 |       [debug-write] Id=27612931 bytes_written_this_line=24198 file_size_now=1040029 f_out.tell()=1040029
+00:29:16 |       [42/50] Id=27612931 anchors=3 context=5 citation=True valid_citation=True similarity=0.690 retrieval=1.02s
+00:29:17 |       [leakage] Id=61453942 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:22 |       [latency] cond=C Id=61453942 retrieval_sec=0.905 total_sec=6.300
+00:29:22 |       [debug-write] Id=61453942 bytes_written_this_line=27173 file_size_now=1067202 f_out.tell()=1067202
+00:29:22 |       [43/50] Id=61453942 anchors=3 context=5 citation=True valid_citation=True similarity=0.442 retrieval=0.91s
+00:29:24 |       [leakage] Id=77482226 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:28 |       [latency] cond=C Id=77482226 retrieval_sec=0.955 total_sec=5.470
+00:29:28 |       [debug-write] Id=77482226 bytes_written_this_line=21313 file_size_now=1088515 f_out.tell()=1088515
+00:29:28 |       [44/50] Id=77482226 anchors=3 context=5 citation=False valid_citation=False similarity=0.762 retrieval=0.96s
+00:29:29 |       [leakage] Id=69993521 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=12 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:34 |       [latency] cond=C Id=69993521 retrieval_sec=0.875 total_sec=5.134
+00:29:34 |       [debug-write] Id=69993521 bytes_written_this_line=20761 file_size_now=1109276 f_out.tell()=1109276
+00:29:34 |       [45/50] Id=69993521 anchors=3 context=5 citation=False valid_citation=False similarity=0.799 retrieval=0.88s
+00:29:35 |       [leakage] Id=4316334 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:39 |       [latency] cond=C Id=4316334 retrieval_sec=0.783 total_sec=4.397
+00:29:39 |       [debug-write] Id=4316334 bytes_written_this_line=22004 file_size_now=1131280 f_out.tell()=1131280
+00:29:39 |       [46/50] Id=4316334 anchors=3 context=5 citation=False valid_citation=False similarity=0.332 retrieval=0.78s
+00:29:40 |       [leakage] Id=53432433 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:50 |       [latency] cond=C Id=53432433 retrieval_sec=1.169 total_sec=11.496
+00:29:50 |       [debug-write] Id=53432433 bytes_written_this_line=30541 file_size_now=1161821 f_out.tell()=1161821
+00:29:50 |       [47/50] Id=53432433 anchors=3 context=5 citation=False valid_citation=False similarity=0.364 retrieval=1.17s
+00:29:52 |       [leakage] Id=50814048 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:29:57 |       [latency] cond=C Id=50814048 retrieval_sec=0.958 total_sec=6.225
+00:29:57 |       [debug-write] Id=50814048 bytes_written_this_line=20921 file_size_now=1182742 f_out.tell()=1182742
+00:29:57 |       [48/50] Id=50814048 anchors=3 context=5 citation=True valid_citation=True similarity=0.750 retrieval=0.96s
+00:29:59 |       [leakage] Id=12722405 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:30:05 |       [latency] cond=C Id=12722405 retrieval_sec=1.090 total_sec=6.980
+00:30:05 |       [debug-write] Id=12722405 bytes_written_this_line=27882 file_size_now=1210624 f_out.tell()=1210624
+00:30:05 |       [49/50] Id=12722405 anchors=3 context=5 citation=False valid_citation=False similarity=0.737 retrieval=1.09s
+00:30:06 |       [leakage] Id=76615231 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+00:30:12 |       [latency] cond=C Id=76615231 retrieval_sec=0.789 total_sec=7.250
+00:30:12 |       [debug-write] Id=76615231 bytes_written_this_line=23222 file_size_now=1233846 f_out.tell()=1233846
+00:30:12 |       [50/50] Id=76615231 anchors=3 context=5 citation=True valid_citation=True similarity=0.417 retrieval=0.79s
+00:30:13 | [8/9] Selesai memproses seluruh sample.
+00:30:13 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-25_dev_v3_f23e8ff8ad.jsonl size_bytes=1233846
+00:30:13 | 
+======================================================================
+00:30:13 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+00:30:13 | ======================================================================
+00:30:13 | Total pertanyaan diproses      : 50
+00:30:13 | Cosine similarity rata-rata    : 0.6158
+00:30:13 | Cosine similarity median       : 0.6184
+00:30:13 | % similarity > 0.5             : 80.0%
+00:30:13 | % jawaban dgn >=1 kutipan format cocok  : 58.0% (longgar, toleransi variasi format)
+00:30:13 | % jawaban dgn >=1 kutipan VALID (NF2)   : 58.0% [target: 100%] BELUM TERCAPAI (ID kutipan divalidasi ada di retrieved_context yg sebenarnya)
+00:30:13 |   -- 3-way split: valid=58.0% / no_citation=42.0% / invalid_only=0.0%
+00:30:13 |   -- fabricated citation rate (>=1 invalid token, even if also has a valid one): 0.0%
+00:30:13 |   -- citation precision (valid tokens / all citation tokens incl. placeholders): 1.0
+00:30:13 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+00:30:13 | Retrieval latency -- avg: 1.28s, p95: 2.44s [NF3 target: <=15s] PASS
+00:30:13 | 
+Hasil lengkap tersimpan -> results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-25_dev_v3_f23e8ff8ad.jsonl
+00:30:13 | [logging] Ringkasan run dicatat -> /Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/logs/run_history.jsonl
+00:30:13 | [logging] Manifest ditulis -> results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-25_dev_v3_f23e8ff8ad.jsonl.manifest.json

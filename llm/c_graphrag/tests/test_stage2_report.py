@@ -23,7 +23,7 @@ def _graph_update_applied(monkeypatch):
 
 
 def _cfg(alpha, grounded, **over):
-    return {"condition": "C", "c_retrieval_version": "v3", "sample_split": "dev", "alpha": alpha,
+    return {"condition": "C", "c_retrieval_version": "v4", "sample_split": "dev", "alpha": alpha,
             "require_grounding": grounded, "expansion_require_answer": True, "expansion_overfetch": 20,
             "leakage": "thread", **over}
 
@@ -47,7 +47,8 @@ def _judge(source: Path, qid: int, kind: str, version="judge-v2.1", judge_id="pr
 
 def _setup(tmp, n_hal):
     """n_hal[(alpha, grounding)] hallucinated answers; 2 ABSTAIN per run; rest OK."""
-    runs = [_run(tmp, a, g) for a in (0.5, 0.25) for g in (True, False)]
+    alphas = sorted({a for a, _ in n_hal}, reverse=True)   # candidates and, if given, an exploratory alpha
+    runs = [_run(tmp, a, g) for a in alphas for g in (True, False)]
     recs = []
     for path in runs:
         cfg = json.loads(path.read_text().splitlines()[0])["config"]
@@ -71,7 +72,7 @@ def test_pooled_counts_and_winner(tmp_path):
     sel = s2.select_stage2_winner(pooled)
     assert sel["winner"] == 0.5 and not sel["keep_current"]
     assert s2.draft_official_params(sel, alphas=ALPHAS) == {
-        "status": "selected", "c_retrieval_version": "v3", "alpha_primary": 0.5, "alpha_ablation": 0.25,
+        "status": "selected", "c_retrieval_version": "v4", "alpha_primary": 0.5, "alpha_ablation": 0.25,
         "selection_record": {"path": s2.SELECTION_RECORD_PATH, "commit": None}, **s2.OFFICIAL_DEFAULTS}
 
 
@@ -136,15 +137,39 @@ def test_keep_current_cannot_be_drafted_under_amendment_10():
 
 
 def test_draft_ablation_is_the_other_candidate():
-    official = s2.draft_official_params({"winner": 0.0, "keep_current": False})
-    assert (official["alpha_primary"], official["alpha_ablation"]) == (0.0, 0.25)
+    official = s2.draft_official_params({"winner": 0.25, "keep_current": False})
+    assert (official["alpha_primary"], official["alpha_ablation"]) == (0.25, 0.5)
     with pytest.raises(s2.Stage2Error, match="one of the two"):
-        s2.draft_official_params({"winner": 0.5, "keep_current": False})
+        s2.draft_official_params({"winner": 0.75, "keep_current": False})
 
 
-def test_stage2_alphas_are_the_amendment9_top_two():
-    """Amendment 9 stage-1 recheck: top_two = [0.25, 0.0]."""
-    assert s2.STAGE2_ALPHAS == (0.25, 0.0)
+def test_stage2_alphas_are_derived_from_the_stage1_report_of_record():
+    """Amendment 17 stage-1 re-run (C v4): top_two = [0.5, 0.25]; the value is READ from the report, not written."""
+    import json
+    from llm.c_graphrag import stage2_candidates as sc
+
+    top_two = json.loads(sc.STAGE1_REPORT_PATH.read_text())["selection"]["top_two"]
+    assert s2.STAGE2_ALPHAS == sc.STAGE2_ALPHAS == tuple(top_two) == (0.5, 0.25)
+    assert s2.EXPLORATORY_ALPHAS == (0.0,) and not set(s2.EXPLORATORY_ALPHAS) & set(s2.STAGE2_ALPHAS)
+
+
+def test_exploratory_alpha_is_loaded_but_never_enters_the_selection(tmp_path):
+    runs = [_run(tmp_path, a, g) for a in (0.5, 0.25, 0.0) for g in (True, False)]
+    loaded = s2.load_runs(runs, alphas=ALPHAS)
+    assert {k[0] for k in loaded} == {0.5, 0.25, 0.0}
+    runs, jf = _setup(tmp_path, {(0.5, "on"): 6, (0.5, "off"): 6, (0.25, "on"): 5, (0.25, "off"): 5,
+                                 (0.0, "on"): 0, (0.0, "off"): 0})   # alpha 0 would "win" by far
+    judged = s2.load_judgments([jf], s2.load_runs(runs, alphas=ALPHAS), "judge-v2.1")
+    pooled, _ = s2.stage2_metrics(judged, alphas=ALPHAS)
+    assert set(pooled) == set(ALPHAS) and s2.select_stage2_winner(pooled)["winner"] in ALPHAS
+    expl, _ = s2.stage2_metrics(judged, alphas=(0.0,))
+    assert expl[0.0]["n_hallucinated"] == 0
+
+
+def test_exploratory_alpha_needs_both_groundings(tmp_path):
+    runs = [_run(tmp_path, a, g) for a in (0.5, 0.25) for g in (True, False)] + [_run(tmp_path, 0.0, True)]
+    with pytest.raises(s2.Stage2Error, match="missing runs"):
+        s2.load_runs(runs, alphas=ALPHAS)
 
 
 @pytest.mark.parametrize("over, msg", [({"expansion_require_answer": None}, "expansion_require_answer"),

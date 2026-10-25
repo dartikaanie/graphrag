@@ -39,7 +39,8 @@ N_ANCHOR = 3
 N_SEMANTIC_EXPANSION = 3
 N_LOW_LEVEL = 3
 N_HIGH_LEVEL = 3
-D_RETRIEVAL_VERSION = "v4"  # Amendment 16: one cosine score on both levels (must equal d_lightrag.D_RETRIEVAL_VERSION)
+C_RETRIEVAL_VERSION = "v4"  # Amendment 17: v3 ranking + answerable anchors (must equal c_graphrag.C_RETRIEVAL_VERSION)
+D_RETRIEVAL_VERSION = "v5"  # Amendment 17: answerable anchors + fill up to k (must equal d_lightrag.D_RETRIEVAL_VERSION)
 LEAKAGE_MODE = "thread"  # Amendment 15: q + its thread only (supersedes Amendment 8's "dup+neardup0.95")
 
 _COMMON_ARGS = ["--n-sample", str(N_SAMPLE), "--seed", str(SEED), "--oversample-pool", str(OVERSAMPLE_POOL),
@@ -138,11 +139,11 @@ def build_matrix(official: dict | None, include_legacy: bool = False) -> list[di
             alpha_arg = f"{alpha:g}" if alpha is not None else f"<{_ALPHA_KEY[role]}>"
             argv += ["--top-k", str(TOP_K), "--token-chunk-limit", str(TOKEN_CHUNK_LIMIT),
                      "--n-anchor", str(N_ANCHOR), "--n-semantic-expansion", str(N_SEMANTIC_EXPANSION),
-                     "--c-retrieval-version", "v3", "--alpha", alpha_arg,
+                     "--c-retrieval-version", C_RETRIEVAL_VERSION, "--alpha", alpha_arg,
                      "--fusion-mode", "trust_weighted", _grounding_flag(grounding),
                      "--expansion-require-answer", "--leakage-mode", LEAKAGE_MODE]
             dashboard.update(top_k=TOP_K, n_anchor=N_ANCHOR, n_semantic_expansion=N_SEMANTIC_EXPANSION,
-                             c_retrieval_version="v3", alpha=alpha, fusion_mode="trust_weighted",
+                             c_retrieval_version=C_RETRIEVAL_VERSION, alpha=alpha, fusion_mode="trust_weighted",
                              require_grounding=grounding)
             for key in ("max_hops", "edge_types", "use_author_trust", "accepted_only"):
                 if official and key in official:

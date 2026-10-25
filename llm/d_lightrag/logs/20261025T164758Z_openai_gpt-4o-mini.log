@@ -1,0 +1,120 @@
+23:47:58 | [logging] Log detail run ini -> logs/20261025T164758Z_openai_gpt-4o-mini.log
+23:47:58 | [config] output auto-generated -> 'results/condition_d_openai_gpt-4o-mini_n50_seed42_grounded_dev_v3_23d3fdbe62.jsonl'
+23:47:58 | [config] n_sample=50 seed=42 provider=openai model=gpt-4o-mini
+23:47:58 | [config] top_k=5 n_low_level=3 n_high_level=3 token_chunk_limit=400
+23:47:58 | [config] require_grounding=True (dual-constraint grounding+citation)
+23:47:59 | [1/9] Mengambil oversample pool (1536 kandidat)...
+23:48:04 |       Oversample pool diambil: 1,536 kandidat
+23:48:04 | [2/9] Menghitung token & filter <= 2048 token...
+23:48:05 |       1,536 -> 1,471 lolos filter token
+23:48:05 | [sample] 50 dev questions == frozen list llm/sample_ids/dev_ids_v1.json
+23:48:05 | [4/9] Mengambil teks accepted answer (ground truth)...
+23:48:09 |       Ditemukan 50 accepted answer
+23:48:09 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+23:48:09 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+23:48:17 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari /Volumes/T7 Shield/S2/THESIS GRAPHRAG/project/graphrag_old/01_data_cleaning/_kg_workspace
+23:48:20 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+23:48:28 | [config] leakage mode = thread, sample_split = dev
+23:48:28 | [7/9] Dual-level retrieval (low-level+high-level) + prompting gpt-4o-mini untuk 50 pertanyaan...
+23:48:36 | [graph] trustScoreVersion: v3-logscore
+23:48:39 |       [leakage] Id=20952138 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:39 |       [latency] cond=D Id=20952138 retrieval_sec=2.497 total_sec=NA
+23:48:39 |       [leakage] Id=55753657 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:39 |       [latency] cond=D Id=55753657 retrieval_sec=0.850 total_sec=NA
+23:48:40 |       [leakage] Id=60887798 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:40 |       [latency] cond=D Id=60887798 retrieval_sec=0.753 total_sec=NA
+23:48:41 |       [leakage] Id=47712318 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=1 final_k=5
+23:48:41 |       [latency] cond=D Id=47712318 retrieval_sec=0.593 total_sec=NA
+23:48:41 |       [leakage] Id=125143 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=1 final_k=5
+23:48:41 |       [latency] cond=D Id=125143 retrieval_sec=0.579 total_sec=NA
+23:48:42 |       [leakage] Id=65032123 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:42 |       [latency] cond=D Id=65032123 retrieval_sec=0.523 total_sec=NA
+23:48:42 |       [leakage] Id=71829283 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:42 |       [latency] cond=D Id=71829283 retrieval_sec=0.570 total_sec=NA
+23:48:43 |       [leakage] Id=19951718 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:43 |       [latency] cond=D Id=19951718 retrieval_sec=0.676 total_sec=NA
+23:48:44 |       [leakage] Id=20372892 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:44 |       [latency] cond=D Id=20372892 retrieval_sec=0.529 total_sec=NA
+23:48:45 |       [leakage] Id=73145269 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:45 |       [latency] cond=D Id=73145269 retrieval_sec=0.913 total_sec=NA
+23:48:45 |       [leakage] Id=30940698 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:45 |       [latency] cond=D Id=30940698 retrieval_sec=0.807 total_sec=NA
+23:48:46 |       [leakage] Id=45387122 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:46 |       [latency] cond=D Id=45387122 retrieval_sec=0.861 total_sec=NA
+23:48:47 |       [leakage] Id=72944746 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:47 |       [latency] cond=D Id=72944746 retrieval_sec=0.787 total_sec=NA
+23:48:47 |       [leakage] Id=65748781 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:47 |       [latency] cond=D Id=65748781 retrieval_sec=0.434 total_sec=NA
+23:48:48 |       [leakage] Id=74605353 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:48 |       [latency] cond=D Id=74605353 retrieval_sec=0.429 total_sec=NA
+23:48:49 |       [leakage] Id=55892278 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=1 final_k=5
+23:48:49 |       [latency] cond=D Id=55892278 retrieval_sec=1.205 total_sec=NA
+23:48:50 |       [leakage] Id=44558343 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:50 |       [latency] cond=D Id=44558343 retrieval_sec=0.623 total_sec=NA
+23:48:50 |       [leakage] Id=22157590 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=1 final_k=5
+23:48:50 |       [latency] cond=D Id=22157590 retrieval_sec=0.649 total_sec=NA
+23:48:51 |       [leakage] Id=42102028 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:51 |       [latency] cond=D Id=42102028 retrieval_sec=0.433 total_sec=NA
+23:48:51 |       [leakage] Id=71408390 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:51 |       [latency] cond=D Id=71408390 retrieval_sec=0.561 total_sec=NA
+23:48:52 |       [leakage] Id=49376836 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:52 |       [latency] cond=D Id=49376836 retrieval_sec=0.807 total_sec=NA
+23:48:52 |       [leakage] Id=52310342 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:52 |       [latency] cond=D Id=52310342 retrieval_sec=0.292 total_sec=NA
+23:48:53 |       [leakage] Id=44172515 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=4
+23:48:53 |       [latency] cond=D Id=44172515 retrieval_sec=0.688 total_sec=NA
+23:48:54 |       [leakage] Id=16524192 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:54 |       [latency] cond=D Id=16524192 retrieval_sec=0.603 total_sec=NA
+23:48:54 |       [leakage] Id=14610888 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:54 |       [latency] cond=D Id=14610888 retrieval_sec=0.728 total_sec=NA
+23:48:55 |       [leakage] Id=24615005 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=1 final_k=5
+23:48:55 |       [latency] cond=D Id=24615005 retrieval_sec=0.663 total_sec=NA
+23:48:56 |       [leakage] Id=62574045 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:56 |       [latency] cond=D Id=62574045 retrieval_sec=0.531 total_sec=NA
+23:48:56 |       [leakage] Id=14019246 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:56 |       [latency] cond=D Id=14019246 retrieval_sec=0.565 total_sec=NA
+23:48:57 |       [leakage] Id=57331553 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:57 |       [latency] cond=D Id=57331553 retrieval_sec=0.411 total_sec=NA
+23:48:57 |       [leakage] Id=50061146 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:57 |       [latency] cond=D Id=50061146 retrieval_sec=0.514 total_sec=NA
+23:48:57 |       [leakage] Id=40506059 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:57 |       [latency] cond=D Id=40506059 retrieval_sec=0.174 total_sec=NA
+23:48:58 |       [leakage] Id=69868179 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:58 |       [latency] cond=D Id=69868179 retrieval_sec=0.690 total_sec=NA
+23:48:58 |       [leakage] Id=2157289 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:58 |       [latency] cond=D Id=2157289 retrieval_sec=0.342 total_sec=NA
+23:48:59 |       [leakage] Id=56467081 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:59 |       [latency] cond=D Id=56467081 retrieval_sec=0.405 total_sec=NA
+23:48:59 |       [leakage] Id=60436134 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:48:59 |       [latency] cond=D Id=60436134 retrieval_sec=0.636 total_sec=NA
+23:49:00 |       [leakage] Id=67427589 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=4
+23:49:00 |       [latency] cond=D Id=67427589 retrieval_sec=0.989 total_sec=NA
+23:49:01 |       [leakage] Id=66767217 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:01 |       [latency] cond=D Id=66767217 retrieval_sec=0.268 total_sec=NA
+23:49:01 |       [leakage] Id=26179020 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:01 |       [latency] cond=D Id=26179020 retrieval_sec=0.384 total_sec=NA
+23:49:02 |       [leakage] Id=12278877 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:02 |       [latency] cond=D Id=12278877 retrieval_sec=0.580 total_sec=NA
+23:49:02 |       [leakage] Id=25665494 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:02 |       [latency] cond=D Id=25665494 retrieval_sec=0.655 total_sec=NA
+23:49:03 |       [leakage] Id=33405250 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:03 |       [latency] cond=D Id=33405250 retrieval_sec=0.609 total_sec=NA
+23:49:04 |       [leakage] Id=27612931 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=1 final_k=5
+23:49:04 |       [latency] cond=D Id=27612931 retrieval_sec=0.887 total_sec=NA
+23:49:04 |       [leakage] Id=61453942 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=1 final_k=5
+23:49:04 |       [latency] cond=D Id=61453942 retrieval_sec=0.625 total_sec=NA
+23:49:05 |       [leakage] Id=77482226 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:05 |       [latency] cond=D Id=77482226 retrieval_sec=0.616 total_sec=NA
+23:49:06 |       [leakage] Id=69993521 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=4
+23:49:06 |       [latency] cond=D Id=69993521 retrieval_sec=0.580 total_sec=NA
+23:49:06 |       [leakage] Id=4316334 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:06 |       [latency] cond=D Id=4316334 retrieval_sec=0.509 total_sec=NA
+23:49:07 |       [leakage] Id=53432433 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:07 |       [latency] cond=D Id=53432433 retrieval_sec=0.737 total_sec=NA
+23:49:08 |       [leakage] Id=50814048 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:08 |       [latency] cond=D Id=50814048 retrieval_sec=0.957 total_sec=NA
+23:49:09 |       [leakage] Id=12722405 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:09 |       [latency] cond=D Id=12722405 retrieval_sec=0.784 total_sec=NA
+23:49:09 |       [leakage] Id=76615231 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5
+23:49:09 |       [latency] cond=D Id=76615231 retrieval_sec=0.543 total_sec=NA
+23:49:09 | [retrieval-only] 50 record retrieval -> results/condition_d_openai_gpt-4o-mini_n50_seed42_grounded_dev_v3_23d3fdbe62.jsonl

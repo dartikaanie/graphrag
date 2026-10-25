@@ -123,7 +123,7 @@ def derive_run_label(condition: str, record: dict) -> dict:
     parts = [condition]
     if condition == "C" and fusion_mode:
         parts.append(_FUSION_MODE_SHORT.get(fusion_mode, fusion_mode))
-    if condition == "C" and record.get("c_retrieval_version") == "v3" and record.get("alpha") is not None:
+    if condition == "C" and record.get("c_retrieval_version") in ("v3", "v4") and record.get("alpha") is not None:
         parts.append(f"a={record['alpha']}")
     if grounding is not None:
         parts.append("grounded" if grounding == "on" else "plain")

@@ -157,6 +157,7 @@ from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F40
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
 from llm.record_schema import answer_timing, latency_fields, new_run_id, record_header
+from llm.common.anchors import anchor_record_fields, select_answerable_anchors  # noqa: E402
 from llm.common.provenance import fetch_trust_score_version, run_provenance  # noqa: E402
 from llm.common import item_provenance as iprov  # per-item retrieval provenance (provenance_version v2)
 from llm.sample_split import SampleMismatchError, verify_sample
@@ -197,9 +198,19 @@ DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST = 0.3
 #        RANKING/TRUST LOGIC TIDAK DIUBAH -- ini murni membuat urutan akhir
 #        deterministik/reproducible, bukan mengubah kriteria pemeringkatan.
 #        Direkam sbg field `c_retrieval_version` di run_history.jsonl.
-# "v3" (C_RETRIEVAL_VERSION saat ini) = ranking relevansi+kepercayaan (1-alpha)*sim_norm + alpha*trust, lihat
+# "v3" (default Amendment 16) = ranking relevansi+kepercayaan (1-alpha)*sim_norm + alpha*trust, lihat
 #        docs/DECISION_C_SCORING.md. Default CLI/API sejak Amendment 16, supaya run tanpa flag tidak diam-diam v2.
-C_RETRIEVAL_VERSION = "v3"
+# "v4" (Amendment 17) = v3 ranking UNCHANGED, but entity anchoring only seeds ANSWERABLE questions: a question needs
+#        >= 1 non-excluded answer to be an anchor; the scan continues down the same FAISS list (llm/common/anchors.py,
+#        depth 400) until n_anchor seeds are found. D retrieval v5 uses the very same function. Reason: only 28% of the
+#        dev anchors had an answer, so 22 of 50 questions got nothing from the 1-hop step.
+C_RETRIEVAL_VERSION = "v4"
+C_RETRIEVAL_VERSIONS = ("v2", "v3", "v4")
+
+
+def alpha_ranking(c_retrieval_version: str) -> bool:
+    """v3 and v4 rank by (1 - alpha) * sim_norm + alpha * trust; v2 is the older trust-only ranking."""
+    return c_retrieval_version in ("v3", "v4")
 # Proxy trust utk kandidat yang HANYA ditemukan lewat semantic expansion
 # (tidak lewat edge graf eksplisit) -- disamakan dgn tier EMBED_SIM
 # (trust "terendah" di antara 3 sumber densifikasi, lihat
@@ -940,7 +951,7 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
         c["_path"] = _candidate_path(c)
         all_candidates.append(c)
 
-    if c_retrieval_version != "v3":
+    if not alpha_ranking(c_retrieval_version):
         if fusion_mode == "uniform":
             # Ablasi: ranking TIDAK memprioritaskan trust. Dedup keep FIRST
             # occurrence (urutan penemuan asli, bukan skor tertinggi), lalu
@@ -1178,9 +1189,15 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     query_emb = embed_query(query_text, embed_model)
 
                 # --- a. Entity Anchoring ---
-                anchors = anchor_via_vector_search(
-                    query_emb, faiss_index, faiss_ids, n_anchor, exclude_question_ids, stats=leak_stats,
-                )
+                if c_retrieval_version == "v4":  # answerable-only seeds, shared with D v5 (llm/common/anchors.py)
+                    anchors = select_answerable_anchors(
+                        query_emb, faiss_index, faiss_ids, n_anchor, exclude_question_ids, exclude_answer_ids,
+                        driver, database, stats=leak_stats,
+                    )
+                else:
+                    anchors = anchor_via_vector_search(
+                        query_emb, faiss_index, faiss_ids, n_anchor, exclude_question_ids, stats=leak_stats,
+                    )
                 anchor_ids = [qid_ for qid_, _ in anchors]
 
                 # --- b. Graph Traversal ---
@@ -1207,7 +1224,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 # so it can build trust' = (1-β)*trust + β*author_weight per
                 # docs/DECISION_C_SCORING.md. Skipped entirely (zero extra Neo4j
                 # round-trip) unless the switch is on.
-                if c_retrieval_version == "v3" and use_author_trust:
+                if alpha_ranking(c_retrieval_version) and use_author_trust:
                     all_aids = [c["answer_id"] for c in graph_candidates + expansion_candidates]
                     author_weights = fetch_author_trust(driver, database, all_aids)
                     for c in graph_candidates + expansion_candidates:
@@ -1252,7 +1269,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "accepted_answer_id": int(row["AcceptedAnswerId"]),
                         "retrieved_context": retrieved, "provenance_version": iprov.PROVENANCE_VERSION, **trace,
                         "candidate_pool_size": candidate_pool_size,
-                        "n_anchors": len(anchor_ids), "anchor_question_ids": anchor_ids,
+                        "n_anchors": len(anchor_ids), "anchor_question_ids": anchor_ids, **anchor_record_fields(leak_stats),
                         "graph_candidate_answer_ids": sorted({int(c["answer_id"]) for c in graph_candidates}),
                         "n_graph_candidates": len(graph_candidates),
                         "n_expansion_candidates": len(expansion_candidates),
@@ -1332,7 +1349,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     "prompt_messages": messages,
                     "leakage": leakage_log,
                     **expansion_log,
-                    "n_anchors": len(anchor_ids),
+                    "n_anchors": len(anchor_ids), **anchor_record_fields(leak_stats),
                     "n_graph_candidates": len(graph_candidates),
                     "n_expansion_candidates": len(expansion_candidates),
                     # Actual number of context items sent to the LLM in this
@@ -1471,7 +1488,7 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
         "require_grounding": require_grounding, "enable_semantic_expansion": enable_semantic_expansion,
         "c_retrieval_version": c_retrieval_version,
     }
-    if c_retrieval_version == "v3" or alpha is not None:
+    if alpha_ranking(c_retrieval_version) or alpha is not None:
         config["alpha"] = alpha
     if sample_split != DEFAULT_SAMPLE_SPLIT:
         config["sample_split"] = sample_split
@@ -1534,8 +1551,8 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
         suffix += "_ungrounded"
     if not enable_semantic_expansion:
         suffix += "_noexp"
-    if c_retrieval_version == "v3":
-        suffix += f"_v3-alpha{_fmt_weight_for_filename(alpha if alpha is not None else 1.0)}"
+    if alpha_ranking(c_retrieval_version):
+        suffix += f"_{c_retrieval_version}-alpha{_fmt_weight_for_filename(alpha if alpha is not None else 1.0)}"
     if sample_split != DEFAULT_SAMPLE_SPLIT:
         suffix += f"_{sample_split}"
     config_hash = compute_config_hash(build_config(
@@ -1633,9 +1650,10 @@ def main():
     # --- C retrieval v3 (docs/DECISION_C_SCORING.md) -- all default to
     # v2's exact current behavior; see build_config()'s backward-
     # compatibility docstring for why defaults never change config_hash.
-    parser.add_argument("--c-retrieval-version", choices=["v2", "v3"], default=C_RETRIEVAL_VERSION,
-                         help="'v3' (default since Amendment 16): (1-alpha)*sim_norm + alpha*trust scoring -- see "
-                              "--alpha. 'v2': the older trust-only ranking, kept reproducible.")
+    parser.add_argument("--c-retrieval-version", choices=list(C_RETRIEVAL_VERSIONS), default=C_RETRIEVAL_VERSION,
+                         help="'v4' (default since Amendment 17): v3 ranking with answerable-only entity anchoring. 'v3' "
+                              "(Amendment 16 default): (1-alpha)*sim_norm + alpha*trust with plain nearest-question "
+                              "anchoring, kept reproducible -- see --alpha. 'v2': the older trust-only ranking.")
     parser.add_argument("--alpha", type=float, default=None,
                          help="v3 only: final_score = (1-alpha)*sim_norm + alpha*trust, alpha in [0,1]. "
                               "alpha=1 matches v2 trust_weighted's own ranking; alpha=0 ranks purely by "
@@ -1684,9 +1702,9 @@ def main():
     run_id = new_run_id()  # every record + the manifest (llm/record_schema.py)
     log(f"[logging] Log detail run ini -> {log_path}")
 
-    if args.c_retrieval_version == "v3" and args.alpha is None:
+    if alpha_ranking(args.c_retrieval_version) and args.alpha is None:
         args.alpha = 1.0
-        log("[config] --c-retrieval-version v3 without --alpha -- defaulting to alpha=1.0 "
+        log("[config] --c-retrieval-version v3/v4 without --alpha -- defaulting to alpha=1.0 "
             "(matches v2 trust_weighted's own ranking).")
 
     # Amendment 10: a test-sample run must be one of the two official C runs
@@ -1794,7 +1812,7 @@ def main():
     embed_model = SentenceTransformer(args.embed_model, device="cpu")
 
     embedding_cache = None
-    if args.c_retrieval_version == "v3":
+    if alpha_ranking(args.c_retrieval_version):
         from embedding_cache import EmbeddingCache
         embedding_cache = EmbeddingCache(args.embedding_cache_path)
         log(f"[config] v3 embedding cache -> {args.embedding_cache_path}")

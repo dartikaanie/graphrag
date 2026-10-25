@@ -43,13 +43,13 @@ def test_official_params_status_is_valid():
 
 def test_official_params_alphas_null_until_selected():
     """Amendment 10: both stage-2 candidates are v3 values, so
-    c_retrieval_version is "v3" from the start; alpha_primary,
+    c_retrieval_version is "v4" (Amendment 17) from the start; alpha_primary,
     alpha_ablation and selection_record.commit stay null until the Outcome
     section and the Amendment 10 Record are filled in and status flips to
     "selected". Once selected, the two alphas are the two distinct stage-2
     candidates."""
     from_file = json.loads((REPO_ROOT / "llm" / "c_graphrag" / "official_params.json").read_text())
-    assert from_file["c_retrieval_version"] == "v3"
+    assert from_file["c_retrieval_version"] == "v4"
     if from_file["status"] == "pending_selection":
         assert from_file["alpha_primary"] is None
         assert from_file["alpha_ablation"] is None

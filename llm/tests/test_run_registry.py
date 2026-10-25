@@ -88,7 +88,7 @@ def _gen_file(tmp_path, cfg, n):
 
 STAGE2_CFG = {"condition": "C", "provider": "openai", "model": "gpt-4o-mini", "seed": 42, "oversample_pool": 1536,
               "sample_split": "dev", "n_sample": 50, "top_k": 5, "leakage": "thread",
-              "c_retrieval_version": "v3", "n_anchor": 3, "n_semantic_expansion": 3, "expansion_require_answer": True,
+              "c_retrieval_version": "v4", "n_anchor": 3, "n_semantic_expansion": 3, "expansion_require_answer": True,
               "fusion_mode": "trust_weighted", "alpha": 0.25, "require_grounding": True}
 
 
@@ -105,7 +105,7 @@ def test_generation_entry_checks_the_frozen_config(tmp_path, reg_path, monkeypat
     with pytest.raises(rr.RegistryError, match="leakage"):
         rr.generation_entry(_gen_file(tmp_path, {**STAGE2_CFG, "leakage": "dup+neardup0.95"}, 50), "dev-stage2")
     with pytest.raises(rr.RegistryError, match="condition/alpha"):
-        rr.generation_entry(_gen_file(tmp_path, {**STAGE2_CFG, "alpha": 0.5}, 50), "dev-stage2")
+        rr.generation_entry(_gen_file(tmp_path, {**STAGE2_CFG, "alpha": 0.75}, 50), "dev-stage2")
     with pytest.raises(rr.RegistryError, match="sample_split"):  # a dev run cannot be registered as official
         rr.generation_entry(_gen_file(tmp_path, STAGE2_CFG, 50), "official")
     official = {k: v for k, v in STAGE2_CFG.items() if k != "sample_split"} | {"n_sample": 384}
