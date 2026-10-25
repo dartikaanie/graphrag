@@ -734,7 +734,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
                   top_k: int, require_citation: bool, require_grounding: bool,
                   sample_split: str = "test", corpus: str = CORPUS_KG, token_chunk_limit: int = 400,
-                  leakage_mode: str = MODE_THREAD,
+                  leakage_mode: str | None = None,
                   provenance_version: str | None = iprov.PROVENANCE_VERSION) -> dict:
     """The full set of parameters that affect Condition B's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
@@ -756,7 +756,7 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
         config["corpus"] = corpus_dir_name(token_chunk_limit)
     elif corpus != CORPUS_LEGACY:
         raise ValueError(f"Unknown corpus '{corpus}' -- must be one of {CORPUS_CHOICES}")
-    config.update(config_leakage_key(leakage_mode))  # absent for MODE_THREAD -> earlier hashes unchanged
+    config.update(config_leakage_key(leakage_mode))  # None (pre-Amendment-8 run) -> absent, earlier hashes unchanged; "thread" is written
     if provenance_version is not None:  # part of config_hash; None = a run made before provenance existed
         config["provenance_version"] = provenance_version
     return add_split_to_config(config, sample_split)  # sample_split only present when not "test" -- existing hashes unchanged
@@ -766,7 +766,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        require_citation: bool = False, require_grounding: bool = False,
                        oversample_pool: int | None = None, top_k: int = 5,
                        sample_split: str = "test", corpus: str = CORPUS_KG,
-                       token_chunk_limit: int = 400, leakage_mode: str = MODE_THREAD,
+                       token_chunk_limit: int = 400, leakage_mode: str | None = None,
                        provenance_version: str | None = iprov.PROVENANCE_VERSION) -> Path:
     """Nama file JSONL otomatis dari provider+model+n_sample+seed -- identik
     pola Kondisi A, format:

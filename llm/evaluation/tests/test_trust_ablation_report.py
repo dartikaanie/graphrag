@@ -26,7 +26,7 @@ def _judge(source: Path, qid: int, kind: str, judge_id="primary", version="judge
 def _cfg(alpha, grounded, **over):
     return {"condition": "C", "c_retrieval_version": "v3", "sample_split": "test", "alpha": alpha,
             "require_grounding": grounded, "expansion_require_answer": True, "expansion_overfetch": 20,
-            "leakage": "dup+neardup0.95", "max_hops": 2, **over}
+            "leakage": "thread", "max_hops": 2, **over}
 
 
 def _run(tmp, alpha, grounded, role=None, qids=QIDS, **over) -> Path:
@@ -89,7 +89,7 @@ def test_rejects_configs_differing_beyond_alpha(tmp_path):
 
 
 @pytest.mark.parametrize("over, msg", [({"expansion_require_answer": False}, "expansion_require_answer"),
-                                       ({"leakage": "thread"}, "leakage"), ({"sample_split": "dev"}, "sample_split")])
+                                       ({"leakage": "dup+neardup0.95"}, "leakage"), ({"sample_split": "dev"}, "sample_split")])
 def test_rejects_non_official_settings(tmp_path, over, msg):
     runs = [_run(tmp_path, a, g, **over) for a in (0.25, 0.0) for g in (True, False)]
     with pytest.raises(tar.AblationError, match=msg):

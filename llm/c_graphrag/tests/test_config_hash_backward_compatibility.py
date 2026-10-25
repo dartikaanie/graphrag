@@ -160,3 +160,27 @@ def test_batch_id_never_affects_config_hash():
     sig = inspect.signature(c_graphrag.build_config)
     assert "batch_id" not in sig.parameters
     assert "batch_launched_at" not in sig.parameters
+
+
+def test_thread_leakage_run_never_shares_a_hash_or_filename_with_a_pre_amendment_8_run():
+    """Amendment 15: leakage_mode=None is the legacy (pre-Amendment-8) config -- no "leakage" key, hash
+    unchanged (asserted by the real-run test above). A "thread" run writes "leakage": "thread", so its
+    config_hash -- and therefore its output filename, which is what resume/append keys on -- differs."""
+    b_args = ("openai", "gpt-4o-mini", 5, 42, 20, 5, True, True)
+    legacy_b, thread_b = (b_condition_b_rag.build_config(*b_args, leakage_mode=m) for m in (None, "thread"))
+    assert "leakage" not in legacy_b and thread_b["leakage"] == "thread"
+    assert compute_config_hash(legacy_b) != compute_config_hash(thread_b)
+    assert (b_condition_b_rag.build_output_path("out", "openai", "gpt-4o-mini", 5, 42, True, True, 20, 5)
+            != b_condition_b_rag.build_output_path("out", "openai", "gpt-4o-mini", 5, 42, True, True, 20, 5,
+                                                   leakage_mode="thread"))
+
+    d_args = ("openai", "gpt-4o-mini", 5, 42, 20, 5, 3, 3, True)
+    legacy_d, thread_d = (d_lightrag.build_config(*d_args, leakage_mode=m) for m in (None, "thread"))
+    assert "leakage" not in legacy_d and thread_d["leakage"] == "thread"
+    assert compute_config_hash(legacy_d) != compute_config_hash(thread_d)
+
+    c_args = ("openai", "gpt-4o-mini", 5, 42, 20, 5, 3, 3, "trust_weighted", 0.7, 0.3, 1.0, True, True)
+    legacy_c, thread_c = (c_graphrag.build_config(*c_args, c_retrieval_version="v3", leakage_mode=m)
+                          for m in (None, "thread"))
+    assert "leakage" not in legacy_c and thread_c["leakage"] == "thread"
+    assert compute_config_hash(legacy_c) != compute_config_hash(thread_c)

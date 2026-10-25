@@ -318,7 +318,7 @@ def _refuse_dashboard_dev_split(params: dict[str, Any]) -> None:
 def _leakage_mode(params: dict[str, Any]) -> str:
     """Leakage exclusion mode for a B/C/D run (llm/common/leakage.py):
     params["leakage_mode"] if given, else LeakageSettings (LEAKAGE_* env /
-    .env; default "dup+neardup0.95")."""
+    .env; default "thread", Amendment 15)."""
     from llm.common.leakage import LeakageSettings
 
     return params.get("leakage_mode") or LeakageSettings().mode

@@ -1437,7 +1437,7 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
                   alpha: float | None = None, sample_split: str = DEFAULT_SAMPLE_SPLIT,
                   max_hops: int = DEFAULT_MAX_HOPS, edge_types: tuple | None = None,
                   use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
-                  accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD,
+                  accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str | None = None,
                   expansion_require_answer: bool = False,
                   provenance_version: str | None = iprov.PROVENANCE_VERSION) -> dict:
     """The full set of parameters that affect Condition C's answers -- see
@@ -1481,8 +1481,9 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
         config["use_author_trust"] = use_author_trust
     if accepted_only != DEFAULT_ACCEPTED_ONLY:
         config["accepted_only"] = accepted_only
-    # "leakage": <mode> (llm/common/leakage.py), absent for MODE_THREAD -- the
-    # exclusion every earlier run used -- so their config_hash is unchanged
+    # "leakage": <mode> (llm/common/leakage.py), absent only for None -- the
+    # unspecified mode of every run before Amendment 8 -- so their config_hash
+    # is unchanged; "thread" (Amendment 15) is written and hashes differently
     config.update(config_leakage_key(leakage_mode))
     # Amendment 9: absent when False (the expansion of every earlier run)
     if expansion_require_answer:
@@ -1504,7 +1505,7 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
                        c_retrieval_version: str = "v2", alpha: float | None = None,
                        sample_split: str = DEFAULT_SAMPLE_SPLIT, max_hops: int = DEFAULT_MAX_HOPS,
                        edge_types: tuple | None = None, use_author_trust: bool = DEFAULT_USE_AUTHOR_TRUST,
-                       accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str = MODE_THREAD,
+                       accepted_only: bool = DEFAULT_ACCEPTED_ONLY, leakage_mode: str | None = None,
                        expansion_require_answer: bool = False,
                        provenance_version: str | None = iprov.PROVENANCE_VERSION) -> Path:
     """Nama file menyertakan fusion mode/bobot supaya run ablasi (mis.

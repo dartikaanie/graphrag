@@ -23,7 +23,8 @@ def _row(rows, mode, q):
 
 
 def test_modes_and_settings_strings():
-    assert lk.leakage_mode() == "dup+neardup0.95"
+    assert lk.leakage_mode() == "dup+neardup0.95"  # the function's own defaults: the Amendment 8 mode
+    assert lk.leakage_mode(True, False, None, exclude_dup=False) == "thread"
     assert lk.leakage_mode(True, True, 0.95) == "dup+linked+neardup0.95"
     assert lk.leakage_mode(True, False, None) == "dup"
     assert lk.leakage_mode(False, True, 0.9) == "off"
@@ -35,6 +36,16 @@ def test_modes_and_settings_strings():
 
 
 def test_settings_from_env(monkeypatch):
+    for k in ("LEAKAGE_FILTER", "LEAKAGE_EXCLUDE_DUP", "LEAKAGE_EXCLUDE_LINKED", "LEAKAGE_NEAR_DUP_COSINE"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(lk.LeakageSettings, "model_config", {**lk.LeakageSettings.model_config, "env_file": None})
+    assert lk.LeakageSettings().mode == "thread" == lk.default_mode()  # Amendment 15: the settings default
+    monkeypatch.setenv("LEAKAGE_EXCLUDE_DUP", "true")
+    assert lk.LeakageSettings().mode == "dup"
+    monkeypatch.setenv("LEAKAGE_NEAR_DUP_COSINE", "0.95")
+    assert lk.LeakageSettings().mode == "dup+neardup0.95"
+    monkeypatch.delenv("LEAKAGE_EXCLUDE_DUP")
+    monkeypatch.delenv("LEAKAGE_NEAR_DUP_COSINE")
     monkeypatch.setenv("LEAKAGE_FILTER", "true")
     monkeypatch.setenv("LEAKAGE_EXCLUDE_LINKED", "true")
     monkeypatch.setenv("LEAKAGE_NEAR_DUP_COSINE", "none")
@@ -43,9 +54,35 @@ def test_settings_from_env(monkeypatch):
     assert lk.LeakageSettings().mode == "off"
 
 
-def test_config_key_absent_only_for_thread():
-    assert lk.config_leakage_key(lk.MODE_THREAD) == {} and lk.config_leakage_key(None) == {}
+def test_config_key_absent_only_for_none():
+    """Amendment 15: None (a run before Amendment 8) has no key; "thread" is written."""
+    assert lk.config_leakage_key(None) == {}
+    assert lk.config_leakage_key(lk.MODE_THREAD) == {"leakage": "thread"}
     assert lk.config_leakage_key("dup+neardup0.95") == {"leakage": "dup+neardup0.95"}
+
+
+def test_thread_exclusion_set_is_only_q_and_its_answers_even_with_a_table_full_of_neighbours(tmp_path):
+    """Duplicate (1<->2), near-dup (1~6) and Linked (1-3) neighbours exist in the table for q=1,
+    yet the thread context ignores them: exclusion = {q} / thread answers + accepted answer."""
+    path = tmp_path / "ex.parquet"
+    bes.write_rows(_rows(), path)
+    assert _row(_rows(), "dup+linked+neardup0.95", 1)["excluded_q_ids"] == [1, 2, 3, 6]  # the table does have them
+    ex = lk.LeakageContext.from_mode(lk.MODE_THREAD, path).exclusion_for(1, [10, 11], 12)
+    assert ex.question_ids == {1} and ex.answer_ids == {10, 11, 12}
+    for neighbour_q, neighbour_a in ((2, 20), (3, 30), (6, 60)):  # Duplicate, Linked, near-dup stay retrievable
+        assert not ex.excludes(neighbour_q, neighbour_a)
+    assert ex.excludes(1, 999) and ex.excludes(999, 12)
+
+
+def test_assert_no_leakage_still_fails_on_q_or_its_answers_in_thread_mode():
+    ex = lk.LEGACY_CONTEXT.exclusion_for(1, [10, 11], 12)
+    lk.assert_no_leakage([{"question_id": 2, "answer_id": 20}, {"question_id": 3, "answer_id": 30}], ex)  # neighbours: ok
+    with pytest.raises(lk.LeakageError):
+        lk.assert_no_leakage([{"question_id": 1, "answer_id": 999}], ex)   # q itself
+    with pytest.raises(lk.LeakageError):
+        lk.assert_no_leakage([{"question_id": 77, "answer_id": 11}], ex)   # one of q's answers
+    with pytest.raises(lk.LeakageError):
+        lk.assert_no_leakage([{"question_id": 77, "answer_id": 12}], ex)   # q's accepted answer
 
 
 def test_thread_mode_is_q_and_its_answers_only():

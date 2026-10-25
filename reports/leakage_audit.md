@@ -2,6 +2,8 @@
 
 Tanggal: 2026-10-18 · Branch: `fix/leakage-filter` (dari `fix/b-corpus-parity`) · Prompt: `docs/agent_prompt_data_leakage.md`
 
+> **Catatan Amendment 15 (2026-10-25):** mode resmi untuk evaluasi kini `thread` (hanya q dan semua jawabannya), menggantikan `dup+neardup0.95` yang dijelaskan di laporan ini. Isi laporan di bawah (audit, tabel mode, angka) tidak diubah dan tetap berlaku sebagai pengukuran Amendment 8; mode `dup`, `dup+neardup0.95`, dan `dup+linked+neardup0.95` tetap tersedia sebagai mode sensitivitas. Lihat `docs/DECISION_C_SCORING.md`, Amendment 15.
+
 ## 1. Ringkasan
 
 - **Exclusion per query diperluas dan dipakai seragam oleh B, C, dan D** lewat satu sumber kebenaran: `build_exclusion()` di `llm/common/leakage.py`.

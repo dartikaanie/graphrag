@@ -301,7 +301,7 @@ def write_index(tag: str, amap: dict, entries: list[dict]) -> Path:
         "No archived run qualifies as an alpha stage-2 input. The Condition C dev runs with alpha 0.25 or 0 are all "
         "retrieval-only (no generated answer, no hallucination judging); stage 2 needs generated answers for "
         "alpha in {0.25, 0} x grounding on/off on the frozen dev list, started after TRUST_V3_APPLIED_AT "
-        "with trustScore v3-logscore, answerable-only expansion and leakage mode dup+neardup0.95. "
+        "with trustScore v3-logscore, answerable-only expansion and leakage mode thread (Amendment 15; the archived runs below used dup+neardup0.95 or none). "
         "All four stage-2 runs must therefore be generated. Table:",
         "",
         "| File | Date (UTC) | Kind | trustScore | Expansion | Leakage | Judged (hallucination) |",

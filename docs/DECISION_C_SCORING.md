@@ -729,6 +729,42 @@ The 0.4 threshold is the conventional lower bound of "moderate" agreement (Landi
 
 ---
 
+## Amendment 15 (2026-10-25): leakage exclusion reduced to the evaluation question and its answers
+
+**Status: DRAFT, awaiting author confirmation.** Written BEFORE stage 2 and BEFORE any official run (R1-R9) on the test sample; no stage-2 or official run exists, `official_params.json` is still `pending_selection`. Numbering: Amendment 14 is still an untracked draft in `reports/` and is not part of this file; this amendment takes the next free number. If Amendment 14 is committed first, renumber consistently.
+
+### Change
+| | Amendment 8 (superseded for the official evaluation) | Amendment 15 |
+|---|---|---|
+| Mode string | `dup+neardup0.95` | `thread` |
+| Excluded for evaluation question q | q, every answer of q's thread (incl. accepted), `IS_RELATED_TO` Duplicate questions (both directions) with all their answers, near-duplicate questions (cosine >= 0.95) with all their answers | q and every answer of q's thread (incl. accepted answer). Nothing else |
+| Duplicate / Linked / near-duplicate questions | Duplicate and near-duplicate excluded, Linked kept | all three stay retrievable |
+
+Amendment 8's text is not edited. This amendment only states that, for the official evaluation of B, C and D, its exclusion rule (Decision items 1 and 3, and the default in item 4) is replaced by the `thread` rule. Its finding, its audit and its metrics stay as recorded. The modes `dup`, `dup+neardup0.95` and `dup+linked+neardup0.95` remain available as sensitivity modes (`--leakage-mode`, `LEAKAGE_EXCLUDE_DUP`, `LEAKAGE_EXCLUDE_LINKED`, `LEAKAGE_NEAR_DUP_COSINE`) and in the audit.
+
+### Rationale
+TODO(author): isi alasan desain. (Not written by the assistant. It should answer Amendment 8's argument that a Duplicate is the evaluation question's ground truth in disguise, preferably as a design argument about scenario realism rather than one based on scores.)
+
+### Known impact
+- **Test sample (n = 384):** Amendment 8 counted, in aggregate only, 2 questions with a Duplicate and 1 with a near-duplicate. Under `thread` their duplicate's / near-duplicate's answers can enter the context. The frozen test list contains 10825926, 61698964 (Duplicate) and 50363191 (near-duplicate) per `results/leakage/exclusion_sets.parquet`; no retrieval has been run on them.
+- **Stage 1 is not affected.** It ran with the thread-only exclusion; in the default mode 0 of 50 dev exclusion sets differed, and C's retrieval was identical for 50/50 questions at alpha 0.5 and 0.25 (Amendment 8). Stage 1 is not re-run. Stage 2 has not been run and will run under `thread`.
+- **Linked questions:** unchanged (never excluded in the official mode).
+- **Metric:** the ID-level self-retrieval rate must still be 0 (`assert_no_leakage` runs per query for q and its answers). The cosine >= 0.95 check between each context item and q's accepted answer is no longer guaranteed to be 0: it is MEASURED and reported, not enforced. It is never used as a filter.
+
+### Consequences for hashes and the registry
+- `config_leakage_key("thread")` now writes `"leakage": "thread"`. Only `leakage_mode=None` (the unspecified mode of every run before Amendment 8) omits the key, so the `config_hash` of all earlier runs is unchanged (asserted against the real pilot histories), while a new `thread` run hashes differently and therefore gets a different output filename. Resume/append, which keys on that filename and hash, can never mix a new run with an old one.
+- The builders in B, C and D now default `leakage_mode` to `None` (legacy); the CLI, the dashboard (`LeakageSettings`) and `official_run_matrix.LEAKAGE_MODE` pass `"thread"`.
+- `LEAKAGE_MODE = "thread"` is the single constant read by the run matrix (`--leakage-mode thread` for every B, C, D cell), `frozen_parameters.py`, `run_registry.expected_generation_config`, `stage2_report.py` and `trust_ablation_report.py`. Those two reports compare `config["leakage"]` with it and so now accept only `thread`; a stage-2 or ablation run made under `dup+neardup0.95` is rejected. All earlier dev runs are archived and are not stage-2 inputs.
+- `results/frozen_parameters.json` and `docs/FROZEN_PARAMETERS.md` are generated files. They were NOT overwritten; regenerate them after this amendment is confirmed.
+
+### Code and documents changed
+`llm/common/leakage.py`, `llm/official_run_matrix.py`, `llm/frozen_parameters.py`, `llm/build_archive_index.py`, `llm/evaluation/official_report.py`, `llm/c_graphrag/stage2_report.py` (messages), `llm/b_rag/b_condition_b_rag.py`, `llm/c_graphrag/c_graphrag.py`, `llm/d_lightrag/d_lightrag.py` (only the `leakage_mode` default and comments; no retrieval logic), `backend/app/services/engine_service.py` (docstring), the tests `llm/tests/test_leakage_exclusion.py`, `test_official_run_matrix.py`, `test_run_registry.py`, `llm/c_graphrag/tests/test_config_hash_backward_compatibility.py`, `test_stage2_report.py`, `test_logscore_trust.py`, `llm/evaluation/tests/test_trust_ablation_report.py`, and the documents `docs/OFFICIAL_RUN_MATRIX.md` and `reports/leakage_audit.md` (note only).
+
+### Smoke test (retrieval only, no LLM call, cost $0; dev set has no Duplicate or near-duplicate, so two unused-pool questions were used; no test-sample question was touched)
+Q 35278729 (Duplicate 59533843), Q 20528668 (near-duplicate 66893076, answer 66893206), Q 19951718 (dev, Linked 44881990). Mode `thread`: exclusion set = {q} and q's thread answers only (1 question; 2, 1, 1 answers); mode `dup+neardup0.95` excluded 2 questions for the first two. Own-thread ids in the context: 0 for B, C, D in every case. For 20528668 the near-duplicate's accepted answer entered the context under `thread`: B via vector search only, C via graph traversal (1-hop `HAS_ACCEPTED_ANSWER` from anchor 66893076), D via low-level retrieval (anchor 66893076); under `dup+neardup0.95` it did not. Max cosine of a context item with q's accepted answer for that question: 0.9391 (B, C, D; context text includes the question title), versus 0.58 / 0.53 / 0.28 under `dup+neardup0.95`; items with cosine >= 0.95: 0 in all 18 cells. The Duplicate of 35278729 and the Linked question of 19951718 did not surface in any condition.
+
+---
+
 ## Outcome (filled in after the procedure)
 [Stage 1 table, stage 2 table, chosen α, date]
 

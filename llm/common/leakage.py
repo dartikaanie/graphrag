@@ -3,7 +3,10 @@
 For the evaluation question q being answered, retrieval must never return
 q itself or anything that is q under another id:
 
-  thread   q, every answer of q's thread, q's accepted answer
+  thread   q, every answer of q's thread, q's accepted answer. NOTHING ELSE:
+             Duplicate, Linked and near-duplicate questions stay retrievable.
+             The official mode since Amendment 15 (it supersedes Amendment 8's
+             dup+neardup0.95 for the official evaluation).
   dup      + Questions linked to q by IS_RELATED_TO {link_type: 'Duplicate'},
              either direction, with all their answers          (always, when on)
   linked   + Questions linked by IS_RELATED_TO {link_type: 'Linked'}, either
@@ -31,7 +34,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EXCLUSION_SETS_PATH = REPO_ROOT / "results" / "leakage" / "exclusion_sets.parquet"
 
 MODE_OFF = "off"        # LEAKAGE_FILTER=False -- audit only
-MODE_THREAD = "thread"  # the exclusion every run before Amendment 8 used; not selectable via settings
+MODE_THREAD = "thread"  # q + its thread only; the official mode (Amendment 15), also what every run before Amendment 8 used
 DEFAULT_NEAR_DUP_COSINE = 0.95
 
 
@@ -40,15 +43,19 @@ class LeakageError(RuntimeError):
 
 
 class LeakageSettings(BaseSettings):
-    """LEAKAGE_FILTER / LEAKAGE_EXCLUDE_LINKED / LEAKAGE_NEAR_DUP_COSINE, from
-    the environment or the repo-root .env. Folded into each condition's
-    config (and so its config_hash) as "leakage": <mode>."""
+    """LEAKAGE_FILTER / LEAKAGE_EXCLUDE_DUP / LEAKAGE_EXCLUDE_LINKED /
+    LEAKAGE_NEAR_DUP_COSINE, from the environment or the repo-root .env.
+    Folded into each condition's config (and so its config_hash) as
+    "leakage": <mode>. With nothing but LEAKAGE_FILTER on (the default) the
+    mode is "thread" (Amendment 15); the dup / linked / neardup modes are
+    opt-in sensitivity modes."""
 
     model_config = SettingsConfigDict(env_file=str(REPO_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore")
 
     leakage_filter: bool = True
+    leakage_exclude_dup: bool = False
     leakage_exclude_linked: bool = False
-    leakage_near_dup_cosine: Optional[float] = DEFAULT_NEAR_DUP_COSINE
+    leakage_near_dup_cosine: Optional[float] = None
 
     @field_validator("leakage_near_dup_cosine", mode="before")
     @classmethod
@@ -59,15 +66,21 @@ class LeakageSettings(BaseSettings):
 
     @property
     def mode(self) -> str:
-        return leakage_mode(self.leakage_filter, self.leakage_exclude_linked, self.leakage_near_dup_cosine)
+        return leakage_mode(self.leakage_filter, self.leakage_exclude_linked, self.leakage_near_dup_cosine,
+                            exclude_dup=self.leakage_exclude_dup)
 
 
 def leakage_mode(leakage_filter: bool = True, exclude_linked: bool = False,
-                 near_dup_cosine: Optional[float] = DEFAULT_NEAR_DUP_COSINE) -> str:
-    """Canonical mode string, e.g. "dup+neardup0.95" (the default),
-    "dup+linked+neardup0.95", "dup", "off"."""
+                 near_dup_cosine: Optional[float] = DEFAULT_NEAR_DUP_COSINE, exclude_dup: bool = True) -> str:
+    """Canonical mode string: "thread" (no dup, linked or near-dup exclusion;
+    the settings default), "dup", "dup+neardup0.95", "dup+linked+neardup0.95",
+    "off". Linked and near-dup exclusion imply dup. The function's own
+    defaults (exclude_dup=True, 0.95) keep returning "dup+neardup0.95", the
+    Amendment 8 mode; LeakageSettings passes its own (thread) defaults."""
     if not leakage_filter:
         return MODE_OFF
+    if not exclude_dup and not exclude_linked and near_dup_cosine is None:
+        return MODE_THREAD
     mode = "dup"
     if exclude_linked:
         mode += "+linked"
@@ -81,10 +94,12 @@ def default_mode() -> str:
 
 
 def config_leakage_key(mode: Optional[str]) -> dict:
-    """The config entry for a mode: {} for MODE_THREAD (every run made before
-    Amendment 8 -- their config_hash must not change), {"leakage": mode}
-    otherwise."""
-    return {} if mode in (None, MODE_THREAD) else {"leakage": mode}
+    """The config entry for a mode: {} for None (the legacy / unspecified
+    mode of every run made before Amendment 8 -- their config_hash must not
+    change), {"leakage": mode} for every named mode, "thread" included
+    (Amendment 15: a new thread run must not share a config_hash with a
+    pre-Amendment-8 run)."""
+    return {} if mode is None else {"leakage": mode}
 
 
 @dataclass(frozen=True)
@@ -222,19 +237,26 @@ def add_leakage_arguments(parser) -> None:
     parser.add_argument("--leakage-filter", action=argparse.BooleanOptionalAction, default=s.leakage_filter,
                         help="Per-query leakage exclusion (default from LEAKAGE_FILTER, True). "
                              "--no-leakage-filter is for the leakage audit only.")
+    parser.add_argument("--leakage-exclude-dup", action=argparse.BooleanOptionalAction,
+                        default=s.leakage_exclude_dup,
+                        help="Also exclude IS_RELATED_TO Duplicate questions (default from LEAKAGE_EXCLUDE_DUP, "
+                             "False: mode 'thread'). A sensitivity mode; implied by linked / near-dup exclusion.")
     parser.add_argument("--leakage-exclude-linked", action=argparse.BooleanOptionalAction,
                         default=s.leakage_exclude_linked,
-                        help="Also exclude IS_RELATED_TO Linked questions (default from LEAKAGE_EXCLUDE_LINKED, False).")
+                        help="Also exclude IS_RELATED_TO Linked questions (default from LEAKAGE_EXCLUDE_LINKED, False); "
+                             "implies Duplicate exclusion.")
     parser.add_argument("--leakage-near-dup-cosine", type=lambda v: LeakageSettings._none_strings(v),
                         default=s.leakage_near_dup_cosine,
-                        help="Near-duplicate question threshold, or 'none' (default from LEAKAGE_NEAR_DUP_COSINE, 0.95).")
+                        help="Near-duplicate question threshold, or 'none' (default from LEAKAGE_NEAR_DUP_COSINE, none); "
+                             "implies Duplicate exclusion.")
     parser.add_argument("--leakage-mode", default=None,
-                        help="Explicit mode string, overriding the three flags above -- e.g. 'thread' (the "
-                             "exclusion every run before Amendment 8 used) for a comparison run.")
+                        help="Explicit mode string, overriding the flags above -- 'thread' (the official mode, "
+                             "Amendment 15), 'dup+neardup0.95' (Amendment 8) etc. for a sensitivity run.")
 
 
 def leakage_mode_from_args(args) -> str:
     if getattr(args, "leakage_mode", None):
         return args.leakage_mode
     near = args.leakage_near_dup_cosine
-    return leakage_mode(args.leakage_filter, args.leakage_exclude_linked, None if near is None else float(near))
+    return leakage_mode(args.leakage_filter, args.leakage_exclude_linked, None if near is None else float(near),
+                        exclude_dup=args.leakage_exclude_dup)

@@ -27,7 +27,7 @@ if every check passes)
     alpha in the candidates, exactly one run per (alpha, grounding).
   - Each run's config pins the answerable-only expansion
     (expansion_require_answer = true, Amendment 9) and the official leakage
-    mode (llm/official_run_matrix.LEAKAGE_MODE, Amendment 8).
+    mode (llm/official_run_matrix.LEAKAGE_MODE: "thread", Amendment 15).
   - Each run covers exactly the stage-1 dev questions: the frozen dev list
     (llm/sample_ids/dev_ids_v1.json, positions 385-434), not merely the
     same questions across the 4 runs.
@@ -196,7 +196,7 @@ def load_runs(run_files: list[Path], alphas=STAGE2_ALPHAS, applied_at: str | Non
                               "not true (Amendment 9)")
         if cfg.get("leakage") != OFFICIAL_LEAKAGE_MODE:
             raise Stage2Error(f"{path.name}: leakage mode {cfg.get('leakage')!r}, not the official "
-                              f"{OFFICIAL_LEAKAGE_MODE!r} (Amendment 8)")
+                              f"{OFFICIAL_LEAKAGE_MODE!r} (Amendment 15)")
         alpha = cfg.get("alpha")
         if alpha not in alphas:
             raise Stage2Error(f"{path.name}: alpha {alpha} is not a stage-2 candidate {list(alphas)}")

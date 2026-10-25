@@ -34,7 +34,7 @@ N_ANCHOR = 3
 N_SEMANTIC_EXPANSION = 3
 N_LOW_LEVEL = 3
 N_HIGH_LEVEL = 3
-LEAKAGE_MODE = "dup+neardup0.95"
+LEAKAGE_MODE = "thread"  # Amendment 15: q + its thread only (supersedes Amendment 8's "dup+neardup0.95")
 
 _COMMON_ARGS = ["--n-sample", str(N_SAMPLE), "--seed", str(SEED), "--oversample-pool", str(OVERSAMPLE_POOL),
                 "--sample-split", "test", "--provider", PROVIDER, "--model", MODEL]

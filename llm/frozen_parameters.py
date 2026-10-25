@@ -126,14 +126,16 @@ def build() -> list[dict]:
     # --- leakage ---
     lk = "llm/common/leakage.py"
     add("Leakage exclusion", "mode (official runs)", orm.LEAKAGE_MODE, _line_of("llm/official_run_matrix.py", "LEAKAGE_MODE ="),
-        "frozen", "Amendment 8")
-    add("Leakage exclusion", "rules", "exclude q and every answer in its thread (incl. accepted); exclude Questions "
-        "linked to q as Duplicate; exclude near-duplicate Questions (cosine >= threshold); Linked questions are NOT "
-        "excluded", _line_of(lk, "def build_exclusion"), "frozen", "Amendment 8")
+        "frozen", "Amendment 15")
+    add("Leakage exclusion", "rules", "exclude q and every answer in its thread (incl. accepted) and nothing else; "
+        "Duplicate, Linked and near-duplicate Questions are NOT excluded (Amendment 8's dup+neardup0.95 superseded)",
+        _line_of(lk, "def build_exclusion"), "frozen", "Amendment 15")
     v, s = const(lk, "DEFAULT_NEAR_DUP_COSINE")
-    add("Leakage exclusion", "near-duplicate cosine threshold", v, s, "frozen", "Amendment 8")
-    add("Leakage exclusion", "precomputed exclusion sets", "results/leakage/exclusion_sets.parquet",
-        "results/leakage/exclusion_sets.meta.json", "frozen", "Amendment 8")
+    add("Leakage exclusion", "near-duplicate cosine threshold (sensitivity mode only, not applied in `thread`)", v, s,
+        "informational", "Amendment 8")
+    add("Leakage exclusion", "precomputed exclusion sets (read only by the sensitivity modes; `thread` needs none)",
+        "results/leakage/exclusion_sets.parquet", "results/leakage/exclusion_sets.meta.json", "informational",
+        "Amendment 8")
 
     # --- generation and sampling ---
     v, s = const("llm/prompts.py", "PROMPT_VERSION")

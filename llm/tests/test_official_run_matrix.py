@@ -50,7 +50,7 @@ def test_every_run_pins_the_shared_sample_and_grounding():
             assert r["grounding"] is None and "--require-grounding" not in a
         else:
             assert ("--require-grounding" if r["grounding"] else "--no-require-grounding") in a
-            assert a[a.index("--leakage-mode") + 1] == "dup+neardup0.95"
+            assert a[a.index("--leakage-mode") + 1] == "thread"  # Amendment 15
             assert a[a.index("--top-k") + 1] == "5" and a[a.index("--token-chunk-limit") + 1] == "400"
         assert r["dashboard"]["require_grounding" if r["condition"] != "A" else "condition"] is not None
 

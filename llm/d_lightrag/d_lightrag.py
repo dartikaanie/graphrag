@@ -840,15 +840,15 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
 
 def build_config(provider: str, model: str, n_sample: int, seed: int, oversample_pool: int | None,
                   top_k: int, n_low_level: int, n_high_level: int, require_grounding: bool,
-                  sample_split: str = "test", leakage_mode: str = MODE_THREAD,
+                  sample_split: str = "test", leakage_mode: str | None = None,
                   provenance_version: str | None = iprov.PROVENANCE_VERSION) -> dict:
     """The full set of parameters that affect Condition D's answers -- see
     llm/a_pure_llm/a_baseline_replication.py::build_config()'s docstring
     for why this exists. Includes D_RETRIEVAL_VERSION since a retrieval
     code fix changes answers just as much as a parameter does.
 
-    `sample_split` (only when not "test") and `leakage` (only when not
-    MODE_THREAD) are absent for every earlier run, so their hashes are unchanged.
+    `sample_split` (only when not "test") and `leakage` (only when
+    leakage_mode is not None; "thread" is written) are absent for every earlier run, so their hashes are unchanged.
 
     `provenance_version` (default: the current llm/common/item_provenance.py version, "v3")
     is part of the config so a run's config_hash changes with the provenance schema; pass
@@ -869,7 +869,7 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
 def build_output_path(output_dir: str, provider: str, model: str, n_sample: int, seed: int,
                        require_grounding: bool = True, oversample_pool: int | None = None,
                        top_k: int = 5, n_low_level: int = 3, n_high_level: int = 3,
-                       sample_split: str = "test", leakage_mode: str = MODE_THREAD,
+                       sample_split: str = "test", leakage_mode: str | None = None,
                        provenance_version: str | None = iprov.PROVENANCE_VERSION) -> Path:
     """Nama file menyertakan varian grounding supaya run grounded/ungrounded
     tidak saling menimpa file .jsonl satu sama lain -- plus prompt_version +

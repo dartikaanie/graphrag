@@ -1,0 +1,11 @@
+04:51:22 | [logging] Log detail run ini -> /Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/logs/20261024T215122Z_openai_gpt-4o-mini.log
+04:51:22 | [config] output auto-generated -> '/private/tmp/claude-501/-Users-dartikaanie-SMART-SYSTEM-THESIS-2-project-graphrag/e464a6d9-832e-481d-9f41-5e800c2d188e/scratchpad/smoke/condition_c_openai_gpt-4o-mini_n1_seed42_fw0-7-0-3_dev_v3_50d7798921.jsonl'
+04:51:22 | [config] n_sample=1 seed=42 provider=openai model=gpt-4o-mini
+04:51:22 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+04:51:22 | [config] fusion_mode=trust_weighted fusion_w_path_trust=0.7 fusion_w_intrinsic=0.3 semantic_expansion_trust_cap=0.4
+04:51:22 | [config] require_grounding=True enable_semantic_expansion=True
+04:51:23 | [1/9] Mengambil oversample pool (1536 kandidat)...
+04:51:29 |       Oversample pool diambil: 1,536 kandidat
+04:51:29 | [2/9] Menghitung token & filter <= 2048 token...
+04:51:30 |       1,536 -> 1,471 lolos filter token
+04:51:30 | [ERROR] dev_offset=397, but the frozen dev list starts at position 385.

@@ -25,7 +25,7 @@ def _graph_update_applied(monkeypatch):
 def _cfg(alpha, grounded, **over):
     return {"condition": "C", "c_retrieval_version": "v3", "sample_split": "dev", "alpha": alpha,
             "require_grounding": grounded, "expansion_require_answer": True, "expansion_overfetch": 20,
-            "leakage": "dup+neardup0.95", **over}
+            "leakage": "thread", **over}
 
 
 def _run(tmp: Path, alpha, grounded, started=AFTER, qids=QIDS, **over) -> Path:
@@ -150,7 +150,7 @@ def test_stage2_alphas_are_the_amendment9_top_two():
 @pytest.mark.parametrize("over, msg", [({"expansion_require_answer": None}, "expansion_require_answer"),
                                        ({"expansion_require_answer": False}, "expansion_require_answer"),
                                        ({"leakage": None}, "leakage mode"),
-                                       ({"leakage": "thread"}, "leakage mode")])
+                                       ({"leakage": "dup+neardup0.95"}, "leakage mode")])  # the Amendment 8 mode is no longer official
 def test_rejects_run_without_amendment8_9_settings(tmp_path, over, msg):
     runs = [_run(tmp_path, a, g, **(over if (a, g) == (0.5, True) else {})) for a in ALPHAS for g in (True, False)]
     with pytest.raises(s2.Stage2Error, match=msg):

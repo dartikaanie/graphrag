@@ -418,8 +418,8 @@ def data_and_sampling() -> dict:
             "dev_set": {"n": 50, "positions": "385-434", "frozen_list": "llm/sample_ids/dev_ids_v1.json"},
             "leakage": {"mode": orm.LEAKAGE_MODE, "n_pool": meta.get("n_pool"), "modes_built": meta.get("modes"),
                         "built_at_utc": meta.get("built_at_utc"), "sha256": meta.get("sha256"),
-                        "rules": "own thread + Duplicate-linked + near-duplicate (cosine >= 0.95) excluded; "
-                                 "Linked kept (Amendment 8)"}}
+                        "rules": "own question + all its answers excluded; Duplicate, Linked and near-duplicate "
+                                 "questions are NOT excluded (Amendment 15, supersedes Amendment 8)"}}
 
 
 def alpha_selection() -> dict:

@@ -20,7 +20,7 @@ for A in 0.25 0; do for G in --require-grounding --no-require-grounding; do
   python3 c_graphrag.py --n-sample 50 --seed 42 --oversample-pool 1536 --sample-split dev \
     --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 \
     --n-semantic-expansion 3 --c-retrieval-version v3 --alpha $A --fusion-mode trust_weighted $G \
-    --expansion-require-answer --leakage-mode dup+neardup0.95
+    --expansion-require-answer --leakage-mode thread
 done; done
 cd ../..
 ```
