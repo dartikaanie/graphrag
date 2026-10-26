@@ -1,6 +1,6 @@
-# Amendment 14 (DRAFT, not approved): frozen judge panel for the four official runs
+# Amendment 14 (confirmed 2026-10-26): frozen judge panel for the four official runs
 
-**Status: draft for the author's review.** Rewritten 2026-10-25 for the four-run design of Amendment 16 (A, B-grounded,
+**Status: confirmed by the author on 2026-10-26.** Rewritten 2026-10-25 for the four-run design of Amendment 16 (A, B-grounded,
 C-primary-grounded, D-grounded). The first version of 2026-10-20 was written for nine runs and carried human-agreement
 gates; both are gone. Written before any alpha stage-2 run and any official run on the test sample (n = 384). No
 stage-2 or test-sample output exists. The Qwen eligibility rule of section (c) was written before any screening call;
@@ -179,3 +179,8 @@ is 180 s per request (the SDK default is 600 s), and each result is written as s
 (`as_completed`) instead of in submission order. Judge version, prompts, parser, blinding, request parameters, panel
 and aggregation are not changed, and no hash changed. Details and the checks: `docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md`,
 section 2.
+
+## Record
+* Confirmation by the author: 2026-10-26
+* Commit: the approval commit (subject line below)
+* Subject line: approve amendments 14-17 and unlock official judging

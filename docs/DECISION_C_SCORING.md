@@ -729,10 +729,10 @@ The 0.4 threshold is the conventional lower bound of "moderate" agreement (Landi
 
 ---
 
-<!-- Copy of reports/amendment14_draft.md as of 2026-10-26 (heading levels adjusted only). Status: DRAFT. -->
-## Amendment 14 (DRAFT, not approved): frozen judge panel for the four official runs
+<!-- Copy of reports/amendment14_draft.md as of 2026-10-26 (heading levels adjusted only). Status: confirmed 2026-10-26. -->
+## Amendment 14 (confirmed 2026-10-26): frozen judge panel for the four official runs
 
-**Status: draft for the author's review.** Rewritten 2026-10-25 for the four-run design of Amendment 16 (A, B-grounded,
+**Status: confirmed by the author on 2026-10-26.** Rewritten 2026-10-25 for the four-run design of Amendment 16 (A, B-grounded,
 C-primary-grounded, D-grounded). The first version of 2026-10-20 was written for nine runs and carried human-agreement
 gates; both are gone. Written before any alpha stage-2 run and any official run on the test sample (n = 384). No
 stage-2 or test-sample output exists. The Qwen eligibility rule of section (c) was written before any screening call;
@@ -912,11 +912,16 @@ is 180 s per request (the SDK default is 600 s), and each result is written as s
 and aggregation are not changed, and no hash changed. Details and the checks: `docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md`,
 section 2.
 
+### Record
+* Confirmation by the author: 2026-10-26
+* Commit: the approval commit (subject line below)
+* Subject line: approve amendments 14-17 and unlock official judging
+
 ---
 
 ## Amendment 15 (2026-10-25): leakage exclusion reduced to the evaluation question and its answers
 
-**Status: DRAFT, awaiting author confirmation.** Written BEFORE stage 2 and BEFORE any official run (R1-R9) on the test sample; no stage-2 or official run exists, `official_params.json` is still `pending_selection`. Numbering: Amendment 14 is still an untracked draft in `reports/` and is not part of this file; this amendment takes the next free number. If Amendment 14 is committed first, renumber consistently.
+**Status: confirmed by the author on 2026-10-26.** Written BEFORE stage 2 and BEFORE any official run (R1-R9) on the test sample; no stage-2 or official run exists, `official_params.json` is still `pending_selection`. Numbering: Amendment 14 is still an untracked draft in `reports/` and is not part of this file; this amendment takes the next free number. If Amendment 14 is committed first, renumber consistently.
 
 ### Change
 | | Amendment 8 (superseded for the official evaluation) | Amendment 15 |
@@ -928,11 +933,11 @@ section 2.
 Amendment 8's text is not edited. This amendment only states that, for the official evaluation of B, C and D, its exclusion rule (Decision items 1 and 3, and the default in item 4) is replaced by the `thread` rule. Its finding, its audit and its metrics stay as recorded. The modes `dup`, `dup+neardup0.95` and `dup+linked+neardup0.95` remain available as sensitivity modes (`--leakage-mode`, `LEAKAGE_EXCLUDE_DUP`, `LEAKAGE_EXCLUDE_LINKED`, `LEAKAGE_NEAR_DUP_COSINE`) and in the audit.
 
 ### Rationale
-In deployment, a user's question is not labelled as a duplicate of anything, so the system cannot exclude duplicates and will retrieve answers to existing near-identical questions when they exist. Excluding duplicates in the evaluation removes that situation and makes the setting less realistic. The `thread` rule removes only what a deployed system could never see: the evaluation question's own thread. The rule is applied identically to B, C and D, so it does not favour any condition. Cost: absolute rates may be more favourable than under strict exclusion (in the smoke test, one question had a context-accepted-answer cosine of 0.9391). Items with cosine >= 0.95 are measured and reported, not filtered.
+In deployment, a user’s question is not labelled as a duplicate of anything, so the system cannot exclude duplicates and will retrieve answers to existing near-identical questions when they exist. Excluding duplicates in the evaluation removes that situation and makes the setting less realistic. The thread rule removes only what a deployed system could never see: the evaluation question’s own thread. The rule is applied identically to B, C and D, so it does not favour any condition. Cost: absolute rates may be more favourable than under strict exclusion (in the smoke test, one question had a context–accepted-answer cosine of 0.9391). Items with cosine ≥ 0.95 are measured and reported, not filtered.
 
 ### Known impact
 - **Test sample (n = 384):** Amendment 8 counted, in aggregate only, 2 questions with a Duplicate and 1 with a near-duplicate. Under `thread` their duplicate's / near-duplicate's answers can enter the context. The frozen test list contains 10825926, 61698964 (Duplicate) and 50363191 (near-duplicate) per `results/leakage/exclusion_sets.parquet`; no retrieval has been run on them.
-- **Stage 1 is not affected.** It ran with the thread-only exclusion; in the default mode 0 of 50 dev exclusion sets differed, and C's retrieval was identical for 50/50 questions at alpha 0.5 and 0.25 (Amendment 8). Stage 1 is not re-run (historical, superseded by Amendment 17, see the Update note). Stage 2 has not been run and will run under `thread` (historical, superseded by Amendment 17, see the Update note).
+- **Stage 1 is not affected.** It ran with the thread-only exclusion; in the default mode 0 of 50 dev exclusion sets differed, and C's retrieval was identical for 50/50 questions at alpha 0.5 and 0.25 (Amendment 8). Stage 1 is not re-run. Stage 2 has not been run and will run under `thread`.
 - **Linked questions:** unchanged (never excluded in the official mode).
 - **Metric:** the ID-level self-retrieval rate must still be 0 (`assert_no_leakage` runs per query for q and its answers). The cosine >= 0.95 check between each context item and q's accepted answer is no longer guaranteed to be 0: it is MEASURED and reported, not enforced. It is never used as a filter.
 
@@ -950,11 +955,16 @@ Q 35278729 (Duplicate 59533843), Q 20528668 (near-duplicate 66893076, answer 668
 
 **Update note (2026-10-26):** Stage 1 was re-run under Amendment 17 with leakage thread; the stage-1 of record is stage1_anchors_report_20261025T165734Z. Stage 2 was run on 2026-10-25/26 (see docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md); α* = 0.5 at the tie-break step. Statements above that say otherwise are historical, as written when the draft was made.
 
+### Record
+* Confirmation by the author: 2026-10-26
+* Commit: the approval commit (subject line below)
+* Subject line: approve amendments 14-17 and unlock official judging
+
 ---
 
 ## Amendment 16 (2026-10-25): the four-run design; Condition D scored by one cosine; secondary metrics
 
-**Status: DRAFT, awaiting author confirmation.** Written BEFORE stage 2 and BEFORE any official run; no stage-2 or official
+**Status: confirmed by the author on 2026-10-26.** Written BEFORE stage 2 and BEFORE any official run; no stage-2 or official
 run exists and `official_params.json` is still `pending_selection`. This is a note that follows the thesis design of
 Bab III; it does not edit the text of any earlier amendment (history stays as written).
 
@@ -1022,14 +1032,15 @@ check (`--retrieval-only`, no LLM call).
 **Update note (2026-10-26):** Stage 1 was re-run under Amendment 17 with leakage thread; the stage-1 of record is stage1_anchors_report_20261025T165734Z. Stage 2 was run on 2026-10-25/26 (see docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md); α* = 0.5 at the tie-break step. Statements above that say otherwise are historical, as written when the draft was made.
 
 ### Record
-* Confirmation by the author: [ ]
-* Commit: [ ]
+* Confirmation by the author: 2026-10-26
+* Commit: the approval commit (subject line below)
+* Subject line: approve amendments 14-17 and unlock official judging
 
 ---
 
 ## Amendment 17 (2026-10-25): answerable anchors for C and D; D fills up to k
 
-**Status: DRAFT, awaiting author confirmation.** Written BEFORE stage 2 and BEFORE any official run. Earlier amendments are
+**Status: confirmed by the author on 2026-10-26.** Written BEFORE stage 2 and BEFORE any official run. Earlier amendments are
 not edited.
 
 ### Reason
@@ -1065,8 +1076,9 @@ candidates of record (`llm/c_graphrag/stage2_candidates.py` reads them from `sta
 Alpha 0 is run in stage 2 as a pre-declared exploratory reference, not eligible for selection.
 
 ### Record
-* Confirmation by the author: [ ]
-* Commit: [ ]
+* Confirmation by the author: 2026-10-26
+* Commit: the approval commit (subject line below)
+* Subject line: approve amendments 14-17 and unlock official judging
 
 **Update note (2026-10-26):** Stage 1 was re-run under Amendment 17 with leakage thread; the stage-1 of record is stage1_anchors_report_20261025T165734Z. Stage 2 was run on 2026-10-25/26 (see docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md); α* = 0.5 at the tie-break step. Statements above that say otherwise are historical, as written when the draft was made.
 

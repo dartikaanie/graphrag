@@ -4,13 +4,9 @@ Sumber kebenaran: `llm/official_run_matrix.py` (`build_matrix`). Dokumen ini mem
 
 ## Status saat ini
 
-`official_params.json` berstatus **`pending_selection`**: `alpha_primary` dan `alpha_ablation` masih `null` karena tahap 2 belum dijalankan. Selama status bukan `selected`:
+`official_params.json` berstatus **`selected`** sejak 2026-10-26: `alpha_primary` = **0,5** (dipilih pada langkah pemutus seri, lihat `docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md`) dan `alpha_ablation` = 0,25 (tidak dipakai run resmi). Amendment 14-17 dikonfirmasi penulis pada 2026-10-26. Run resmi tetap hanya dimulai atas perintah eksplisit penulis ("go").
 
-- `c_graphrag.py --sample-split test` berhenti dengan pesan galat (exit 2) sebelum memuat data atau Neo4j;
-- `POST /api/runs` menolak run C pada sampel test (HTTP 400);
-- preset **Official (n=384)** di dashboard terkunci.
-
-Setelah tahap 2: isi *Outcome*, *Record* Amendment 10, dan blok `official_params` (nilai dari draf `stage2_report.py`) dalam satu commit, dengan `status: "selected"`. Placeholder `<alpha_primary>` di bawah lalu diganti nilai dari berkas itu.
+Perintah di bawah ini dihasilkan dengan placeholder `<alpha_primary>` / `<alpha_ablation>` (bentuk yang dijaga `llm/tests/test_official_run_matrix.py`); untuk run nyata ganti `<alpha_primary>` dengan 0,5.
 
 ## Empat run resmi
 

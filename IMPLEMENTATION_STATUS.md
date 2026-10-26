@@ -8,11 +8,11 @@ Dokumen ini menjelaskan kondisi implementasi sekarang, diverifikasi ke kode dan 
 
 ## 1. Ringkasan
 
-1. **Empat kondisi dan empat run resmi (Amendment 16, DRAFT):** A (LLM murni), B (RAG dense retrieval), C (GraphRAG trust-weighted, kontribusi utama), D (dual-level retrieval, adaptasi LightRAG). Run resmi: A, B-grounded, C-primary-grounded, D-grounded (sel R1, R3, R5, R9; run tesis R1-R4), dengan instruksi grounding dan citation AKTIF untuk B, C, D. B, C, dan D memakai prompt 4-turn yang sama (`llm/prompts.py`), model embedding `all-MiniLM-L6-v2`, generator `gpt-4o-mini`, dan sampel yang sama. Lima sel lain (B-plain, C-primary-plain, C-ablation plain/grounded, D-plain) adalah **legacy**: tetap ada di kode, ditolak pada sampel test tanpa `--allow-legacy-cells`.
-2. **Aturan leakage aktif: mode `thread`** (Amendment 15, status **DRAFT**): hanya pertanyaan evaluasi dan semua jawabannya yang dikecualikan. Duplicate, Linked, dan near-duplicate **tidak** dikecualikan. Alasan desain di Amendment 15 masih `TODO(author)`.
+1. **Empat kondisi dan empat run resmi (Amendment 16, dikonfirmasi 2026-10-26):** A (LLM murni), B (RAG dense retrieval), C (GraphRAG trust-weighted, kontribusi utama), D (dual-level retrieval, adaptasi LightRAG). Run resmi: A, B-grounded, C-primary-grounded, D-grounded (sel R1, R3, R5, R9; run tesis R1-R4), dengan instruksi grounding dan citation AKTIF untuk B, C, D. B, C, dan D memakai prompt 4-turn yang sama (`llm/prompts.py`), model embedding `all-MiniLM-L6-v2`, generator `gpt-4o-mini`, dan sampel yang sama. Lima sel lain (B-plain, C-primary-plain, C-ablation plain/grounded, D-plain) adalah **legacy**: tetap ada di kode, ditolak pada sampel test tanpa `--allow-legacy-cells`.
+2. **Aturan leakage aktif: mode `thread`** (Amendment 15, dikonfirmasi 2026-10-26): hanya pertanyaan evaluasi dan semua jawabannya yang dikecualikan. Duplicate, Linked, dan near-duplicate **tidak** dikecualikan. Alasan desain ada di Amendment 15 (rationale diisi).
 3. **Status eksperimen:** stage 1 diulang pada Amendment 17 (C v4): top_two = 0,5 dan 0,25. **Stage 2 sudah dijalankan pada dev set (2026-10-26)**: 6 run C v4 (α 0,5 dan 0,25 sebagai kandidat; α 0 sebagai referensi eksploratif yang tidak ikut seleksi) × grounding on/off, dinilai panel-v2/judge-v2.3, terdaftar sebagai `dev-stage2`; laporan `llm/c_graphrag/results/stage2/stage2_report_20261025T221359Z.{md,json}`. Hasil ada di laporan itu; **α* belum ditulis ke `official_params.json`** (tetap `pending_selection`, menunggu keputusan penulis). Keempat run resmi belum dijalankan. `results/run_registry.json` memuat 12 entri `dev-stage2` selain 133 `archived`; tidak ada `official`.
-4. **Dua pagar yang sengaja menahan run resmi:** Kondisi C pada test sample berhenti (exit 2) selama `official_params.json` berstatus `pending_selection`; judging resmi ditolak selama `AMENDMENT14_APPROVED = False` dan `OFFICIAL_ALLOWED = ()` (`llm/evaluation/judge_versions.py`). Amendment 14 (`reports/amendment14_draft.md`, ditulis ulang untuk empat run dan tanpa gerbang manusia) masih DRAFT; perubahan persetujuannya sudah disiapkan di `docs/AMENDMENT14_APPROVAL_CHANGE.md` dan belum diterapkan. Judging stage 2 (dev set) tidak memerlukan gerbang itu.
-5. **Parameter dibekukan lewat tabel yang dihasilkan skrip** (`llm/frozen_parameters.py` → `docs/FROZEN_PARAMETERS.md`, `results/frozen_parameters.json`, hash tabel `d3b805af7798`). Status "frozen (Amendment 14 draft)" baru mengikat setelah Amendment 14 disetujui.
+4. **Gerbang resmi dibuka pada 2026-10-26 (commit persetujuan `approve amendments 14-17 and unlock official judging`):** `official_params.json` berstatus `selected` (α\* = 0,5, α ablasi = 0,25) sehingga Kondisi C boleh berjalan pada test sample; `AMENDMENT14_APPROVED = True` dan `OFFICIAL_ALLOWED = ("judge-v2.3",)` (`llm/evaluation/judge_versions.py`) sehingga judging resmi dengan panel-v2 diizinkan. Amendment 14 (`reports/amendment14_draft.md`, empat run, tanpa gerbang manusia) dikonfirmasi penulis pada 2026-10-26. **Tidak ada run resmi yang pernah dijalankan; setiap run resmi menunggu "go" eksplisit penulis.**
+5. **Parameter dibekukan lewat tabel yang dihasilkan skrip** (`llm/frozen_parameters.py` → `docs/FROZEN_PARAMETERS.md`, `results/frozen_parameters.json`, hash tabel `3e29586bf910`). Status "frozen (Amendment 14)" mengikat sejak Amendment 14 dikonfirmasi (2026-10-26).
 
 ---
 
@@ -84,7 +84,7 @@ Record B/C/D menyimpan jalur retrieval tiap item (`provenance_version = "v3"`, `
 
 ---
 
-## 4. Pencegahan leakage — mode `thread` (Amendment 15, DRAFT)
+## 4. Pencegahan leakage — mode `thread` (Amendment 15, dikonfirmasi 2026-10-26)
 
 Satu definisi untuk B, C, dan D: `llm/common/leakage.py`.
 
@@ -118,7 +118,7 @@ Satu definisi untuk B, C, dan D: `llm/common/leakage.py`.
 
 - **Metrik:** cosine similarity jawaban vs accepted answer (`all-MiniLM-L6-v2`); hallucination rate biner dalam dua versi, (a) ABSTAIN dikeluarkan (utama) dan (b) ABSTAIN dihitung gagal = (halusinasi + ABSTAIN) / semua jawaban terpakai, plus pembagian keparahan (penuh / sebagian) dan porsi klaim tak-terverifikasi; faithfulness dan citation support (B, C, D; dari label per klaim pada record panel, tanpa panggilan baru; penyebut di `docs/OFFICIAL_RUN_MATRIX.md` dan Amendment 16); NF2 (jawaban dengan sitasi valid); NF3 (p95 latensi end-to-end Kondisi C ≤ 15 detik; p50/p95 retrieval untuk setiap run); metrik sekunder satu judge (Llama-3.3-70B-Instruct, temperature 0): context relevance (B, C, D) dan answer relevance (A–D), `llm/evaluation/secondary_metrics.py` (dry-run mencetak jumlah panggilan; run pada berkas resmi ditolak sampai Amendment 14 disetujui).
 - **Panel resmi `panel-v2`** (`llm/evaluation/judge_panel_config.py`): Llama-3.3-70B-Instruct-Turbo, DeepSeek-V3.2, Qwen3-235B-A22B-Instruct-2507, via DeepInfra. Prompt `judge-v2.3`, parser `pv2.3-1`, blinding `blind-v3`, temperature 0, agregasi 2-dari-3. gpt-4o-mini tidak dipakai sebagai judge.
-- **Status:** Amendment 14 (draf) membekukan panel tanpa gerbang kesepakatan manusia. Sampai disetujui dan di-commit, setiap judging resmi ditolak. Angka halusinasi harus ditulis sebagai keluaran panel LLM, bukan label manusia.
+- **Status:** Amendment 14 (dikonfirmasi 2026-10-26) membekukan panel tanpa gerbang kesepakatan manusia; gerbang judging resmi dibuka di commit persetujuan. Angka halusinasi harus ditulis sebagai keluaran panel LLM, bukan label manusia.
 - **Anggaran:** DeepInfra $9,00 (`results/run_registry.json`). Proyeksi di `results/cost_projection.md` (dibuat ulang oleh `llm/cost_projection.py` untuk empat run, buffer 10% termasuk): judging stage 2 sekitar $0,76; judging empat run resmi sekitar $5,46; metrik sekunder sekitar $1,3 (batas atas); jumlah sekitar $7,5, di bawah anggaran. Generasi gpt-4o-mini untuk empat run resmi sekitar $0,86. Proyeksi lama untuk sembilan run (sekitar $13,10) tidak berlaku lagi.
 - **Pelaporan:** `llm/evaluation/official_report.py` (perbandingan C vs A, C vs B, C vs D: selisih, bendera consistent / inconclusive, hitungan berpasangan per pertanyaan lebih baik / sama / lebih buruk dalam kedua versi, persentase jawaban yang diberi label sama oleh ketiga judge; Fleiss dan Krippendorff tetap), `trust_ablation_report.py` (hanya untuk sel legacy), `compare_conditions_stats.py`, `analyze_error_attribution.py`.
 
@@ -146,10 +146,10 @@ Sumber: `docs/DECISION_C_SCORING.md` kecuali disebut lain.
 | 10 | C-primary dan C-ablation (kedua kandidat α dijalankan pada sampel uji). **Tidak berlaku untuk evaluasi resmi sejak Amendment 16**: C-ablation adalah sel legacy |
 | 11–13 | Judge-v2.2, validasi satu anotator, set konfirmasi 63 item, kriteria penerimaan κ |
 | 12 | Panel LLM-as-Judge |
-| **15** | **Aturan leakage aktif: mode `thread`. Status DRAFT; rationale `TODO(author)`** |
-| **17** | **Anchor hanya dari Question ber-jawaban untuk C (retrieval v4) dan D (v5, satu fungsi bersama `llm/common/anchors.py`, kedalaman scan 400); D v5 mengisi high level sampai k = 5 jawaban; stage 1 diulang (dev, thread): top_two berubah menjadi 0,5 dan 0,25. Status DRAFT** |
-| **16** | **Empat run resmi (A, B-grounded, C-primary-grounded, D-grounded); D retrieval v4 (satu skor cosine); pelaporan dua versi hallucination rate, faithfulness / citation support, metrik sekunder, hitungan berpasangan; `C_RETRIEVAL_VERSION` bawaan v3. Status DRAFT** |
-| 14 (draf, di luar file ini) | `reports/amendment14_draft.md`: ditulis ulang untuk empat run, panel beku tanpa gerbang manusia; belum disetujui. Set konfirmasi 63 item (Amendment 11, 7 × 9 run) milik gerbang manusia yang dihapus; kodenya dorman |
+| **15** | **Aturan leakage aktif: mode `thread`. Dikonfirmasi 2026-10-26; rationale diisi** |
+| **17** | **Anchor hanya dari Question ber-jawaban untuk C (retrieval v4) dan D (v5, satu fungsi bersama `llm/common/anchors.py`, kedalaman scan 400); D v5 mengisi high level sampai k = 5 jawaban; stage 1 diulang (dev, thread): top_two berubah menjadi 0,5 dan 0,25. Dikonfirmasi 2026-10-26** |
+| **16** | **Empat run resmi (A, B-grounded, C-primary-grounded, D-grounded); D retrieval v4 (satu skor cosine); pelaporan dua versi hallucination rate, faithfulness / citation support, metrik sekunder, hitungan berpasangan; `C_RETRIEVAL_VERSION` bawaan v3. Dikonfirmasi 2026-10-26** |
+| 14 (dikonfirmasi 2026-10-26; salinan di `DECISION_C_SCORING.md` antara Amendment 13 dan 15) | `reports/amendment14_draft.md`: ditulis ulang untuk empat run, panel beku tanpa gerbang manusia; disetujui. Set konfirmasi 63 item (Amendment 11, 7 × 9 run) milik gerbang manusia yang dihapus; kodenya dorman |
 
 Catatan: Amendment 8 (aturan eksklusi sebelumnya) tetap tercatat sebagai dokumen keputusan, tetapi aturan eksklusinya digantikan oleh Amendment 15 untuk evaluasi resmi.
 
@@ -161,13 +161,13 @@ Catatan: Amendment 8 (aturan eksklusi sebelumnya) tetap tercatat sebagai dokumen
 
 **Satu run (contoh B-grounded, dari root repo):** perintah lengkap keempat sel resmi (dan sel legacy) ada di `docs/OFFICIAL_RUN_MATRIX.md`; menu interaktif lewat `python3 run.py`. Untuk dev: `--sample-split dev --n-sample 50`.
 
-**Urutan menuju run resmi (belum dijalankan; tiap langkah menunggu persetujuan eksplisit penulis):**
-1. Amendment 14 (ditulis ulang), 15 (rationale diisi) dan 16 disetujui; perubahan gerbang judging di `docs/AMENDMENT14_APPROVAL_CHANGE.md` diterapkan. (Judging stage 2 pada dev set tidak memerlukan langkah ini.)
-2. Stage 2 (SUDAH dijalankan, 2026-10-26): enam run C v4 dev (α 0,5 dan 0,25 + α 0 eksploratif, × grounding), perintah di `reports/alpha_stage2_plan.md`, terdaftar sebagai `dev-stage2`, dinilai panel-v2, laporan di `llm/c_graphrag/results/stage2/`. Langkah berikutnya: keputusan penulis atas α\*.
-3. Isi `alpha_primary` (dan `alpha_ablation`, yang tidak dipakai run resmi) di `official_params.json` dan blok `official_params` di `DECISION_C_SCORING.md` (harus byte-identik; dijaga tes).
-4. (Cek retrieval-only D v5 pada dev set sudah dilakukan: 47 dari 50 pertanyaan dengan 5 item.) Empat empat run resmi pada sampel uji, daftarkan sebagai `official`, nilai dengan panel, jalankan metrik sekunder, dan buat laporan.
+**Urutan menuju run resmi (belum dijalankan; tiap langkah menunggu "go" eksplisit penulis):**
+1. Amendment 14-17 dikonfirmasi dan perubahan gerbang judging diterapkan (2026-10-26). SELESAI.
+2. Stage 2 (SUDAH dijalankan, 2026-10-26): enam run C v4 dev (α 0,5 dan 0,25 + α 0 eksploratif, × grounding), perintah di `reports/alpha_stage2_plan.md`, terdaftar sebagai `dev-stage2`, dinilai panel-v2, laporan di `llm/c_graphrag/results/stage2/`. α\* = 0,5 diterima penulis. SELESAI.
+3. `alpha_primary` = 0,5 dan `alpha_ablation` = 0,25 sudah diisi di `official_params.json` dan blok `official_params` di `DECISION_C_SCORING.md` (identik sebagai JSON; dijaga tes). SELESAI.
+4. Cek retrieval-only D v5 pada dev set sudah dilakukan (47 dari 50 pertanyaan dengan 5 item). BELUM: empat run resmi pada sampel uji (daftarkan sebagai `official`, nilai dengan panel, jalankan metrik sekunder, buat laporan) — menunggu "go".
 
-**Tes (terakhir: 1543 lulus, 26 dilewati, 0 gagal; `python3 llm/frozen_parameters.py --check` mutakhir):**
+**Tes (terakhir, 2026-10-26: 1544 lulus, 27 dilewati (26 integrasi Neo4j/KG yang butuh GRAPHRAG_INTEGRATION=1, 1 tes status pending yang dilewati karena params sudah selected), 0 gagal; `python3 llm/frozen_parameters.py --check` mutakhir):**
 ```bash
 python3 -m pytest llm backend -q -p no:cacheprovider    # seluruh suite, sekitar 6 menit
 python3 -m pytest llm/tests -q                           # hanya tes tingkat repo (subset)
@@ -178,9 +178,9 @@ Sebagian tes (`*_live.py`) membutuhkan Neo4j dan volume data; tes lain berjalan 
 
 ## 10. Hal yang belum atau tidak bisa dipastikan
 
-- Rationale Amendment 15 belum ditulis (`TODO(author)`); Amendment 15 dan 16 belum dikonfirmasi penulis.
+- Amendment 14-17 dikonfirmasi penulis pada 2026-10-26; kolom commit di Record menyebut subject line commit persetujuan.
 - Run resmi belum ada, sehingga belum ada hasil C-primary maupun perbandingan kondisi. Stage 2 (dev) sudah ada; α* belum dipilih secara resmi. Retrieval D v5 sudah dicek retrieval-only terhadap Neo4j pada dev set (tanpa LLM), tetapi belum pernah dijalankan dengan generasi.
-- Judging resmi diblokir sampai Amendment 14 disetujui (`docs/AMENDMENT14_APPROVAL_CHANGE.md`); anggaran DeepInfra $9,00 cukup untuk empat run (lihat bagian 6).
+- Judging resmi tidak lagi diblokir (gerbang dibuka 2026-10-26); anggaran DeepInfra $9,00, sisa menurut ledger sekitar $7,83 (lihat `reports/amendment14_draft.md` bagian (j)), cukup untuk empat run (lihat bagian 6).
 - Dua tes lama yang gagal karena `run_history.jsonl` (`test_all_9_real_pilot_run_config_hashes_unchanged`, `test_calibration_generate_plan_and_registry`) sudah diisolasi: keduanya sekarang membaca riwayat run pra-resmi dari arsip, bukan berkas live (perilaku produksi tidak berubah).
 - `llm/evaluation/judge_panel.py` sempat macet berkali-kali pada panggilan terakhir (satu koneksi menggantung; timeout bawaan SDK 600 detik). Perbaikan (2026-10-26): timeout klien 180 detik dan hasil ditulis begitu selesai (`as_completed`, bukan `pool.map` berurutan). Prompt, parser, panggilan, dan agregasi tidak berubah. Saat macet, proses dapat dimatikan dan dijalankan ulang (hasil yang sudah ditulis tidak dibayar lagi). Ledger registri: $0,595 tercatat; sekitar $0,107 dari run yang dibatalkan ditambahkan pada 2026-10-26 sebagai entri penyesuaian eksplisit (total $0,702). Tidak ada hash yang berubah (lihat `docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md`).
 - Kalimat `reasoning` di `select_stage2_winner` sudah diperbaiki (2026-10-26) dan menyebut langkah yang memutuskan; laporan stage 2 lama tetap tidak diubah.

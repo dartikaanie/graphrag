@@ -29,12 +29,11 @@ REVISION_LOG = REPO_ROOT / "docs" / "JUDGE_REVISION_LOG.md"
 BASE_VERSION = "judge-v2.2"
 MAX_REVISIONS = 3
 CALIBRATION_ALLOWED = ("judge-v2.2", "judge-v2.3", "judge-v2.4", "judge-v2.5")  # base + at most 3 revisions
-# Set to (<frozen version>,) in the same commit that fills in Amendment 11's Record -- never before.
-OFFICIAL_ALLOWED: tuple = ()
-# Amendment 14 (draft): official runs use the frozen panel without a human-agreement gate. Both values are set in
-# the commit that approves Amendment 14 (AMENDMENT14_COMMIT = that commit's subject line or id, OFFICIAL_ALLOWED =
-# ("judge-v2.3",)); until then every official judging run is refused.
-AMENDMENT14_APPROVED: bool = False
+# Amendment 14 (approved): official runs use the frozen panel without a human-agreement gate. Set in the commit
+# that approves Amendment 14.
+OFFICIAL_ALLOWED: tuple = ("judge-v2.3",)
+AMENDMENT14_APPROVED: bool = True
+AMENDMENT14_COMMIT = "approve amendments 14-17 and unlock official judging"
 OFFICIAL_PANEL = "panel-v2"
 
 PURPOSE_CALIBRATION, PURPOSE_OFFICIAL, PURPOSE_DEVELOPMENT = "calibration", "official", "development"

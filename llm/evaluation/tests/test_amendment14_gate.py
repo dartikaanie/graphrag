@@ -19,6 +19,7 @@ def _test_run(tmp_path, split="test"):
 def test_official_needs_flag_approval_and_panel_v2(tmp_path, monkeypatch):
     run = _test_run(tmp_path)
     monkeypatch.setattr(jv, "OFFICIAL_ALLOWED", ("judge-v2.3",))
+    monkeypatch.setattr(jv, "AMENDMENT14_APPROVED", False)   # the committed value is True since the approval commit
     with pytest.raises(jv.JudgeVersionError, match="--official"):
         jv.check_run_allowed("judge-v2.3", [run], log=lambda *_: None, panel_id="panel-v2")
     with pytest.raises(jv.JudgeVersionError, match="not approved"):

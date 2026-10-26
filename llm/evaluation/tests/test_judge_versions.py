@@ -21,8 +21,8 @@ def test_constants_match_the_runner_and_the_real_log():
     assert jv.BASE_VERSION == judge_prompt_v2_2.PROMPT_VERSION == jv.CALIBRATION_ALLOWED[0]
     assert len(jv.CALIBRATION_ALLOWED) == 1 + jv.MAX_REVISIONS == 4
     assert jv.logged_versions() == ["judge-v2.2", "judge-v2.3"]   # base + revision 1 (iteration 2)
-    from annotation_tool import frozen_judge_version
-    assert (frozen_judge_version() is None) == (jv.OFFICIAL_ALLOWED == ())   # both filled in the same commit
+    assert jv.OFFICIAL_ALLOWED in ((), ("judge-v2.3",))   # Amendment 14: no human freeze involved
+    assert jv.AMENDMENT14_APPROVED == bool(jv.OFFICIAL_ALLOWED)   # flag and list change together
 
 
 def test_calibration_needs_a_logged_allowed_version(tmp_path):
