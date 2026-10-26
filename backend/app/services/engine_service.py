@@ -487,6 +487,7 @@ def _anchor_output_path(output_path: Path, condition_folder: str) -> Path:
 from llm.citations import compute_citation_report as _compute_citation_report  # noqa: E402
 from llm.manifest import compute_config_hash as _compute_config_hash  # noqa: E402
 from llm.manifest import read_already_done as _read_already_done  # noqa: E402
+from llm.common.resume import prepare_resume as _prepare_resume  # noqa: E402
 from llm.manifest import sum_usage_tokens as _sum_usage_tokens  # noqa: E402
 from llm.manifest import write_manifest as _write_manifest  # noqa: E402
 from llm.sample_split import SampleMismatchError, verify_sample  # noqa: E402
@@ -678,7 +679,7 @@ def run_condition_a(run_id: str, params: dict[str, Any]) -> None:
         config_hash = _compute_config_hash(config)
         output_path = _anchor_output_path(output_path, "a_pure_llm")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        already_done = _read_already_done(output_path, cond.PROMPT_VERSION, config_hash)
+        already_done = _prepare_resume(output_path, config_hash, config.get("sample_split", "test"))
 
         run_registry.update_run(
             run_id,
@@ -833,7 +834,7 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
         config_hash = _compute_config_hash(config)
         output_path = _anchor_output_path(output_path, "b_rag")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        already_done = _read_already_done(output_path, cond.PROMPT_VERSION, config_hash)
+        already_done = _prepare_resume(output_path, config_hash, config.get("sample_split", "test"))
 
         run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
 
@@ -1047,7 +1048,7 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
         config_hash = _compute_config_hash(config)
         output_path = _anchor_output_path(output_path, "c_graphrag")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        already_done = _read_already_done(output_path, cond.PROMPT_VERSION, config_hash)
+        already_done = _prepare_resume(output_path, config_hash, config.get("sample_split", "test"))
 
         run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
 
@@ -1237,7 +1238,7 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
         config_hash = _compute_config_hash(config)
         output_path = _anchor_output_path(output_path, "d_lightrag")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        already_done = _read_already_done(output_path, cond.PROMPT_VERSION, config_hash)
+        already_done = _prepare_resume(output_path, config_hash, config.get("sample_split", "test"))
 
         run_registry.update_run(run_id, output_path=str(output_path), progress={"current": 0, "total": len(sample_df)})
 

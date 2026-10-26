@@ -507,6 +507,25 @@ def paired_counts(cats_c: dict, cats_x: dict, abstain_as_failed: bool = False) -
             "n_excluded": excluded, "cells": cells}
 
 
+def paired_rate_difference(cats_a: dict, cats_b: dict) -> dict:
+    """Hallucination-rate difference (a - b, ABSTAIN excluded) on the questions BOTH runs answered with a usable,
+    non-ABSTAIN panel label. Same pairs as the primary paired_counts. rate_* = hallucinated / n_pairs on those pairs.
+    difference_panel (each run's own non-ABSTAIN answers) is a separate figure and is not changed."""
+    ha = hb = n = 0
+    for q in sorted(set(cats_a) & set(cats_b)):
+        ca, cb = cats_a[q], cats_b[q]
+        if ca not in (CATEGORY_HALLUCINATED, CATEGORY_NOT_HALLUCINATED) or cb not in (CATEGORY_HALLUCINATED,
+                                                                                       CATEGORY_NOT_HALLUCINATED):
+            continue
+        n += 1
+        ha += ca == CATEGORY_HALLUCINATED
+        hb += cb == CATEGORY_HALLUCINATED
+    if n == 0:
+        return {"difference": None, "rate_a": None, "rate_b": None, "n_pairs": 0}
+    return {"difference": round(ha / n - hb / n, 4), "rate_a": round(ha / n, 4), "rate_b": round(hb / n, 4),
+            "n_pairs": n}
+
+
 def comparisons(runs: list[dict]) -> list[dict]:
     """The pre-registered comparisons C vs A, C vs B, C vs D (always listed; available=false if a run is missing).
     Legacy comparisons (needing legacy cells) appear only when both runs exist."""
@@ -531,6 +550,7 @@ def comparisons(runs: list[dict]) -> list[dict]:
         pq_a, pq_b = by_label[a].get("per_question_panel") or {}, by_label[b].get("per_question_panel") or {}
         out.append({"comparison": f"{a} vs {b}", "name": name, "available": True, "difference_panel": d_panel,
                     "difference_panel_abstain_as_failed": d_panel_failed,
+                    "difference_panel_paired": paired_rate_difference(pq_a, pq_b),
                     "difference_by_judge": d_j, "flag": "consistent" if consistent else "inconclusive",
                     "paired": {"primary_excl_abstain": paired_counts(pq_a, pq_b),
                                "abstain_as_failed": paired_counts(pq_a, pq_b, abstain_as_failed=True)}})

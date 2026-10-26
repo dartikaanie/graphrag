@@ -36,15 +36,15 @@ Perintah mem-*pin* semua parameter yang bisa ditimpa `.env` (`OVERSAMPLE_POOL`, 
 
 **R3 · B-grounded** (run tesis R2)
 
-`cd llm/b_rag && python b_condition_b_rag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --corpus kg_answers --require-citation --require-grounding --leakage-mode thread`
+`cd llm/b_rag && python b_condition_b_rag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --corpus kg_answers --require-citation --require-grounding --leakage-mode thread --embed-model all-MiniLM-L6-v2`
 
 **R5 · C-primary-grounded** (run tesis R3)
 
-`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_primary> --fusion-mode trust_weighted --no-require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
+`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_primary> --fusion-mode trust_weighted --no-require-grounding --expansion-require-answer --leakage-mode thread --embed-model all-MiniLM-L6-v2 --fusion-w-path-trust 0.7 --fusion-w-intrinsic 0.3 --semantic-expansion-trust-cap 0.4 --allow-legacy-cells`
 
 **R9 · D-grounded** (run tesis R4)
 
-`cd llm/d_lightrag && python d_lightrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-low-level 3 --n-high-level 3 --d-retrieval-version v5 --no-require-grounding --leakage-mode thread --allow-legacy-cells`
+`cd llm/d_lightrag && python d_lightrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-low-level 3 --n-high-level 3 --d-retrieval-version v5 --no-require-grounding --leakage-mode thread --embed-model all-MiniLM-L6-v2 --allow-legacy-cells`
 
 ## Sel legacy (BUKAN bagian evaluasi resmi)
 
@@ -52,23 +52,23 @@ Lima sel dari matriks sembilan sel Amendment 10 tetap ada di kode supaya data da
 
 **R2 · B-plain** (LEGACY)
 
-`cd llm/b_rag && python b_condition_b_rag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --corpus kg_answers --require-citation --no-require-grounding --leakage-mode thread --allow-legacy-cells`
+`cd llm/b_rag && python b_condition_b_rag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --corpus kg_answers --require-citation --no-require-grounding --leakage-mode thread --embed-model all-MiniLM-L6-v2 --allow-legacy-cells`
 
 **R4 · C-primary-plain** (LEGACY)
 
-`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_primary> --fusion-mode trust_weighted --require-grounding --expansion-require-answer --leakage-mode thread`
+`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_primary> --fusion-mode trust_weighted --require-grounding --expansion-require-answer --leakage-mode thread --embed-model all-MiniLM-L6-v2 --fusion-w-path-trust 0.7 --fusion-w-intrinsic 0.3 --semantic-expansion-trust-cap 0.4`
 
 **R6 · C-ablation-plain** (LEGACY)
 
-`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_ablation> --fusion-mode trust_weighted --no-require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
+`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_ablation> --fusion-mode trust_weighted --no-require-grounding --expansion-require-answer --leakage-mode thread --embed-model all-MiniLM-L6-v2 --fusion-w-path-trust 0.7 --fusion-w-intrinsic 0.3 --semantic-expansion-trust-cap 0.4 --allow-legacy-cells`
 
 **R7 · C-ablation-grounded** (LEGACY)
 
-`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_ablation> --fusion-mode trust_weighted --require-grounding --expansion-require-answer --leakage-mode thread --allow-legacy-cells`
+`cd llm/c_graphrag && python c_graphrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-anchor 3 --n-semantic-expansion 3 --c-retrieval-version v4 --alpha <alpha_ablation> --fusion-mode trust_weighted --require-grounding --expansion-require-answer --leakage-mode thread --embed-model all-MiniLM-L6-v2 --fusion-w-path-trust 0.7 --fusion-w-intrinsic 0.3 --semantic-expansion-trust-cap 0.4 --allow-legacy-cells`
 
 **R8 · D-plain** (LEGACY)
 
-`cd llm/d_lightrag && python d_lightrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-low-level 3 --n-high-level 3 --d-retrieval-version v5 --require-grounding --leakage-mode thread`
+`cd llm/d_lightrag && python d_lightrag.py --n-sample 384 --seed 42 --oversample-pool 1536 --sample-split test --provider openai --model gpt-4o-mini --top-k 5 --token-chunk-limit 400 --n-low-level 3 --n-high-level 3 --d-retrieval-version v5 --require-grounding --leakage-mode thread --embed-model all-MiniLM-L6-v2`
 
 ## Padanan di dashboard
 

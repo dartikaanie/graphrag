@@ -366,9 +366,44 @@ def append_jsonl(path: Path, record: dict) -> None:
 
 
 def read_jsonl(path: Path) -> list[dict]:
+    """All records of a JSONL file. A torn LAST line (no trailing newline: the process died mid-write) is skipped; an
+    unparseable line anywhere else is corruption and raises."""
     if not Path(path).exists():
         return []
-    return [json.loads(line) for line in open(path) if line.strip()]
+    lines = [line for line in open(path) if line.strip()]
+    out = []
+    for i, line in enumerate(lines):
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            if i == len(lines) - 1 and not line.endswith("\n"):
+                continue
+            raise
+    return out
+
+
+def reconcile_ledger(out: Path, status: str, log=print) -> float:
+    """Idempotent DeepInfra ledger update from the STORED records of `out` (and its failures file, whose calls were paid
+    too): books the part of their estimated cost that no ledger entry tagged with this file yet covers. Safe after a
+    killed run (its records are on disk, its ledger entry was never written) and safe to call twice. Files whose spend
+    was booked before 2026-10-26 (untagged entries that name the file) are left alone: they were reconciled by hand."""
+    from llm import run_registry as rr
+    out = Path(out)
+    recs = read_jsonl(out) + read_jsonl(failures_path_of(out))
+    cost = round(sum(float(r.get("estimated_cost_usd") or 0) for r in recs), 6)
+    entries = rr.load().get("deepinfra_spend") or []
+    if any(e.get("file") is None and out.name in (e.get("label") or "") for e in entries):
+        log(f"[ledger] {out.name}: earlier untagged ledger entries exist; not reconciled automatically")
+        return 0.0
+    booked = round(sum(float(e.get("cost_usd") or 0) for e in entries if e.get("file") == out.name), 6)
+    delta = round(cost - booked, 6)
+    if delta > 1e-6:
+        rr.record_deepinfra_spend(f"{status} judging {out.name} (from the stored records)", delta, file=out.name)
+        log(f"[ledger] {out.name}: stored records cost ${cost:.4f}, booked ${booked:.4f}: added ${delta:.4f}")
+        return delta
+    if delta < -1e-6:
+        log(f"[WARN] ledger holds ${booked:.4f} for {out.name}, stored records only ${cost:.4f}; nothing changed")
+    return 0.0
 
 
 def failures_path_of(out: Path) -> Path:
@@ -633,7 +668,7 @@ def register_judge_run(gate: dict, out: Path, panel_path, panel_view: dict, cost
     from llm import archive_paths
     from llm import run_registry as rr
 
-    rr.record_deepinfra_spend(f"{gate['status']} judging {out.name}", cost)
+    reconcile_ledger(out, gate["status"], log)  # books the stored records of this file once (also those of killed runs)
     files = {"output": archive_paths.repo_rel(archive_paths.canonical(out))}
     if panel_path:
         files["panel"] = archive_paths.repo_rel(archive_paths.canonical(panel_path))
@@ -764,6 +799,9 @@ def main(argv=None) -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    from llm.common.resume import repair_torn_tail  # a run killed while writing leaves a torn last line: cut it off
+    repair_torn_tail(out, log)
+    repair_torn_tail(failures_path_of(out), log)
     done_records = read_jsonl(out)
     done = {cache_key(r) for r in done_records}
     bodies = {q: html_to_text(b) for q, b in
@@ -796,6 +834,8 @@ def main(argv=None) -> int:
         return 0
 
     started = datetime.now(timezone.utc).isoformat()
+    if registry_gate:  # a killed earlier run left paid records without a ledger entry: book them before this run adds more
+        reconcile_ledger(out, registry_gate["status"], log)
     measured = {r["messages_sha256"]: r["prompt_tokens"] for r in basis if r.get("messages_sha256") and r.get("prompt_tokens")}
     budget = BudgetGuard(args.max_cost_usd, spec.max_tokens,
                          lambda msgs: measured.get(_messages_sha256(msgs))

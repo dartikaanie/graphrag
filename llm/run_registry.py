@@ -153,11 +153,16 @@ def deepinfra_remaining(reg: dict | None = None) -> float | None:
     return None if budget is None else round(float(budget) - deepinfra_spent(reg), 6)
 
 
-def record_deepinfra_spend(label: str, cost_usd: float, run_id: str | None = None, path: Path | None = None) -> dict:
+def record_deepinfra_spend(label: str, cost_usd: float, run_id: str | None = None, path: Path | None = None,
+                           file: str | None = None) -> dict:
+    """`file`: name of the judge output file the amount belongs to (entries written since 2026-10-26 carry it, so the
+    ledger can be reconciled against the stored records of that file; see judge_panel.reconcile_ledger)."""
     reg = load(path)
-    reg.setdefault("deepinfra_spend", []).append({
-        "label": label, "run_id": run_id, "cost_usd": round(float(cost_usd), 6),
-        "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    entry = {"label": label, "run_id": run_id, "cost_usd": round(float(cost_usd), 6),
+             "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    if file is not None:
+        entry["file"] = file
+    reg.setdefault("deepinfra_spend", []).append(entry)
     save(reg, path)
     return reg
 
@@ -189,7 +194,9 @@ def expected_generation_config(status: str, condition: str) -> dict:
         exp.update(require_citation=True)
     if condition == "C":
         exp.update(c_retrieval_version=orm.C_RETRIEVAL_VERSION, n_anchor=orm.N_ANCHOR, n_semantic_expansion=orm.N_SEMANTIC_EXPANSION,
-                   expansion_require_answer=True, fusion_mode="trust_weighted")
+                   expansion_require_answer=True, fusion_mode="trust_weighted",
+                   fusion_w_path_trust=orm.FUSION_W_PATH_TRUST, fusion_w_intrinsic=orm.FUSION_W_INTRINSIC,
+                   semantic_expansion_trust_cap=orm.SEMANTIC_EXPANSION_TRUST_CAP)
     if condition == "D":
         exp.update(d_retrieval_version=orm.D_RETRIEVAL_VERSION, n_low_level=orm.N_LOW_LEVEL,
                    n_high_level=orm.N_HIGH_LEVEL)
@@ -233,6 +240,10 @@ def generation_entry(run_file, status: str) -> dict:
                             "r3; NF3 cannot be computed) -- generate with the current code")
     if len(recs) != exp["n_sample"]:
         raise RegistryError(f"{path.name}: {len(recs)} records, expected {exp['n_sample']}")
+    ids = [r.get("question_id") for r in recs]
+    if len(set(ids)) != len(ids):  # a resumed run must not leave duplicates; order in the file does not matter (ids pair)
+        dup = sorted({i for i in ids if ids.count(i) > 1})[:5]
+        raise RegistryError(f"{path.name}: duplicate question ids in the output file (e.g. {dup})")
     manifest_path = path.with_name(path.name + ".manifest.json")
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     tin = sum((r.get("usage_full") or {}).get("prompt_tokens", 0) for r in recs)

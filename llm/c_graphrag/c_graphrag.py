@@ -1722,6 +1722,13 @@ def main():
     if _legacy:
         log(f"[ERROR] {_legacy}")
         sys.exit(2)
+    from llm.official_run_matrix import pin_error
+    _pin = pin_error("C", sample_split=args.sample_split, embed_model=args.embed_model,
+                     fusion_w_path_trust=args.fusion_w_path_trust, fusion_w_intrinsic=args.fusion_w_intrinsic,
+                     semantic_expansion_trust_cap=args.semantic_expansion_trust_cap)
+    if _pin:
+        log(f"[ERROR] {_pin}")
+        sys.exit(2)
 
     # PENTING utk NESTED SAMPLING -- IDENTIK Kondisi A/B, lihat komentar
     # lengkap di a_baseline_replication.py. Pool FIXED thd MAX_PLANNED_N_SAMPLE,
@@ -1833,7 +1840,12 @@ def main():
     log(f"[config] leakage mode = {leakage_mode} (llm/common/leakage.py)")
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    already_done = read_already_done(output_path, PROMPT_VERSION, config_hash)
+    from llm.common.resume import ResumeRefused, prepare_resume
+    try:  # official cells: refuse a resume under another commit / frozen hash; cut a torn last line; gate on config_hash only
+        already_done = prepare_resume(output_path, config_hash, args.sample_split, log)
+    except ResumeRefused as e:
+        log(f"[ERROR] {e}")
+        sys.exit(2)
     if already_done:
         log(f"      [resume] {len(already_done)} pertanyaan sudah diproses sebelumnya")
 

@@ -312,6 +312,10 @@ def write_manifest(
         manifest["provenance"] = provenance
     if official_role is not None:
         manifest["official_role"] = official_role
+    from llm.common.resume import read_invocations  # official cells: every invocation (commit, frozen hash), first one kept
+    invocations = read_invocations(output_path)
+    if invocations:
+        manifest["invocations"] = invocations
 
     manifest_path = output_path.with_name(output_path.name + ".manifest.json")
     manifest_path.parent.mkdir(parents=True, exist_ok=True)

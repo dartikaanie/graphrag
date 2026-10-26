@@ -160,6 +160,15 @@ def build() -> list[dict]:
         "smallest question ids kept when exceeded; recorded as high_level_cap_hit")
     v, s = const(cg, "EMBED_DIM")
     add("Retrieval (B, C, D)", "embedding model", f"all-MiniLM-L6-v2 ({v}-dim)", _line_of(cg, '"all-MiniLM-L6-v2"'))
+    add("Retrieval (B, C, D)", "embedding model, pinned in the official command (--embed-model)", orm.EMBED_MODEL,
+        _line_of("llm/official_run_matrix.py", "EMBED_MODEL ="), "frozen",
+        "a different EMBED_MODEL in .env makes a test-sample run refuse to start (official_run_matrix.pin_error)")
+    add("C retrieval", "fusion weights, pinned in the official command (path trust / answer trust)",
+        [orm.FUSION_W_PATH_TRUST, orm.FUSION_W_INTRINSIC], _line_of("llm/official_run_matrix.py", "FUSION_W_PATH_TRUST ="),
+        "frozen", "checked at start-up and by the run registry (config fusion_w_path_trust / fusion_w_intrinsic)")
+    add("C retrieval", "semantic expansion trust cap, pinned in the official command", orm.SEMANTIC_EXPANSION_TRUST_CAP,
+        _line_of("llm/official_run_matrix.py", "SEMANTIC_EXPANSION_TRUST_CAP ="), "frozen",
+        "checked at start-up and by the run registry (config semantic_expansion_trust_cap)")
 
     # --- leakage ---
     lk = "llm/common/leakage.py"

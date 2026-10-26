@@ -89,7 +89,8 @@ def _gen_file(tmp_path, cfg, n):
 STAGE2_CFG = {"condition": "C", "provider": "openai", "model": "gpt-4o-mini", "seed": 42, "oversample_pool": 1536,
               "sample_split": "dev", "n_sample": 50, "top_k": 5, "leakage": "thread",
               "c_retrieval_version": "v4", "n_anchor": 3, "n_semantic_expansion": 3, "expansion_require_answer": True,
-              "fusion_mode": "trust_weighted", "alpha": 0.25, "require_grounding": True}
+              "fusion_mode": "trust_weighted", "fusion_w_path_trust": 0.7, "fusion_w_intrinsic": 0.3,
+              "semantic_expansion_trust_cap": 0.4, "alpha": 0.25, "require_grounding": True}
 
 
 def test_generation_entry_checks_the_frozen_config(tmp_path, reg_path, monkeypatch):
@@ -123,4 +124,20 @@ def test_runs_without_r3_timing_are_refused(tmp_path, reg_path):
     del lines[3]["end_to_end_latency_sec"]
     p.write_text("".join(json.dumps(x) + "\n" for x in lines))
     with pytest.raises(rr.RegistryError, match="end-to-end timing"):
+        rr.generation_entry(p, "dev-stage2")
+
+
+def test_duplicate_question_ids_are_refused_but_file_order_does_not_matter(tmp_path, reg_path, monkeypatch):
+    """A resumed run may put a redone question at the end of the file: fine (ids pair). A duplicate is not."""
+    import json
+    import llm.c_graphrag.official_params as op
+
+    monkeypatch.setattr(op, "load_official_params", lambda *a, **k: {"status": "selected", "alpha_primary": 0.25,
+                                                                      "alpha_ablation": 0.0})
+    p = _gen_file(tmp_path, STAGE2_CFG, 50)
+    lines = p.read_text().splitlines(True)
+    p.write_text("".join(lines[5:] + lines[:5]))              # same 50 ids, different order
+    assert rr.generation_entry(p, "dev-stage2")["n"] == 50
+    p.write_text("".join(lines[:49] + [lines[0]]))            # 50 lines, one id twice (one missing)
+    with pytest.raises(rr.RegistryError, match="duplicate question ids"):
         rr.generation_entry(p, "dev-stage2")

@@ -41,6 +41,11 @@ N_LOW_LEVEL = 3
 N_HIGH_LEVEL = 3
 C_RETRIEVAL_VERSION = "v4"  # Amendment 17: v3 ranking + answerable anchors (must equal c_graphrag.C_RETRIEVAL_VERSION)
 D_RETRIEVAL_VERSION = "v5"  # Amendment 17: answerable anchors + fill up to k (must equal d_lightrag.D_RETRIEVAL_VERSION)
+# Pinned in every official command and checked at start-up (pin_error), so a changed .env value cannot reach a test run.
+EMBED_MODEL = "all-MiniLM-L6-v2"
+FUSION_W_PATH_TRUST = 0.7           # = c_graphrag.DEFAULT_FUSION_W_PATH_TRUST
+FUSION_W_INTRINSIC = 0.3            # = c_graphrag.DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST
+SEMANTIC_EXPANSION_TRUST_CAP = 0.4  # = c_graphrag.DEFAULT_SEMANTIC_EXPANSION_TRUST_CAP
 LEAKAGE_MODE = "thread"  # Amendment 15: q + its thread only (supersedes Amendment 8's "dup+neardup0.95")
 
 _COMMON_ARGS = ["--n-sample", str(N_SAMPLE), "--seed", str(SEED), "--oversample-pool", str(OVERSAMPLE_POOL),
@@ -94,6 +99,25 @@ def legacy_cell_error(condition: str, *, sample_split: str = "test", require_cit
     return (f"{why} is a legacy cell: the official evaluation has four runs (A, B-grounded, C-primary-grounded, "
             f"D-grounded). Pass {LEGACY_FLAG} (API: allow_legacy_cells=true) to run it deliberately.")
 
+def pin_error(condition: str, *, sample_split: str = "test", embed_model=None, fusion_w_path_trust=None,
+              fusion_w_intrinsic=None, semantic_expansion_trust_cap=None) -> str | None:
+    """Reason a TEST-sample B/C/D run must not start because a value that the command pins was changed (typically a
+    .env value: EMBED_MODEL, FUSION_W_PATH_TRUST, FUSION_W_ANSWER_INTRINSIC_TRUST, SEMANTIC_EXPANSION_TRUST_CAP),
+    or None. Dev runs are never checked. No legacy bypass: the pinned values are the same for every cell."""
+    if sample_split != "test" or condition == "A":
+        return None
+    checks = [("embed_model (--embed-model / EMBED_MODEL)", embed_model, EMBED_MODEL)]
+    if condition == "C":
+        checks += [("fusion_w_path_trust", fusion_w_path_trust, FUSION_W_PATH_TRUST),
+                   ("fusion_w_intrinsic", fusion_w_intrinsic, FUSION_W_INTRINSIC),
+                   ("semantic_expansion_trust_cap", semantic_expansion_trust_cap, SEMANTIC_EXPANSION_TRUST_CAP)]
+    bad = [f"{name} = {got!r} (frozen: {want!r})" for name, got, want in checks if got != want]
+    if not bad:
+        return None
+    return ("Test-sample run refused: a pinned official parameter differs from the frozen value: " + "; ".join(bad)
+            + ". Check .env and the command line (docs/OFFICIAL_RUN_MATRIX.md).")
+
+
 SCRIPTS = {
     "A": ("llm/a_pure_llm", "a_baseline_replication.py"),
     "B": ("llm/b_rag", "b_condition_b_rag.py"),
@@ -132,7 +156,7 @@ def build_matrix(official: dict | None, include_legacy: bool = False) -> list[di
         if condition == "B":
             argv += ["--top-k", str(TOP_K), "--token-chunk-limit", str(TOKEN_CHUNK_LIMIT), "--corpus", "kg_answers",
                      "--require-citation",
-                     _grounding_flag(grounding), "--leakage-mode", LEAKAGE_MODE]
+                     _grounding_flag(grounding), "--leakage-mode", LEAKAGE_MODE, "--embed-model", EMBED_MODEL]
             dashboard.update(top_k=TOP_K, require_citation=True, require_grounding=grounding)
         elif condition == "C":
             alpha = _alpha_value(official, role)
@@ -141,7 +165,9 @@ def build_matrix(official: dict | None, include_legacy: bool = False) -> list[di
                      "--n-anchor", str(N_ANCHOR), "--n-semantic-expansion", str(N_SEMANTIC_EXPANSION),
                      "--c-retrieval-version", C_RETRIEVAL_VERSION, "--alpha", alpha_arg,
                      "--fusion-mode", "trust_weighted", _grounding_flag(grounding),
-                     "--expansion-require-answer", "--leakage-mode", LEAKAGE_MODE]
+                     "--expansion-require-answer", "--leakage-mode", LEAKAGE_MODE, "--embed-model", EMBED_MODEL,
+                     "--fusion-w-path-trust", f"{FUSION_W_PATH_TRUST:g}", "--fusion-w-intrinsic", f"{FUSION_W_INTRINSIC:g}",
+                     "--semantic-expansion-trust-cap", f"{SEMANTIC_EXPANSION_TRUST_CAP:g}"]
             dashboard.update(top_k=TOP_K, n_anchor=N_ANCHOR, n_semantic_expansion=N_SEMANTIC_EXPANSION,
                              c_retrieval_version=C_RETRIEVAL_VERSION, alpha=alpha, fusion_mode="trust_weighted",
                              require_grounding=grounding)
@@ -151,7 +177,8 @@ def build_matrix(official: dict | None, include_legacy: bool = False) -> list[di
         elif condition == "D":
             argv += ["--top-k", str(TOP_K), "--token-chunk-limit", str(TOKEN_CHUNK_LIMIT),
                      "--n-low-level", str(N_LOW_LEVEL), "--n-high-level", str(N_HIGH_LEVEL),
-                     "--d-retrieval-version", D_RETRIEVAL_VERSION, _grounding_flag(grounding), "--leakage-mode", LEAKAGE_MODE]
+                     "--d-retrieval-version", D_RETRIEVAL_VERSION, _grounding_flag(grounding), "--leakage-mode", LEAKAGE_MODE,
+                     "--embed-model", EMBED_MODEL]
             dashboard.update(top_k=TOP_K, n_low_level=N_LOW_LEVEL, n_high_level=N_HIGH_LEVEL,
                              require_grounding=grounding)
         if legacy:

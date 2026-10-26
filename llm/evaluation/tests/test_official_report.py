@@ -114,3 +114,24 @@ def test_nf3_is_p95_of_end_to_end_latency_for_condition_c():
 def test_nf3_falls_back_to_run_duration_for_records_without_r3_timing():
     r = orp.nf3([{"retrieval_latency_sec": 1.0}, {"end_to_end_latency_sec": 3.0}], 7.5, "C")
     assert r["fallback"] and r["value_sec"] == 7.5 and r["meets"] is None and r["method"].startswith("FALLBACK")
+
+
+def test_paired_rate_difference_uses_only_pairs_both_runs_answered():
+    H, N, A = orp.CATEGORY_HALLUCINATED, orp.CATEGORY_NOT_HALLUCINATED, orp.CATEGORY_ABSTAIN
+    c = {"1": H, "2": H, "3": N, "4": A, "5": N, "6": None}
+    x = {"1": N, "2": H, "3": N, "4": N, "5": A, "7": H}
+    p = orp.paired_rate_difference(c, x)
+    # pairs: 1, 2, 3 (4, 5 have an ABSTAIN, 6 is unusable, 7 is not in both)
+    assert p == {"difference": 0.3333, "rate_a": 0.6667, "rate_b": 0.3333, "n_pairs": 3}
+    assert orp.paired_rate_difference(c, {})["n_pairs"] == 0 and orp.paired_rate_difference(c, {})["difference"] is None
+    # the unpaired figure is a different number: C has 2 of 4 usable hallucinated, X has 2 of 4 usable
+    assert orp.paired_rate_difference({"1": H}, {"1": H}) == {"difference": 0.0, "rate_a": 1.0, "rate_b": 1.0, "n_pairs": 1}
+
+
+def test_comparisons_pair_questions_by_id_not_by_position():
+    H, N = orp.CATEGORY_HALLUCINATED, orp.CATEGORY_NOT_HALLUCINATED
+    c = {"1": H, "2": N, "3": N, "4": H}
+    x_in_order = {"1": N, "2": N, "3": H, "4": H}
+    x_shuffled = dict(reversed(list(x_in_order.items())))       # the same answers, a redone question last, etc.
+    assert orp.paired_counts(c, x_in_order) == orp.paired_counts(c, x_shuffled)
+    assert orp.paired_rate_difference(c, x_in_order) == orp.paired_rate_difference(c, x_shuffled)

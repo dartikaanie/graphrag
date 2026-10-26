@@ -601,7 +601,12 @@ def main():
     config_hash = compute_config_hash(config)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    already_done = read_already_done(output_path, PROMPT_VERSION, config_hash)
+    from llm.common.resume import ResumeRefused, prepare_resume
+    try:  # official cells: refuse a resume under another commit / frozen hash; cut a torn last line; gate on config_hash only
+        already_done = prepare_resume(output_path, config_hash, args.sample_split, log)
+    except ResumeRefused as e:
+        log(f"[ERROR] {e}")
+        sys.exit(2)
     if already_done:
         log(f"      [resume] {len(already_done)} pertanyaan sudah diproses sebelumnya, akan dilewati")
 
