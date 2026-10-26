@@ -279,3 +279,23 @@ Keempat sel dijalankan satu per satu dari tag `official-run-start2` (commit `e1d
 ### 12d. Langkah berikutnya
 
 Penilaian per sel dengan `--official` (panel-v2, judge-v2.3, 3 juri, 2-dari-3), batas biaya **$2,00 per sel**, dari tag baru `official-judging-start` (dibuat penulis setelah commit). Dry run R1 (1152 panggilan, proyeksi $1,5358, batas $2,00) sudah dilakukan tanpa panggilan API. Metrik sekunder dan `official_report.py` belum dijalankan.
+
+
+### 12e. R1 (A): penilaian juri resmi selesai (angka sementara, hanya R1)
+
+Status: run juri resmi R1 (Kondisi A) selesai dan pemeriksaan identitas OK; berhenti sesuai instruksi. R5, metrik sekunder, dan `official_report.py` **belum** dijalankan. Semua angka di bagian ini adalah angka sementara khusus R1 (dari berkas `llm/evaluation/results/panel_official_R1_judge-v2.3{,_panel}.jsonl`), bukan keluaran akhir `official_report.py`. Perintah: `judge_panel.py --official --panel panel-v2 --judge-version judge-v2.3 --max-cost-usd 1.91` dari tag `official-judging-start` (`ec81029`).
+
+- **Identitas:** 1152 rekaman, 1152 pasangan (pertanyaan, juri) unik, id sama dengan daftar uji, 0 id dev, 0 id di luar daftar. Tidak ada berkas kegagalan, tidak ada stall atau galat juri.
+- **Rekaman usable:** 384/384 untuk setiap juri; tidak usable 0% (batas 2%). Tidak ada konten reasoning dan tidak ada ketidakcocokan model yang dilayani.
+
+| Juri (FAKTUAL / PENUH / SEBAGIAN) | Label |
+|---|---|
+| Llama-3.3-70B-Turbo | 361 / 19 / 4 |
+| DeepSeek-V3.2 | 245 / 129 / 10 |
+| Qwen3-235B-A22B-Instruct-2507 | 241 / 116 / 27 |
+
+- **Panel (2 dari 3):** UNRESOLVED 0, tidak lengkap 0, ABSTAIN 0. Label: 285 FAKTUAL, 87 PENUH, 12 SEBAGIAN. Ketiga juri sepakat pada 206 dari 384.
+- **Halusinasi (panel, ABSTAIN dikeluarkan):** 99/384 = **25,8%**. Sama bila ABSTAIN dihitung gagal, karena tidak ada ABSTAIN.
+- **Pengamatan:** Llama jauh lebih longgar (361 FAKTUAL) daripada DeepSeek dan Qwen, sehingga ia biasanya juri yang kalah suara. Kesepakatan antarjuri (mis. kappa) perlu dilaporkan di metodologi.
+- **Biaya:** aktual **$1,2908** vs dry run $1,5358 (16% di bawah), vs perkiraan $1,36 (5% di bawah), vs batas $1,91. Tidak ada panggilan yang dilewati oleh pengaman anggaran. Ledger dibukukan sekali, ditandai dengan nama berkas. Total ledger **$2,4655**, sisa **$6,5345** dari $9,00.
+- **Berikutnya:** R5 (C), dry run $1,7642 untuk 1152 panggilan, batas 1,25x = $2,2053.
