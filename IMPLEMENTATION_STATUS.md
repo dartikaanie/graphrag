@@ -71,6 +71,37 @@ Run resmi (Amendment 16): **A** (sel R1), **B-grounded** (R3), **C-primary-groun
 
 Per grounding (halusinasi / ABSTAIN): α 0,5 on 11 / 9, off 12 / 0; α 0,25 on 8 / 10, off 13 / 0; α 0 on 8 / 10, off 13 / 0. Rata-rata item konteks per jawaban: 5,0 untuk keenam run. Hitungan per judge (ABSTAIN dikeluarkan, dipool): Llama 1/93, 1/91, 4/92; DeepSeek 26/88, 31/89, 31/90; Qwen3-235B 30/89, 32/88, 35/88 (urutan α 0,5; 0,25; 0). Aturan terdaftar menghasilkan **α = 0,5**, tetapi diputuskan pada langkah **pemutus seri (α lebih besar)**: selisih primer 2 jawaban (≤ margin 2) dan selisih sekunder 1 jawaban (≤ margin 2), jadi bukan keunggulan terukur. Kalimat alasan di laporan pertama ("lowest pooled hallucination rate") menyesatkan; sudah diperbaiki (2026-10-26): `select_stage2_winner` kini menyebut langkah pemutus (`deciding_tier`), dan laporan baru `stage2_report_20261025T232940Z` dibuat dari data yang sama (laporan lama dipertahankan). Catatan: `docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md`; perubahan α\* yang disiapkan (belum diterapkan): `docs/PREPARED_ALPHA_SELECTION_CHANGE.md`. Biaya stage 2: generasi $0,164; judging sekitar $1,08 (estimasi per record; API DeepInfra menunjukkan sekitar $0,95–1,0); total sekitar $1,25. **α\* belum diterapkan** ke `official_params.json` (menunggu keputusan penulis).
 
+**Verifikasi per juri dan tumpang-tindih (dev, baca-saja, 2026-10-26).** Sumber: `llm/c_graphrag/results/stage2/stage2_report_20261025T232940Z.json` (kunci `per_judge_pooled`, `per_judge_per_run`, `pooled`, `exploratory`). Semua angka di tabel hasil dan di paragraf per juri di atas **cocok** dengan laporan; tidak ada selisih.
+
+| Juri | α 0,5 | α 0,25 | α 0 | ABSTAIN (0,5 / 0,25 / 0) |
+|---|---|---|---|---|
+| Llama | 1 / 93 | 1 / 91 | 4 / 92 | 7 / 9 / 8 |
+| DeepSeek | 26 / 88 | 31 / 89 | 31 / 90 | 12 / 11 / 10 |
+| Qwen3-235B | 30 / 89 | 32 / 88 | 35 / 88 | 11 / 12 / 12 |
+| Panel 2-dari-3 | 23 / 91 | 21 / 90 | 21 / 90 | 9 / 10 / 10 |
+
+Panel, ABSTAIN dihitung gagal: 32 / 100, 31 / 100, 31 / 100.
+
+Per mode prompt, per juri (halusinasi / dinilai, ABSTAIN dikeluarkan):
+
+| Juri | α 0,5 on | α 0,5 off | α 0,25 on | α 0,25 off | α 0 on | α 0 off |
+|---|---|---|---|---|---|---|
+| Llama | 1 / 43 | 0 / 50 | 1 / 41 | 0 / 50 | 1 / 42 | 3 / 50 |
+| DeepSeek | 11 / 38 | 15 / 50 | 13 / 39 | 18 / 50 | 11 / 40 | 20 / 50 |
+| Qwen3-235B | 15 / 39 | 15 / 50 | 13 / 38 | 19 / 50 | 17 / 38 | 18 / 50 |
+
+Tumpang-tindih antarjuri (**tidak ada di laporan**; dihitung dari `llm/evaluation/results/panel_stage2_{candidates,exploratory}_judge-v2.3.jsonl` dengan `judge_panel_aggregate.aggregate_labels`, tanpa panggilan API; berkas `*_panel.jsonl` tidak dipakai karena hanya 50 baris dan hanya run tanpa grounding):
+
+| α | ketiga juri | tepat dua juri (pasangan) | tepat satu juri | ditandai ≥ 1 juri |
+|---|---|---|---|---|
+| 0,5 | 0 | 23 (DeepSeek+Qwen 23) | 11 (Llama 1, DeepSeek 3, Qwen 7) | 34 |
+| 0,25 | 0 | 21 (DeepSeek+Qwen 20, Llama+Qwen 1) | 22 (DeepSeek 11, Qwen 11) | 43 |
+| 0 | 3 | 18 (DeepSeek+Qwen 17, Llama+DeepSeek 1) | 25 (DeepSeek 10, Qwen 15) | 46 |
+
+Jawaban yang ditandai dua juri atau lebih adalah halusinasi menurut panel; yang ditandai satu juri saja berlabel faktual. Karena itu label panel hampir sama antar-α (23 / 21 / 21), sedangkan angka per juri menurun pada α 0,5 terutama lewat tanda tunggal (11 vs 22). Tanda DeepSeek+Qwen saja: 23 vs 20.
+
+`select_stage2_winner` dijalankan ulang pada metrik laporan: kandidat {0,5; 0,25} dan {0,5; 0,25; 0} sama-sama menghasilkan winner 0,5, `deciding_tier` = tie-break, `keep_current` = false.
+
 ### 3.4 Kondisi D — dual-level retrieval
 `llm/d_lightrag/d_lightrag.py` (`D_RETRIEVAL_VERSION = "v5"` sejak Amendment 17 = v4 + anchor ber-jawaban yang sama dengan C v4 + high level menambah tetangga sampai ≥ 5 jawaban unik; v4 dan v3 tetap bisa direproduksi lewat `--d-retrieval-version`). Cek retrieval-only dev: 47 dari 50 pertanyaan mendapat 5 item (v4: 20), rata-rata 4,94; C v4: 50 dari 50. Memakai KG dan FAISS yang sama dengan C; bukan LightRAG asli (tanpa ekstraksi entitas oleh LLM).
 - **Satu skor untuk kedua level (v4):** cosine antara embedding kueri dan embedding Question pemilik jawaban (anchor untuk low-level, tetangga untuk high-level), dari cache embedding indeks FAISS. Bobot edge tidak lagi dibaca atau dipakai sebagai skor (v3 memberi 0,6 / 0,4 / 1,0 atau cosine, skala yang tidak sebanding).
