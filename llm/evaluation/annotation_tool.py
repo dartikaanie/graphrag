@@ -583,7 +583,7 @@ def confirmation_cells(run_files: list[str], test_ids: set, official: dict | Non
         cfg = (recs[0].get("config") if recs else None) or {}
         man_path = Path(path).with_name(Path(path).name + ".manifest.json")
         manifest = json.loads(man_path.read_text()) if man_path.exists() else None
-        if cfg.get("sample_split") != "test":
+        if (cfg.get("sample_split") or "test") != "test":  # an absent key means "test" (see judge_versions.run_purpose)
             problems.append(f"{Path(path).name}: sample_split is {cfg.get('sample_split')!r}, not 'test'")
             continue
         ids = {int(r["question_id"]) for r in recs}

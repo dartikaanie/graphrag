@@ -127,6 +127,45 @@ def parse_item_specs(specs: list[str] | None, n_run_files: int) -> dict[int, set
     return out
 
 
+def _frozen_ids() -> tuple[list[int], set[int]]:
+    from llm.sample_split import load_frozen_ids
+    return [int(i) for i in load_frozen_ids("test")["ids"]], {int(i) for i in load_frozen_ids("dev")["ids"]}
+
+
+def assert_official_inputs(run_files: list[str]) -> None:
+    """--official data-identity guard (2026-10-26): every input file may hold only ids of the frozen TEST list (no id
+    outside it, none from the dev list, no id twice). Raises PanelGuardError; reads the run files only."""
+    test, dev = _frozen_ids()
+    test_set, problems = set(test), []
+    for f in run_files:
+        ids = []
+        for line in open(archive_paths.resolve(f)):
+            if line.strip():
+                ids.append(int(json.loads(line)["question_id"]))
+        outside, in_dev = sorted(set(ids) - test_set), sorted(set(ids) & dev)
+        dup = len(ids) - len(set(ids))
+        if outside or in_dev or dup:
+            problems.append(f"{Path(f).name}: {len(outside)} id(s) outside the frozen test list (e.g. {outside[:3]}), "
+                            f"{len(in_dev)} id(s) from the dev list (e.g. {in_dev[:3]}), {dup} duplicate id(s)")
+    if problems:
+        raise PanelGuardError("--official refused: " + "; ".join(problems))
+
+
+def identity_report(out: Path, run_files: list[str]) -> dict:
+    """What an official judge output file holds, checked against the frozen lists (printed after every cell)."""
+    test, dev = _frozen_ids()
+    recs = read_jsonl(out)
+    ids = {int(r["question_id"]) for r in recs}
+    pairs = {(int(r["question_id"]), r["judge_id"]) for r in recs}
+    n_inputs = sum(1 for f in run_files for line in open(archive_paths.resolve(f)) if line.strip())
+    res = {"records": len(recs), "unique_question_judge_pairs": len(pairs), "expected_records": 3 * n_inputs,
+           "ids_equal_test_list": ids == set(test), "dev_ids": len(ids & dev), "ids_outside_test_list": len(ids - set(test)),
+           "failures_file_records": len(read_jsonl(failures_path_of(out)))}
+    res["ok"] = (res["records"] == res["unique_question_judge_pairs"] == res["expected_records"]
+                 and res["ids_equal_test_list"] and res["dev_ids"] == 0 and res["ids_outside_test_list"] == 0)
+    return res
+
+
 def load_panel_items(run_files: list[str], question_ids: list[int] | None = None,
                      items_by_file: dict[int, set[int]] | None = None) -> list[dict]:
     """Items of the given run files, as the judge-v2.2 runner loads them, plus item_id. `question_ids` selects
@@ -760,6 +799,12 @@ def main(argv=None) -> int:
         if not archive_paths.resolve(p).exists():
             log(f"[ERROR] run file not found: {p}")
             return 1
+    if args.official:  # data identity: only the frozen test sample, before anything is read further or written
+        try:
+            assert_official_inputs(args.run_files)
+        except PanelGuardError as e:
+            log(f"[ERROR] {e}")
+            return 2
     from annotation_tool import AnnotationError, assert_annotation_frozen, load_verified_key
     frozen = None
     try:
@@ -798,6 +843,12 @@ def main(argv=None) -> int:
         return 1
 
     out = Path(args.out)
+    if args.official and out.exists():  # an --out file already holding records of OTHER items (e.g. a stage-2 file)
+        foreign = {r.get("item_id") for r in read_jsonl(out)} - {it["item_id"] for it in items}
+        if foreign:
+            log(f"[ERROR] --official refused: {out.name} already holds {len(foreign)} record(s) of items that are not "
+                f"in these run files (e.g. {sorted(map(str, foreign))[:2]}); each cell needs its own new output file")
+            return 2
     out.parent.mkdir(parents=True, exist_ok=True)
     from llm.common.resume import repair_torn_tail  # a run killed while writing leaves a torn last line: cut it off
     repair_torn_tail(out, log)
@@ -875,6 +926,10 @@ def main(argv=None) -> int:
     if registry_gate:
         register_judge_run(registry_gate, out, panel_path, panel_public_view(spec, judges, panel_id),
                            summary["actual_cost_usd_this_run"], started, len(items), log)
+    if args.official and screening is None:  # data identity after every cell
+        ident = identity_report(out, args.run_files)
+        log(f"[identity] {json.dumps(ident)}")
+        log("[identity] OK" if ident["ok"] else "[identity] MISMATCH: do not use this file before it is explained")
     return 0
 
 

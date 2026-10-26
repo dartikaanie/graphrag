@@ -24,7 +24,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # string, so it also catches an accidentally-pasted real key regardless
 # of which provider issued it.
 KEY_LIKE_PATTERN = re.compile(
-    r"sk-[A-Za-z0-9_-]{20,}"          # OpenAI-style (sk-..., sk-proj-..., sk-ant-...)
+    r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}"   # OpenAI-style (sk-..., sk-proj-..., sk-ant-...); not inside a word:
+    # "...its-ok-to-ask-and-answer-your-own-questions" (a Stack Overflow blog URL in a model answer) contains "sk-and-answer-..."
     r"|AKIA[0-9A-Z]{16}"               # AWS access key id shape
     r"|Bearer\s+[A-Za-z0-9._-]{20,}",  # a raw bearer-token header value
     re.IGNORECASE,
@@ -59,6 +60,11 @@ def test_key_like_pattern_detects_synthetic_fake_keys():
     assert KEY_LIKE_PATTERN.search("sk-proj-" + "B1c2D3e4" * 4)
     assert KEY_LIKE_PATTERN.search("AKIA1234567890ABCDEF")
     assert KEY_LIKE_PATTERN.search("Authorization: Bearer " + "x" * 30)
+
+
+def test_key_like_pattern_ignores_sk_inside_a_word_such_as_ask_and_answer_urls():
+    assert not KEY_LIKE_PATTERN.search("https://stackoverflow.blog/2011/07/its-ok-to-ask-and-answer-your-own-questions")
+    assert KEY_LIKE_PATTERN.search("key=sk-" + "a" * 40) and KEY_LIKE_PATTERN.search('"sk-proj-' + "B1c2D3e4" * 4)
 
 
 def test_key_like_pattern_does_not_false_positive_on_benign_hash_like_strings():

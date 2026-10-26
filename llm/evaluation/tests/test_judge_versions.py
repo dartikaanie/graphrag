@@ -75,3 +75,23 @@ def test_menu_points_to_the_v2_2_runner():
     menu = (Path(jv.REPO_ROOT) / "run.py").read_text()
     assert '"script": "llm_judge_hallucination_v2_2.py"' in menu
     assert '"script": "llm_judge_hallucination_v2_1.py"' not in menu
+
+
+def test_run_purpose_treats_an_absent_sample_split_as_test(tmp_path):
+    """Test-sample runs do not store sample_split (only non-default values are written). Regression 2026-10-26: such
+    files were classified as development, so the official judging refused them."""
+    def write(name, rec):
+        p = tmp_path / name
+        p.write_text(json.dumps(rec) + "\n")
+        return str(p)
+
+    absent = write("absent.jsonl", {"question_id": 1, "config": {"condition": "A", "n_sample": 384}})
+    test = write("test.jsonl", {"question_id": 1, "config": {"sample_split": "test"}})
+    dev = write("dev.jsonl", {"question_id": 1, "config": {"sample_split": "dev"}})
+    no_config = write("judge_out.jsonl", {"item_id": "x", "label": "FAKTUAL"})     # not a run file
+    calib = set()
+    assert jv.run_purpose([absent], calib) == jv.PURPOSE_OFFICIAL
+    assert jv.run_purpose([test], calib) == jv.PURPOSE_OFFICIAL
+    assert jv.run_purpose([dev], calib) == jv.PURPOSE_DEVELOPMENT
+    assert jv.run_purpose([no_config], calib) == jv.PURPOSE_DEVELOPMENT
+    assert jv.run_purpose([dev, absent], calib) == jv.PURPOSE_OFFICIAL

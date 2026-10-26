@@ -75,7 +75,11 @@ def run_purpose(run_files: list[str], calibration_paths: set[str] | None = None)
         with open(archive_paths.resolve(f)) as fh:
             for line in fh:
                 if line.strip():
-                    if (json.loads(line).get("config") or {}).get("sample_split") == "test":
+                    config = json.loads(line).get("config")
+                    # A test-sample run does not store sample_split (it is only written when it differs from the
+                    # default "test", so earlier config hashes stay unchanged): an ABSENT key in a generation
+                    # config means "test". A record without any config (judge outputs, sweeps) is not a run file.
+                    if isinstance(config, dict) and (config.get("sample_split") or "test") == "test":
                         return PURPOSE_OFFICIAL
                     break
     return PURPOSE_DEVELOPMENT

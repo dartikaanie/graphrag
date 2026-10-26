@@ -53,7 +53,7 @@ def _plan(out):
     return jp.plan_tasks(ITEMS, {i["question_id"]: "body" for i in ITEMS}, done)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)   # autouse: _run() reconciles the ledger, so NO test may reach the real run_registry.json
 def registry(tmp_path, monkeypatch):
     monkeypatch.setattr(rr, "REGISTRY_PATH", tmp_path / "run_registry.json")
     rr.save(rr.load(), None)
@@ -178,3 +178,60 @@ def test_main_reconciles_the_ledger_at_start_and_register_judge_run_uses_it():
     assert src.index("record_deepinfra_spend(") < src.index("def register_judge_run")
     main = src[src.index("def main("):]
     assert "reconcile_ledger(out, registry_gate" in main and "repair_torn_tail(out" in main
+
+
+# --- --official data-identity guards (2026-10-26) -------------------------------------------------------------------
+
+def _frozen():
+    test, dev = jp._frozen_ids()
+    return test, sorted(dev)
+
+
+def _runfile(tmp_path, ids, name="run.jsonl"):
+    p = tmp_path / name
+    p.write_text("".join(json.dumps({"question_id": i, "config": {"condition": "A"}}) + "\n" for i in ids))
+    return str(p)
+
+
+def test_official_inputs_must_be_exactly_ids_of_the_frozen_test_list(tmp_path):
+    test, dev = _frozen()
+    jp.assert_official_inputs([_runfile(tmp_path, test)])                                   # the real sample: fine
+    for bad_ids, what in ((test[:-1] + [dev[0]], "from the dev list"), (test[:-1] + [123], "outside the frozen test list"),
+                          (test + [test[0]], "duplicate")):
+        with pytest.raises(jp.PanelGuardError, match="--official refused"):
+            jp.assert_official_inputs([_runfile(tmp_path, bad_ids, "bad.jsonl")])
+
+
+def test_main_official_refuses_with_exit_2_and_writes_nothing(tmp_path, monkeypatch):
+    test, dev = _frozen()
+    run = _runfile(tmp_path, test[:-1] + [dev[0]])
+    out = tmp_path / "sub" / "panel_official_X_judge-v2.3.jsonl"
+    rc = jp.main(["--run-files", run, "--out", str(out), "--panel", "panel-v2", "--judge-version", "judge-v2.3",
+                  "--official", "--max-cost-usd", "2.0", "--dry-run"])
+    assert rc == 2 and not out.exists() and not out.parent.exists()          # nothing written, not even the directory
+
+
+def test_identity_report_flags_missing_duplicate_dev_and_foreign_records(tmp_path):
+    test, dev = _frozen()
+    run = _runfile(tmp_path, test)
+    out = tmp_path / "o.jsonl"
+
+    def write(recs):
+        out.write_text("".join(json.dumps(r) + "\n" for r in recs))
+    full = [{"question_id": q, "judge_id": j} for q in test for j in ("llama", "deepseek", "qwen3-235b")]
+    write(full)
+    r = jp.identity_report(out, [run])
+    assert r["ok"] and r["records"] == r["unique_question_judge_pairs"] == r["expected_records"] == 3 * 384
+    write(full[:-1]); assert not jp.identity_report(out, [run])["ok"]                     # a missing record
+    write(full + [full[0]]); assert not jp.identity_report(out, [run])["ok"]              # a duplicate pair
+    write(full[:-3] + [{"question_id": dev[0], "judge_id": j} for j in ("llama", "deepseek", "qwen3-235b")])
+    r = jp.identity_report(out, [run])
+    assert not r["ok"] and r["dev_ids"] == 1 and r["ids_outside_test_list"] == 1 and not r["ids_equal_test_list"]
+
+
+def test_official_main_wires_the_guards_in_the_right_order():
+    import inspect
+    main = inspect.getsource(jp.main)
+    assert main.index("assert_official_inputs(") < main.index("check_run_allowed(")
+    assert main.index("already holds") < main.index("out.parent.mkdir(")                # foreign-records guard before any write
+    assert main.index("identity_report(out") > main.index("register_judge_run(")

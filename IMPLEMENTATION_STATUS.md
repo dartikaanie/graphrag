@@ -204,3 +204,47 @@ Sebagian tes (`*_live.py`) membutuhkan Neo4j dan volume data; tes lain berjalan 
 **2-hop traversal di C.** `ORDER BY` dari `LIMIT 50` memakai **bobot jalur penuh** `r2.weight * r3.weight` (edge pertama × edge kedua), lalu `a.id` naik sebagai pemutus seri; `LIMIT 50` berlaku **per kueri** (satu query Cypher untuk ketiga anchor sekaligus, bukan per anchor atau per seed) dan sebelum dedup jawaban. 1-hop tidak dibatasi. Sumber: `llm/c_graphrag/c_graphrag.py` (`traverse_graph`, baris `WITH ... (r2.weight * r3.weight) AS edge_weight ORDER BY edge_weight DESC, a.id ASC LIMIT 50`).
 
 **Mode leakage pada stage-1 sweep.** Stage 1 of record (recheck Amendment 9, `expansion_stage1_recheck.py`, 2026-10-18) dijalankan dengan mode leakage **`dup+neardup0.95`** (bawaan saat itu), tercatat di `meta.leakage_mode` pada `results/_archive/2026-10-19_pre-official/llm/c_graphrag/results/expansion_check/stage1_expansion_report_20261018T042953Z.json` dan di `leakage.mode` setiap record `stage1_expansion_*_alpha*.jsonl` (50 record per α, semuanya `n_excluded_q = 1`). Mode resmi sekarang `thread`. Himpunan eksklusi kedua mode **identik** pada ke-50 pertanyaan dev: `results/leakage/exclusion_sets.parquet` mencatat 0 Duplicate dan 0 near-duplicate untuk semuanya, sehingga tambahan eksklusi `dup+neardup0.95` kosong (kalimat Amendment 15 "stage 1 ran with the thread-only exclusion" kurang tepat secara nama mode, tetapi benar secara isi). Stage-1 Amendment 5–6 (sebelum Amendment 8) memakai eksklusi thread saja. Retrieval tidak dijalankan ulang di sini, jadi kesamaan top-5 (50/50 pada α 0,5 dan 0,25, menurut Amendment 15) tidak diverifikasi ulang. Untuk menjalankan ulang: `python3 llm/c_graphrag/expansion_stage1_recheck.py` (dengan mode bawaan `thread`; butuh Neo4j, cache FAISS dan data parquet; retrieval-only tanpa biaya API, hanya item konteks yang labelnya tidak ada di cache yang perlu dinilai ulang oleh ctxrel-v2/Llama, sekitar $0,014 pada recheck sebelumnya). Tidak dijalankan.
+
+
+---
+
+## 12. Pembaruan 2026-10-26: generasi resmi selesai, penilaian (judging) tertahan lalu diperbaiki
+
+### 12a. Hasil generasi resmi (empat sel, dari tag `official-run-start2`)
+
+Keempat sel dijalankan satu per satu dari tag `official-run-start2` (commit `e1dd047`), hash parameter beku `fcbee86cbb25`, satu invocation per sel, tanpa resume. Tidak ada kegagalan leakage, tidak ada rekaman yang tidak dapat dipakai, tidak ada galat drive, Neo4j, atau OpenAI.
+
+| | R1 A | R3 B-grounded | R5 C-primary (α 0,5) | R9 D-grounded |
+|---|---|---|---|---|
+| n / usable | 384 / 384 | 384 / 384 | 384 / 384 | 384 / 384 |
+| id unik, urutan beku | ya, ya | ya, ya | ya, ya | ya, ya |
+| rata-rata item konteks | 0 | 5,00 | 5,00 | 4,91 (26 pertanyaan < 5, minimum 3) |
+| latensi ujung ke ujung rata-rata / p95 / maks (s) | 7,55 / 10,96 / 20,5 | 5,97 / 9,39 / 77,1 | 8,09 / **13,70** / 23,3 | 6,50 / 11,13 / 40,6 |
+| retrieval rata-rata / p95 (s) | – | 1,53 / 2,17 | 2,82 / 4,73 | 1,05 / 1,85 |
+| kutipan valid (NF2) | – | 72,4% | 68,2% | 67,2% |
+| cosine rata-rata ke jawaban diterima | 0,614 | 0,602 | 0,600 | 0,601 |
+| waktu dinding | 51,3 menit | 42,2 menit | 55,1 menit | 45,0 menit |
+| biaya generasi | $0,190 | $0,211 | $0,207 | $0,201 |
+
+- Total biaya generasi **$0,8085** (proyeksi $0,856 dengan buffer 10%).
+- **NF3** (p95 latensi ujung ke ujung Kondisi C): **13,70 s**, di bawah target 15 s. Kondisi pengukuran: Apple M2 dengan RAM 8 GB, Neo4j lokal, embedding pertanyaan dibaca dari SSD eksternal (T7 Shield), indeks FAISS dimuat sekali ke RAM.
+- Outlier B: satu panggilan 77 s (hampir pasti penundaan sisi OpenAI); hanya memengaruhi maksimum, bukan p95.
+- ABSTAIN belum dapat dihitung (label panel). Proksi: jawaban tanpa kutipan valid = 27,6% (B), 31,8% (C), 32,8% (D).
+- Manifes menunjukkan `git_dirty: true` karena berkas keluaran yang belum dilacak dan penambahan ke `run_history.jsonl` oleh run itu sendiri; kode tidak berubah.
+- Keempat run didaftarkan sebagai `official` di `results/run_registry.json` (biaya per sel di atas). Ledger DeepInfra tidak berubah oleh pendaftaran generasi.
+
+### 12b. Penghalang penilaian dan perbaikannya
+
+- Konfigurasi run sampel uji **tidak menyimpan** kunci `sample_split` (hanya ditulis bila bukan `test`, supaya hash lama tidak berubah). `judge_versions.run_purpose()` mengklasifikasikan berkas hanya sebagai resmi bila kunci itu bernilai `test`, sehingga keempat berkas resmi dianggap *development* dan `judge_panel.py --official` menolaknya. Tanpa `--official` mereka akan lolos tanpa gerbang resmi.
+- Perbaikan: kunci yang tidak ada berarti `test` (`(config.get("sample_split") or "test") == "test"`); rekaman tanpa `config` (keluaran juri, sweep) tetap bukan berkas run. Tes baru di `test_judge_versions.py` (tidak ada → resmi, `dev` → development, `test` → resmi, tanpa config → development).
+- Pembaca lain: `annotation_tool.py` (set konfirmasi lama, tidak aktif) membaca kunci yang sama dengan cara yang sama dan diberi perbaikan yang sama. `judge_bias_probes.py` mensyaratkan `== "dev"`; kunci yang tidak ada (= test) memang harus ditolak, jadi tidak diubah.
+- Klasifikasi seluruh berkas hasil (hanya baca): dari 73 berkas ber-config, 13 berubah dari *development* menjadi *resmi*: keempat berkas resmi baru, dan sembilan pilot arsip `n10` pra-resmi (`results/_archive/2026-10-19_pre-official/`: 4 C, 2 D, 1 A, 2 B). Pilot arsip itu memang sampel uji; tidak ada yang akan dinilai ulang. 60 berkas lain tetap *development*.
+
+### 12c. Dua entri ledger palsu dan koreksinya
+
+- Tiga tes di `test_judge_panel_resume.py` memanggil `reconcile_ledger` tanpa mengisolasi registry dan menulis dua entri ke `results/run_registry.json` (label "dev-stage2 judging p.jsonl (from the stored records)", $0,01371 + $0,01949 = **$0,0332**, 2026-10-26T08:04:09Z). Tidak ada panggilan DeepInfra. Entri itu ikut ter-commit di `e1dd047`.
+- Koreksi: fixture `registry` kini `autouse` (tidak ada tes yang boleh menyentuh registry asli) dan satu entri penyesuaian **−$0,0332** (`adjustment: true`, "ADJUSTMENT 3") membatalkannya; riwayat tidak dihapus. Setelah koreksi: total ledger **$1,174691**, sisa **$7,825309** dari $9,00.
+
+### 12d. Langkah berikutnya
+
+Penilaian per sel dengan `--official` (panel-v2, judge-v2.3, 3 juri, 2-dari-3), batas biaya **$2,00 per sel**, dari tag baru `official-judging-start` (dibuat penulis setelah commit). Dry run R1 (1152 panggilan, proyeksi $1,5358, batas $2,00) sudah dilakukan tanpa panggilan API. Metrik sekunder dan `official_report.py` belum dijalankan.

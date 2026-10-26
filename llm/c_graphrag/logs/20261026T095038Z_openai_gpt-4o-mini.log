@@ -1,0 +1,1585 @@
+16:50:38 | [logging] Log detail run ini -> /Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/logs/20261026T095038Z_openai_gpt-4o-mini.log
+16:50:38 | [config] official C run: c_primary (alpha=0.5, official_params.json)
+16:50:38 | [config] output auto-generated -> 'results/condition_c_openai_gpt-4o-mini_n384_seed42_fw0-7-0-3_v4-alpha0-5_v3_95d2f39d2c.jsonl'
+16:50:38 | [config] n_sample=384 seed=42 provider=openai model=gpt-4o-mini
+16:50:38 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+16:50:38 | [config] fusion_mode=trust_weighted fusion_w_path_trust=0.7 fusion_w_intrinsic=0.3 semantic_expansion_trust_cap=0.4
+16:50:38 | [config] require_grounding=True enable_semantic_expansion=True
+16:50:39 | [1/9] Mengambil oversample pool (1536 kandidat)...
+16:50:45 |       Oversample pool diambil: 1,536 kandidat
+16:50:45 | [2/9] Menghitung token & filter <= 2048 token...
+16:50:45 |       1,536 -> 1,471 lolos filter token
+16:50:46 | [sample] 384 test questions == frozen list llm/sample_ids/test_ids_v1.json
+16:50:46 | [4/9] Mengambil teks accepted answer (ground truth)...
+16:50:50 |       Ditemukan 384 accepted answer
+16:50:50 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+16:50:52 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+16:50:58 | [5/9] Graph trustScoreVersion: v3-logscore
+16:51:07 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari /Volumes/T7 Shield/S2/THESIS GRAPHRAG/project/graphrag_old/01_data_cleaning/_kg_workspace
+16:51:09 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+16:51:20 | [config] v3 embedding cache -> /Users/dartikaanie/Library/Caches/graphrag/embedding_cache.sqlite3
+16:51:20 | [config] leakage mode = thread (llm/common/leakage.py)
+16:51:21 |       [resume] invocation 1 of condition_c_openai_gpt-4o-mini_n384_seed42_fw0-7-0-3_v4-alpha0-5_v3_95d2f39d2c.jsonl at e1dd047, frozen hash fcbee86cbb25
+16:51:21 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 384 pertanyaan...
+16:51:22 |       [debug-init] cwd='/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag' output_path=PosixPath('results/condition_c_openai_gpt-4o-mini_n384_seed42_fw0-7-0-3_v4-alpha0-5_v3_95d2f39d2c.jsonl') resolved=PosixPath('/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n384_seed42_fw0-7-0-3_v4-alpha0-5_v3_95d2f39d2c.jsonl') fileno=13
+16:51:36 |       [leakage] Id=38118194 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:51:40 |       [latency] cond=C Id=38118194 retrieval_sec=13.718 total_sec=17.908
+16:51:40 |       [debug-write] Id=38118194 bytes_written_this_line=17856 file_size_now=17856 f_out.tell()=17856
+16:51:40 |       [1/384] Id=38118194 anchors=3 context=5 citation=True valid_citation=True similarity=0.631 retrieval=13.72s
+16:51:44 |       [leakage] Id=76224221 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:51:48 |       [latency] cond=C Id=76224221 retrieval_sec=3.938 total_sec=7.718
+16:51:48 |       [debug-write] Id=76224221 bytes_written_this_line=28648 file_size_now=46504 f_out.tell()=46504
+16:51:48 |       [2/384] Id=76224221 anchors=3 context=5 citation=False valid_citation=False similarity=0.643 retrieval=3.94s
+16:51:56 |       [leakage] Id=20443560 mode=thread n_excluded_q=1 n_excluded_a=6 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:52:01 |       [latency] cond=C Id=20443560 retrieval_sec=7.348 total_sec=12.552
+16:52:01 |       [debug-write] Id=20443560 bytes_written_this_line=25152 file_size_now=71656 f_out.tell()=71656
+16:52:01 |       [3/384] Id=20443560 anchors=3 context=5 citation=True valid_citation=True similarity=0.629 retrieval=7.35s
+16:52:03 |       [leakage] Id=411756 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:52:06 |       [latency] cond=C Id=411756 retrieval_sec=2.031 total_sec=4.502
+16:52:06 |       [debug-write] Id=411756 bytes_written_this_line=23090 file_size_now=94746 f_out.tell()=94746
+16:52:06 |       [4/384] Id=411756 anchors=3 context=5 citation=True valid_citation=True similarity=0.654 retrieval=2.03s
+16:52:11 |       [leakage] Id=2617170 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:52:14 |       [latency] cond=C Id=2617170 retrieval_sec=4.305 total_sec=7.325
+16:52:14 |       [debug-write] Id=2617170 bytes_written_this_line=22751 file_size_now=117497 f_out.tell()=117497
+16:52:14 |       [5/384] Id=2617170 anchors=3 context=5 citation=True valid_citation=True similarity=0.671 retrieval=4.30s
+16:52:17 |       [leakage] Id=56612920 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:52:24 |       [latency] cond=C Id=56612920 retrieval_sec=2.704 total_sec=9.669
+16:52:24 |       [debug-write] Id=56612920 bytes_written_this_line=30558 file_size_now=148055 f_out.tell()=148055
+16:52:24 |       [6/384] Id=56612920 anchors=3 context=5 citation=True valid_citation=True similarity=0.532 retrieval=2.70s
+16:52:27 |       [leakage] Id=3882147 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:52:32 |       [latency] cond=C Id=3882147 retrieval_sec=2.865 total_sec=7.376
+16:52:32 |       [debug-write] Id=3882147 bytes_written_this_line=24786 file_size_now=172841 f_out.tell()=172841
+16:52:32 |       [7/384] Id=3882147 anchors=3 context=5 citation=False valid_citation=False similarity=0.602 retrieval=2.86s
+16:52:34 |       [leakage] Id=26406581 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:52:36 |       [latency] cond=C Id=26406581 retrieval_sec=2.641 total_sec=4.324
+16:52:36 |       [debug-write] Id=26406581 bytes_written_this_line=24226 file_size_now=197067 f_out.tell()=197067
+16:52:36 |       [8/384] Id=26406581 anchors=3 context=5 citation=False valid_citation=False similarity=0.770 retrieval=2.64s
+16:52:39 |       [leakage] Id=11118023 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:52:41 |       [latency] cond=C Id=11118023 retrieval_sec=2.644 total_sec=4.438
+16:52:41 |       [debug-write] Id=11118023 bytes_written_this_line=22985 file_size_now=220052 f_out.tell()=220052
+16:52:41 |       [9/384] Id=11118023 anchors=3 context=5 citation=False valid_citation=False similarity=0.587 retrieval=2.64s
+16:52:44 |       [leakage] Id=51061836 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:53:05 |       [latency] cond=C Id=51061836 retrieval_sec=3.093 total_sec=23.269
+16:53:05 |       [debug-write] Id=51061836 bytes_written_this_line=25680 file_size_now=245732 f_out.tell()=245732
+16:53:05 |       [10/384] Id=51061836 anchors=3 context=5 citation=True valid_citation=True similarity=0.676 retrieval=3.09s
+16:53:08 |       [leakage] Id=3329222 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:53:11 |       [latency] cond=C Id=3329222 retrieval_sec=3.364 total_sec=5.438
+16:53:11 |       [debug-write] Id=3329222 bytes_written_this_line=26499 file_size_now=272231 f_out.tell()=272231
+16:53:11 |       [11/384] Id=3329222 anchors=3 context=5 citation=True valid_citation=True similarity=0.326 retrieval=3.36s
+16:53:14 |       [leakage] Id=25856908 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:53:21 |       [latency] cond=C Id=25856908 retrieval_sec=2.689 total_sec=9.553
+16:53:21 |       [debug-write] Id=25856908 bytes_written_this_line=24605 file_size_now=296836 f_out.tell()=296836
+16:53:21 |       [12/384] Id=25856908 anchors=3 context=5 citation=True valid_citation=True similarity=0.548 retrieval=2.69s
+16:53:24 |       [leakage] Id=37882086 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:53:31 |       [latency] cond=C Id=37882086 retrieval_sec=3.435 total_sec=9.692
+16:53:31 |       [debug-write] Id=37882086 bytes_written_this_line=30540 file_size_now=327376 f_out.tell()=327376
+16:53:31 |       [13/384] Id=37882086 anchors=3 context=5 citation=True valid_citation=True similarity=0.728 retrieval=3.43s
+16:53:38 |       [leakage] Id=56998713 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:53:46 |       [latency] cond=C Id=56998713 retrieval_sec=7.117 total_sec=14.758
+16:53:46 |       [debug-write] Id=56998713 bytes_written_this_line=26984 file_size_now=354360 f_out.tell()=354360
+16:53:46 |       [14/384] Id=56998713 anchors=3 context=5 citation=True valid_citation=True similarity=0.756 retrieval=7.12s
+16:53:49 |       [leakage] Id=59164737 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:53:58 |       [latency] cond=C Id=59164737 retrieval_sec=2.764 total_sec=12.241
+16:53:58 |       [debug-write] Id=59164737 bytes_written_this_line=23360 file_size_now=377720 f_out.tell()=377720
+16:53:58 |       [15/384] Id=59164737 anchors=3 context=5 citation=True valid_citation=True similarity=0.471 retrieval=2.76s
+16:54:02 |       [leakage] Id=58133039 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:54:11 |       [latency] cond=C Id=58133039 retrieval_sec=3.057 total_sec=11.645
+16:54:11 |       [debug-write] Id=58133039 bytes_written_this_line=24275 file_size_now=401995 f_out.tell()=401995
+16:54:11 |       [16/384] Id=58133039 anchors=3 context=5 citation=True valid_citation=True similarity=0.816 retrieval=3.06s
+16:54:15 |       [leakage] Id=43635941 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:54:19 |       [latency] cond=C Id=43635941 retrieval_sec=3.901 total_sec=7.695
+16:54:19 |       [debug-write] Id=43635941 bytes_written_this_line=30029 file_size_now=432024 f_out.tell()=432024
+16:54:19 |       [17/384] Id=43635941 anchors=3 context=5 citation=True valid_citation=True similarity=0.617 retrieval=3.90s
+16:54:22 |       [leakage] Id=14322480 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:54:26 |       [latency] cond=C Id=14322480 retrieval_sec=2.618 total_sec=6.937
+16:54:26 |       [debug-write] Id=14322480 bytes_written_this_line=22856 file_size_now=454880 f_out.tell()=454880
+16:54:26 |       [18/384] Id=14322480 anchors=3 context=5 citation=True valid_citation=True similarity=0.809 retrieval=2.62s
+16:54:29 |       [leakage] Id=78022374 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:54:30 |       [latency] cond=C Id=78022374 retrieval_sec=2.376 total_sec=4.023
+16:54:30 |       [debug-write] Id=78022374 bytes_written_this_line=21416 file_size_now=476296 f_out.tell()=476296
+16:54:30 |       [19/384] Id=78022374 anchors=3 context=5 citation=False valid_citation=False similarity=0.564 retrieval=2.38s
+16:54:34 |       [leakage] Id=59923382 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:54:36 |       [latency] cond=C Id=59923382 retrieval_sec=3.181 total_sec=5.168
+16:54:36 |       [debug-write] Id=59923382 bytes_written_this_line=24590 file_size_now=500886 f_out.tell()=500886
+16:54:36 |       [20/384] Id=59923382 anchors=3 context=5 citation=True valid_citation=True similarity=0.526 retrieval=3.18s
+16:54:38 |       [leakage] Id=58418666 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:54:44 |       [latency] cond=C Id=58418666 retrieval_sec=2.143 total_sec=7.623
+16:54:44 |       [debug-write] Id=58418666 bytes_written_this_line=24775 file_size_now=525661 f_out.tell()=525661
+16:54:44 |       [21/384] Id=58418666 anchors=3 context=5 citation=True valid_citation=True similarity=0.627 retrieval=2.14s
+16:54:47 |       [leakage] Id=36374178 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:54:50 |       [latency] cond=C Id=36374178 retrieval_sec=3.167 total_sec=6.140
+16:54:50 |       [debug-write] Id=36374178 bytes_written_this_line=24622 file_size_now=550283 f_out.tell()=550283
+16:54:50 |       [22/384] Id=36374178 anchors=3 context=5 citation=True valid_citation=True similarity=0.735 retrieval=3.17s
+16:54:56 |       [leakage] Id=21164127 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:55:03 |       [latency] cond=C Id=21164127 retrieval_sec=4.834 total_sec=11.648
+16:55:03 |       [debug-write] Id=21164127 bytes_written_this_line=23211 file_size_now=573494 f_out.tell()=573494
+16:55:03 |       [23/384] Id=21164127 anchors=3 context=5 citation=True valid_citation=True similarity=0.592 retrieval=4.83s
+16:55:05 |       [leakage] Id=6084718 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:55:10 |       [latency] cond=C Id=6084718 retrieval_sec=2.640 total_sec=6.955
+16:55:10 |       [debug-write] Id=6084718 bytes_written_this_line=24785 file_size_now=598279 f_out.tell()=598279
+16:55:10 |       [24/384] Id=6084718 anchors=3 context=5 citation=True valid_citation=True similarity=0.441 retrieval=2.64s
+16:55:13 |       [leakage] Id=4167718 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:55:15 |       [latency] cond=C Id=4167718 retrieval_sec=2.801 total_sec=4.999
+16:55:15 |       [debug-write] Id=4167718 bytes_written_this_line=19448 file_size_now=617727 f_out.tell()=617727
+16:55:15 |       [25/384] Id=4167718 anchors=3 context=5 citation=True valid_citation=True similarity=0.640 retrieval=2.80s
+16:55:18 |       [leakage] Id=416108 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:55:22 |       [latency] cond=C Id=416108 retrieval_sec=2.857 total_sec=6.388
+16:55:22 |       [debug-write] Id=416108 bytes_written_this_line=22446 file_size_now=640173 f_out.tell()=640173
+16:55:22 |       [26/384] Id=416108 anchors=3 context=5 citation=True valid_citation=True similarity=0.670 retrieval=2.86s
+16:55:26 |       [leakage] Id=29003584 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:55:32 |       [latency] cond=C Id=29003584 retrieval_sec=3.260 total_sec=9.215
+16:55:32 |       [debug-write] Id=29003584 bytes_written_this_line=27779 file_size_now=667952 f_out.tell()=667952
+16:55:32 |       [27/384] Id=29003584 anchors=3 context=5 citation=True valid_citation=True similarity=0.651 retrieval=3.26s
+16:55:34 |       [leakage] Id=69176711 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:55:42 |       [latency] cond=C Id=69176711 retrieval_sec=2.320 total_sec=9.525
+16:55:42 |       [debug-write] Id=69176711 bytes_written_this_line=30328 file_size_now=698280 f_out.tell()=698280
+16:55:42 |       [28/384] Id=69176711 anchors=3 context=5 citation=True valid_citation=True similarity=0.786 retrieval=2.32s
+16:55:44 |       [leakage] Id=23173994 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:55:51 |       [latency] cond=C Id=23173994 retrieval_sec=1.829 total_sec=8.567
+16:55:51 |       [debug-write] Id=23173994 bytes_written_this_line=27756 file_size_now=726036 f_out.tell()=726036
+16:55:51 |       [29/384] Id=23173994 anchors=3 context=5 citation=True valid_citation=True similarity=0.734 retrieval=1.83s
+16:55:53 |       [leakage] Id=76694442 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:55:56 |       [latency] cond=C Id=76694442 retrieval_sec=2.440 total_sec=4.803
+16:55:56 |       [debug-write] Id=76694442 bytes_written_this_line=21739 file_size_now=747775 f_out.tell()=747775
+16:55:56 |       [30/384] Id=76694442 anchors=3 context=5 citation=True valid_citation=True similarity=0.648 retrieval=2.44s
+16:56:00 |       [leakage] Id=61698964 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:56:06 |       [latency] cond=C Id=61698964 retrieval_sec=3.726 total_sec=9.550
+16:56:06 |       [debug-write] Id=61698964 bytes_written_this_line=28852 file_size_now=776627 f_out.tell()=776627
+16:56:06 |       [31/384] Id=61698964 anchors=3 context=5 citation=True valid_citation=True similarity=0.699 retrieval=3.73s
+16:56:09 |       [leakage] Id=241991 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:56:12 |       [latency] cond=C Id=241991 retrieval_sec=2.900 total_sec=6.310
+16:56:12 |       [debug-write] Id=241991 bytes_written_this_line=21259 file_size_now=797886 f_out.tell()=797886
+16:56:12 |       [32/384] Id=241991 anchors=3 context=5 citation=True valid_citation=True similarity=0.521 retrieval=2.90s
+16:56:16 |       [leakage] Id=63045323 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:56:26 |       [latency] cond=C Id=63045323 retrieval_sec=3.065 total_sec=13.611
+16:56:26 |       [debug-write] Id=63045323 bytes_written_this_line=24295 file_size_now=822181 f_out.tell()=822181
+16:56:26 |       [33/384] Id=63045323 anchors=3 context=5 citation=False valid_citation=False similarity=0.691 retrieval=3.07s
+16:56:29 |       [leakage] Id=77229428 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:56:33 |       [latency] cond=C Id=77229428 retrieval_sec=2.458 total_sec=5.764
+16:56:33 |       [debug-write] Id=77229428 bytes_written_this_line=24196 file_size_now=846377 f_out.tell()=846377
+16:56:33 |       [34/384] Id=77229428 anchors=3 context=5 citation=True valid_citation=True similarity=0.582 retrieval=2.46s
+16:56:35 |       [leakage] Id=41732060 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:56:39 |       [latency] cond=C Id=41732060 retrieval_sec=2.465 total_sec=5.864
+16:56:39 |       [debug-write] Id=41732060 bytes_written_this_line=26576 file_size_now=872953 f_out.tell()=872953
+16:56:39 |       [35/384] Id=41732060 anchors=3 context=5 citation=False valid_citation=False similarity=0.674 retrieval=2.46s
+16:56:42 |       [leakage] Id=33170210 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:56:46 |       [latency] cond=C Id=33170210 retrieval_sec=2.919 total_sec=6.478
+16:56:46 |       [debug-write] Id=33170210 bytes_written_this_line=18463 file_size_now=891416 f_out.tell()=891416
+16:56:46 |       [36/384] Id=33170210 anchors=3 context=5 citation=True valid_citation=True similarity=0.620 retrieval=2.92s
+16:56:48 |       [leakage] Id=26076959 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:56:55 |       [latency] cond=C Id=26076959 retrieval_sec=1.826 total_sec=8.542
+16:56:55 |       [debug-write] Id=26076959 bytes_written_this_line=39524 file_size_now=930940 f_out.tell()=930940
+16:56:55 |       [37/384] Id=26076959 anchors=3 context=5 citation=False valid_citation=False similarity=0.725 retrieval=1.83s
+16:56:57 |       [leakage] Id=48268212 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:04 |       [latency] cond=C Id=48268212 retrieval_sec=2.093 total_sec=8.804
+16:57:04 |       [debug-write] Id=48268212 bytes_written_this_line=25956 file_size_now=956896 f_out.tell()=956896
+16:57:04 |       [38/384] Id=48268212 anchors=3 context=5 citation=True valid_citation=True similarity=0.474 retrieval=2.09s
+16:57:07 |       [leakage] Id=9428064 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=12 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:14 |       [latency] cond=C Id=9428064 retrieval_sec=3.062 total_sec=9.190
+16:57:14 |       [debug-write] Id=9428064 bytes_written_this_line=21768 file_size_now=978664 f_out.tell()=978664
+16:57:14 |       [39/384] Id=9428064 anchors=3 context=5 citation=True valid_citation=True similarity=0.635 retrieval=3.06s
+16:57:16 |       [leakage] Id=8137575 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:20 |       [latency] cond=C Id=8137575 retrieval_sec=1.723 total_sec=5.488
+16:57:20 |       [debug-write] Id=8137575 bytes_written_this_line=17771 file_size_now=996435 f_out.tell()=996435
+16:57:20 |       [40/384] Id=8137575 anchors=3 context=5 citation=True valid_citation=True similarity=0.556 retrieval=1.72s
+16:57:22 |       [leakage] Id=7705733 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:27 |       [latency] cond=C Id=7705733 retrieval_sec=2.416 total_sec=7.418
+16:57:27 |       [debug-write] Id=7705733 bytes_written_this_line=27416 file_size_now=1023851 f_out.tell()=1023851
+16:57:27 |       [41/384] Id=7705733 anchors=3 context=5 citation=False valid_citation=False similarity=0.514 retrieval=2.42s
+16:57:31 |       [leakage] Id=52175918 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:32 |       [latency] cond=C Id=52175918 retrieval_sec=2.864 total_sec=4.639
+16:57:32 |       [debug-write] Id=52175918 bytes_written_this_line=22866 file_size_now=1046717 f_out.tell()=1046717
+16:57:32 |       [42/384] Id=52175918 anchors=3 context=5 citation=False valid_citation=False similarity=0.659 retrieval=2.86s
+16:57:35 |       [leakage] Id=70135243 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:39 |       [latency] cond=C Id=70135243 retrieval_sec=2.480 total_sec=6.026
+16:57:39 |       [debug-write] Id=70135243 bytes_written_this_line=21125 file_size_now=1067842 f_out.tell()=1067842
+16:57:39 |       [43/384] Id=70135243 anchors=3 context=5 citation=True valid_citation=True similarity=0.681 retrieval=2.48s
+16:57:42 |       [leakage] Id=40356770 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:43 |       [latency] cond=C Id=40356770 retrieval_sec=2.481 total_sec=3.955
+16:57:43 |       [debug-write] Id=40356770 bytes_written_this_line=18398 file_size_now=1086240 f_out.tell()=1086240
+16:57:43 |       [44/384] Id=40356770 anchors=3 context=5 citation=False valid_citation=False similarity=0.412 retrieval=2.48s
+16:57:47 |       [leakage] Id=44552472 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:52 |       [latency] cond=C Id=44552472 retrieval_sec=3.080 total_sec=8.041
+16:57:52 |       [debug-write] Id=44552472 bytes_written_this_line=29931 file_size_now=1116171 f_out.tell()=1116171
+16:57:52 |       [45/384] Id=44552472 anchors=3 context=5 citation=True valid_citation=True similarity=0.625 retrieval=3.08s
+16:57:54 |       [leakage] Id=74198021 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:57:59 |       [latency] cond=C Id=74198021 retrieval_sec=1.899 total_sec=7.441
+16:57:59 |       [debug-write] Id=74198021 bytes_written_this_line=24681 file_size_now=1140852 f_out.tell()=1140852
+16:57:59 |       [46/384] Id=74198021 anchors=3 context=5 citation=True valid_citation=True similarity=0.755 retrieval=1.90s
+16:58:02 |       [leakage] Id=43010991 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:58:08 |       [latency] cond=C Id=43010991 retrieval_sec=2.525 total_sec=7.817
+16:58:08 |       [debug-write] Id=43010991 bytes_written_this_line=20597 file_size_now=1161449 f_out.tell()=1161449
+16:58:08 |       [47/384] Id=43010991 anchors=3 context=5 citation=True valid_citation=True similarity=0.503 retrieval=2.53s
+16:58:10 |       [leakage] Id=36524724 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:58:15 |       [latency] cond=C Id=36524724 retrieval_sec=2.231 total_sec=6.907
+16:58:15 |       [debug-write] Id=36524724 bytes_written_this_line=23177 file_size_now=1184626 f_out.tell()=1184626
+16:58:15 |       [48/384] Id=36524724 anchors=3 context=5 citation=True valid_citation=True similarity=0.662 retrieval=2.23s
+16:58:19 |       [leakage] Id=48047337 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:58:22 |       [latency] cond=C Id=48047337 retrieval_sec=3.353 total_sec=6.383
+16:58:22 |       [debug-write] Id=48047337 bytes_written_this_line=23430 file_size_now=1208056 f_out.tell()=1208056
+16:58:22 |       [49/384] Id=48047337 anchors=3 context=5 citation=False valid_citation=False similarity=0.559 retrieval=3.35s
+16:58:26 |       [leakage] Id=62438652 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:58:32 |       [latency] cond=C Id=62438652 retrieval_sec=4.380 total_sec=10.171
+16:58:32 |       [debug-write] Id=62438652 bytes_written_this_line=27332 file_size_now=1235388 f_out.tell()=1235388
+16:58:32 |       [50/384] Id=62438652 anchors=3 context=5 citation=False valid_citation=False similarity=0.710 retrieval=4.38s
+16:58:35 |       [leakage] Id=10843100 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:58:40 |       [latency] cond=C Id=10843100 retrieval_sec=2.268 total_sec=7.422
+16:58:40 |       [debug-write] Id=10843100 bytes_written_this_line=20465 file_size_now=1255853 f_out.tell()=1255853
+16:58:40 |       [51/384] Id=10843100 anchors=3 context=5 citation=True valid_citation=True similarity=0.665 retrieval=2.27s
+16:58:45 |       [leakage] Id=35138161 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=12 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:58:51 |       [latency] cond=C Id=35138161 retrieval_sec=4.081 total_sec=10.758
+16:58:51 |       [debug-write] Id=35138161 bytes_written_this_line=27392 file_size_now=1283245 f_out.tell()=1283245
+16:58:51 |       [52/384] Id=35138161 anchors=3 context=5 citation=True valid_citation=True similarity=0.738 retrieval=4.08s
+16:58:54 |       [leakage] Id=79722918 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:58:55 |       [latency] cond=C Id=79722918 retrieval_sec=2.339 total_sec=3.520
+16:58:55 |       [debug-write] Id=79722918 bytes_written_this_line=22376 file_size_now=1305621 f_out.tell()=1305621
+16:58:55 |       [53/384] Id=79722918 anchors=3 context=5 citation=False valid_citation=False similarity=0.786 retrieval=2.34s
+16:58:59 |       [leakage] Id=39550114 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:59:04 |       [latency] cond=C Id=39550114 retrieval_sec=2.970 total_sec=8.302
+16:59:04 |       [debug-write] Id=39550114 bytes_written_this_line=22396 file_size_now=1328017 f_out.tell()=1328017
+16:59:04 |       [54/384] Id=39550114 anchors=3 context=5 citation=True valid_citation=True similarity=0.562 retrieval=2.97s
+16:59:07 |       [leakage] Id=26029402 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:59:14 |       [latency] cond=C Id=26029402 retrieval_sec=2.569 total_sec=9.537
+16:59:14 |       [debug-write] Id=26029402 bytes_written_this_line=30666 file_size_now=1358683 f_out.tell()=1358683
+16:59:14 |       [55/384] Id=26029402 anchors=3 context=5 citation=True valid_citation=True similarity=0.471 retrieval=2.57s
+16:59:16 |       [leakage] Id=17487473 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:59:20 |       [latency] cond=C Id=17487473 retrieval_sec=2.040 total_sec=5.421
+16:59:20 |       [debug-write] Id=17487473 bytes_written_this_line=20386 file_size_now=1379069 f_out.tell()=1379069
+16:59:20 |       [56/384] Id=17487473 anchors=3 context=5 citation=True valid_citation=True similarity=0.647 retrieval=2.04s
+16:59:23 |       [leakage] Id=37254353 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:59:27 |       [latency] cond=C Id=37254353 retrieval_sec=2.686 total_sec=6.806
+16:59:27 |       [debug-write] Id=37254353 bytes_written_this_line=23783 file_size_now=1402852 f_out.tell()=1402852
+16:59:27 |       [57/384] Id=37254353 anchors=3 context=5 citation=True valid_citation=True similarity=0.591 retrieval=2.69s
+16:59:29 |       [leakage] Id=39391343 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:59:36 |       [latency] cond=C Id=39391343 retrieval_sec=2.040 total_sec=8.186
+16:59:36 |       [debug-write] Id=39391343 bytes_written_this_line=25647 file_size_now=1428499 f_out.tell()=1428499
+16:59:36 |       [58/384] Id=39391343 anchors=3 context=5 citation=True valid_citation=True similarity=0.606 retrieval=2.04s
+16:59:39 |       [leakage] Id=17942333 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+16:59:45 |       [latency] cond=C Id=17942333 retrieval_sec=3.485 total_sec=8.827
+16:59:45 |       [debug-write] Id=17942333 bytes_written_this_line=22762 file_size_now=1451261 f_out.tell()=1451261
+16:59:45 |       [59/384] Id=17942333 anchors=3 context=5 citation=False valid_citation=False similarity=0.572 retrieval=3.48s
+16:59:48 |       [leakage] Id=63934382 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:00:06 |       [latency] cond=C Id=63934382 retrieval_sec=2.724 total_sec=20.776
+17:00:06 |       [debug-write] Id=63934382 bytes_written_this_line=25605 file_size_now=1476866 f_out.tell()=1476866
+17:00:06 |       [60/384] Id=63934382 anchors=3 context=5 citation=True valid_citation=True similarity=0.584 retrieval=2.72s
+17:00:10 |       [leakage] Id=75915802 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:00:21 |       [latency] cond=C Id=75915802 retrieval_sec=3.273 total_sec=14.223
+17:00:21 |       [debug-write] Id=75915802 bytes_written_this_line=29262 file_size_now=1506128 f_out.tell()=1506128
+17:00:21 |       [61/384] Id=75915802 anchors=3 context=5 citation=True valid_citation=True similarity=0.343 retrieval=3.27s
+17:00:23 |       [leakage] Id=18746841 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:00:33 |       [latency] cond=C Id=18746841 retrieval_sec=2.221 total_sec=11.453
+17:00:33 |       [debug-write] Id=18746841 bytes_written_this_line=24562 file_size_now=1530690 f_out.tell()=1530690
+17:00:33 |       [62/384] Id=18746841 anchors=3 context=5 citation=True valid_citation=True similarity=0.393 retrieval=2.22s
+17:00:34 |       [leakage] Id=10307223 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:00:41 |       [latency] cond=C Id=10307223 retrieval_sec=1.404 total_sec=7.504
+17:00:41 |       [debug-write] Id=10307223 bytes_written_this_line=23115 file_size_now=1553805 f_out.tell()=1553805
+17:00:41 |       [63/384] Id=10307223 anchors=3 context=5 citation=True valid_citation=True similarity=0.749 retrieval=1.40s
+17:00:44 |       [leakage] Id=33200184 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:00:51 |       [latency] cond=C Id=33200184 retrieval_sec=3.180 total_sec=9.875
+17:00:51 |       [debug-write] Id=33200184 bytes_written_this_line=32055 file_size_now=1585860 f_out.tell()=1585860
+17:00:51 |       [64/384] Id=33200184 anchors=3 context=5 citation=True valid_citation=True similarity=0.400 retrieval=3.18s
+17:00:54 |       [leakage] Id=45528512 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:00:59 |       [latency] cond=C Id=45528512 retrieval_sec=2.875 total_sec=7.638
+17:00:59 |       [debug-write] Id=45528512 bytes_written_this_line=28497 file_size_now=1614357 f_out.tell()=1614357
+17:00:59 |       [65/384] Id=45528512 anchors=3 context=5 citation=True valid_citation=True similarity=0.765 retrieval=2.87s
+17:01:02 |       [leakage] Id=59308414 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:01:04 |       [latency] cond=C Id=59308414 retrieval_sec=2.423 total_sec=4.866
+17:01:04 |       [debug-write] Id=59308414 bytes_written_this_line=22907 file_size_now=1637264 f_out.tell()=1637264
+17:01:04 |       [66/384] Id=59308414 anchors=3 context=5 citation=False valid_citation=False similarity=0.478 retrieval=2.42s
+17:01:07 |       [leakage] Id=42729059 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:01:08 |       [latency] cond=C Id=42729059 retrieval_sec=2.391 total_sec=3.603
+17:01:08 |       [debug-write] Id=42729059 bytes_written_this_line=22765 file_size_now=1660029 f_out.tell()=1660029
+17:01:08 |       [67/384] Id=42729059 anchors=3 context=5 citation=False valid_citation=False similarity=0.337 retrieval=2.39s
+17:01:12 |       [leakage] Id=1211491 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:01:18 |       [latency] cond=C Id=1211491 retrieval_sec=3.429 total_sec=9.799
+17:01:18 |       [debug-write] Id=1211491 bytes_written_this_line=27677 file_size_now=1687706 f_out.tell()=1687706
+17:01:18 |       [68/384] Id=1211491 anchors=3 context=5 citation=True valid_citation=True similarity=0.478 retrieval=3.43s
+17:01:22 |       [leakage] Id=65479664 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:01:23 |       [latency] cond=C Id=65479664 retrieval_sec=3.141 total_sec=4.420
+17:01:23 |       [debug-write] Id=65479664 bytes_written_this_line=22059 file_size_now=1709765 f_out.tell()=1709765
+17:01:23 |       [69/384] Id=65479664 anchors=3 context=5 citation=False valid_citation=False similarity=0.637 retrieval=3.14s
+17:01:26 |       [leakage] Id=42419204 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:01:34 |       [latency] cond=C Id=42419204 retrieval_sec=2.846 total_sec=10.745
+17:01:34 |       [debug-write] Id=42419204 bytes_written_this_line=30236 file_size_now=1740001 f_out.tell()=1740001
+17:01:34 |       [70/384] Id=42419204 anchors=3 context=5 citation=True valid_citation=True similarity=0.520 retrieval=2.85s
+17:01:37 |       [leakage] Id=22113990 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:01:40 |       [latency] cond=C Id=22113990 retrieval_sec=2.367 total_sec=5.674
+17:01:40 |       [debug-write] Id=22113990 bytes_written_this_line=23099 file_size_now=1763100 f_out.tell()=1763100
+17:01:40 |       [71/384] Id=22113990 anchors=3 context=5 citation=True valid_citation=True similarity=0.806 retrieval=2.37s
+17:01:44 |       [leakage] Id=56440066 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:01:55 |       [latency] cond=C Id=56440066 retrieval_sec=2.863 total_sec=13.801
+17:01:55 |       [debug-write] Id=56440066 bytes_written_this_line=36432 file_size_now=1799532 f_out.tell()=1799532
+17:01:55 |       [72/384] Id=56440066 anchors=3 context=5 citation=False valid_citation=False similarity=0.619 retrieval=2.86s
+17:01:57 |       [leakage] Id=40054787 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:01:58 |       [latency] cond=C Id=40054787 retrieval_sec=1.814 total_sec=3.160
+17:01:58 |       [debug-write] Id=40054787 bytes_written_this_line=19953 file_size_now=1819485 f_out.tell()=1819485
+17:01:58 |       [73/384] Id=40054787 anchors=3 context=5 citation=False valid_citation=False similarity=0.720 retrieval=1.81s
+17:02:01 |       [leakage] Id=33988487 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:02:12 |       [latency] cond=C Id=33988487 retrieval_sec=2.729 total_sec=13.837
+17:02:12 |       [debug-write] Id=33988487 bytes_written_this_line=30070 file_size_now=1849555 f_out.tell()=1849555
+17:02:12 |       [74/384] Id=33988487 anchors=3 context=5 citation=True valid_citation=True similarity=0.363 retrieval=2.73s
+17:02:16 |       [leakage] Id=76636987 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:02:22 |       [latency] cond=C Id=76636987 retrieval_sec=3.213 total_sec=9.493
+17:02:22 |       [debug-write] Id=76636987 bytes_written_this_line=19216 file_size_now=1868771 f_out.tell()=1868771
+17:02:22 |       [75/384] Id=76636987 anchors=3 context=5 citation=True valid_citation=True similarity=0.612 retrieval=3.21s
+17:02:25 |       [leakage] Id=35931435 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:02:31 |       [latency] cond=C Id=35931435 retrieval_sec=2.213 total_sec=8.405
+17:02:31 |       [debug-write] Id=35931435 bytes_written_this_line=26987 file_size_now=1895758 f_out.tell()=1895758
+17:02:31 |       [76/384] Id=35931435 anchors=3 context=5 citation=False valid_citation=False similarity=0.746 retrieval=2.21s
+17:02:34 |       [leakage] Id=54412009 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:02:40 |       [latency] cond=C Id=54412009 retrieval_sec=2.162 total_sec=8.322
+17:02:40 |       [debug-write] Id=54412009 bytes_written_this_line=20773 file_size_now=1916531 f_out.tell()=1916531
+17:02:40 |       [77/384] Id=54412009 anchors=3 context=5 citation=True valid_citation=True similarity=0.593 retrieval=2.16s
+17:02:42 |       [leakage] Id=14717007 mode=thread n_excluded_q=1 n_excluded_a=5 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:02:44 |       [latency] cond=C Id=14717007 retrieval_sec=1.787 total_sec=3.570
+17:02:44 |       [debug-write] Id=14717007 bytes_written_this_line=23433 file_size_now=1939964 f_out.tell()=1939964
+17:02:44 |       [78/384] Id=14717007 anchors=3 context=5 citation=True valid_citation=True similarity=0.472 retrieval=1.79s
+17:02:47 |       [leakage] Id=78602745 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:02:51 |       [latency] cond=C Id=78602745 retrieval_sec=2.460 total_sec=6.666
+17:02:51 |       [debug-write] Id=78602745 bytes_written_this_line=26808 file_size_now=1966772 f_out.tell()=1966772
+17:02:51 |       [79/384] Id=78602745 anchors=3 context=5 citation=True valid_citation=True similarity=0.545 retrieval=2.46s
+17:02:53 |       [leakage] Id=72844940 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:02:59 |       [latency] cond=C Id=72844940 retrieval_sec=2.356 total_sec=7.495
+17:02:59 |       [debug-write] Id=72844940 bytes_written_this_line=28254 file_size_now=1995026 f_out.tell()=1995026
+17:02:59 |       [80/384] Id=72844940 anchors=3 context=5 citation=True valid_citation=True similarity=0.719 retrieval=2.36s
+17:03:01 |       [leakage] Id=44716681 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:03:10 |       [latency] cond=C Id=44716681 retrieval_sec=1.967 total_sec=10.590
+17:03:10 |       [debug-write] Id=44716681 bytes_written_this_line=29590 file_size_now=2024616 f_out.tell()=2024616
+17:03:10 |       [81/384] Id=44716681 anchors=3 context=5 citation=False valid_citation=False similarity=0.636 retrieval=1.97s
+17:03:13 |       [leakage] Id=43127034 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:03:15 |       [latency] cond=C Id=43127034 retrieval_sec=2.911 total_sec=4.742
+17:03:15 |       [debug-write] Id=43127034 bytes_written_this_line=23104 file_size_now=2047720 f_out.tell()=2047720
+17:03:15 |       [82/384] Id=43127034 anchors=3 context=5 citation=False valid_citation=False similarity=0.304 retrieval=2.91s
+17:03:21 |       [leakage] Id=50408135 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:03:28 |       [latency] cond=C Id=50408135 retrieval_sec=6.026 total_sec=12.365
+17:03:28 |       [debug-write] Id=50408135 bytes_written_this_line=33961 file_size_now=2081681 f_out.tell()=2081681
+17:03:28 |       [83/384] Id=50408135 anchors=3 context=5 citation=False valid_citation=False similarity=0.557 retrieval=6.03s
+17:03:30 |       [leakage] Id=10106804 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:03:34 |       [latency] cond=C Id=10106804 retrieval_sec=2.131 total_sec=5.841
+17:03:34 |       [debug-write] Id=10106804 bytes_written_this_line=20093 file_size_now=2101774 f_out.tell()=2101774
+17:03:34 |       [84/384] Id=10106804 anchors=3 context=5 citation=True valid_citation=True similarity=0.483 retrieval=2.13s
+17:03:37 |       [leakage] Id=62972346 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:03:39 |       [latency] cond=C Id=62972346 retrieval_sec=2.962 total_sec=4.264
+17:03:39 |       [debug-write] Id=62972346 bytes_written_this_line=19516 file_size_now=2121290 f_out.tell()=2121290
+17:03:39 |       [85/384] Id=62972346 anchors=3 context=5 citation=False valid_citation=False similarity=0.647 retrieval=2.96s
+17:03:42 |       [leakage] Id=14038074 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:03:45 |       [latency] cond=C Id=14038074 retrieval_sec=2.634 total_sec=6.490
+17:03:45 |       [debug-write] Id=14038074 bytes_written_this_line=25186 file_size_now=2146476 f_out.tell()=2146476
+17:03:45 |       [86/384] Id=14038074 anchors=3 context=5 citation=True valid_citation=True similarity=0.457 retrieval=2.63s
+17:03:48 |       [leakage] Id=48535040 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:03:51 |       [latency] cond=C Id=48535040 retrieval_sec=1.855 total_sec=5.204
+17:03:51 |       [debug-write] Id=48535040 bytes_written_this_line=24412 file_size_now=2170888 f_out.tell()=2170888
+17:03:51 |       [87/384] Id=48535040 anchors=3 context=5 citation=True valid_citation=True similarity=0.667 retrieval=1.85s
+17:03:55 |       [leakage] Id=21955207 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:03:59 |       [latency] cond=C Id=21955207 retrieval_sec=3.248 total_sec=7.138
+17:03:59 |       [debug-write] Id=21955207 bytes_written_this_line=22910 file_size_now=2193798 f_out.tell()=2193798
+17:03:59 |       [88/384] Id=21955207 anchors=3 context=5 citation=True valid_citation=True similarity=0.589 retrieval=3.25s
+17:04:01 |       [leakage] Id=41740734 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:04:05 |       [latency] cond=C Id=41740734 retrieval_sec=2.430 total_sec=6.261
+17:04:05 |       [debug-write] Id=41740734 bytes_written_this_line=28666 file_size_now=2222464 f_out.tell()=2222464
+17:04:05 |       [89/384] Id=41740734 anchors=3 context=5 citation=False valid_citation=False similarity=0.666 retrieval=2.43s
+17:04:09 |       [leakage] Id=47020276 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:04:13 |       [latency] cond=C Id=47020276 retrieval_sec=3.192 total_sec=7.260
+17:04:13 |       [debug-write] Id=47020276 bytes_written_this_line=28739 file_size_now=2251203 f_out.tell()=2251203
+17:04:13 |       [90/384] Id=47020276 anchors=3 context=5 citation=False valid_citation=False similarity=0.378 retrieval=3.19s
+17:04:16 |       [leakage] Id=8535519 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:04:22 |       [latency] cond=C Id=8535519 retrieval_sec=2.286 total_sec=8.236
+17:04:22 |       [debug-write] Id=8535519 bytes_written_this_line=24194 file_size_now=2275397 f_out.tell()=2275397
+17:04:22 |       [91/384] Id=8535519 anchors=3 context=5 citation=True valid_citation=True similarity=0.654 retrieval=2.29s
+17:04:28 |       [leakage] Id=7829430 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:04:41 |       [latency] cond=C Id=7829430 retrieval_sec=5.642 total_sec=18.490
+17:04:41 |       [debug-write] Id=7829430 bytes_written_this_line=27857 file_size_now=2303254 f_out.tell()=2303254
+17:04:41 |       [92/384] Id=7829430 anchors=3 context=5 citation=False valid_citation=False similarity=0.490 retrieval=5.64s
+17:04:43 |       [leakage] Id=63320999 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:04:50 |       [latency] cond=C Id=63320999 retrieval_sec=2.274 total_sec=9.365
+17:04:50 |       [debug-write] Id=63320999 bytes_written_this_line=31687 file_size_now=2334941 f_out.tell()=2334941
+17:04:50 |       [93/384] Id=63320999 anchors=3 context=5 citation=True valid_citation=True similarity=0.661 retrieval=2.27s
+17:04:53 |       [leakage] Id=54527943 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:04:55 |       [latency] cond=C Id=54527943 retrieval_sec=2.171 total_sec=4.044
+17:04:55 |       [debug-write] Id=54527943 bytes_written_this_line=21299 file_size_now=2356240 f_out.tell()=2356240
+17:04:55 |       [94/384] Id=54527943 anchors=3 context=5 citation=True valid_citation=True similarity=0.439 retrieval=2.17s
+17:04:57 |       [leakage] Id=58178210 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:05:08 |       [latency] cond=C Id=58178210 retrieval_sec=2.178 total_sec=12.318
+17:05:08 |       [debug-write] Id=58178210 bytes_written_this_line=33402 file_size_now=2389642 f_out.tell()=2389642
+17:05:08 |       [95/384] Id=58178210 anchors=3 context=5 citation=True valid_citation=True similarity=0.560 retrieval=2.18s
+17:05:10 |       [leakage] Id=24053671 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:05:16 |       [latency] cond=C Id=24053671 retrieval_sec=1.969 total_sec=8.314
+17:05:16 |       [debug-write] Id=24053671 bytes_written_this_line=23933 file_size_now=2413575 f_out.tell()=2413575
+17:05:16 |       [96/384] Id=24053671 anchors=3 context=5 citation=True valid_citation=True similarity=0.807 retrieval=1.97s
+17:05:20 |       [leakage] Id=14294830 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:05:25 |       [latency] cond=C Id=14294830 retrieval_sec=2.859 total_sec=8.499
+17:05:25 |       [debug-write] Id=14294830 bytes_written_this_line=30693 file_size_now=2444268 f_out.tell()=2444268
+17:05:25 |       [97/384] Id=14294830 anchors=3 context=5 citation=False valid_citation=False similarity=0.640 retrieval=2.86s
+17:05:28 |       [leakage] Id=57454529 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=7 n_expansion_q_empty=0
+17:05:28 |       [expansion] Id=57454529 hanya 7/9 Question expansion ber-answer.
+17:05:35 |       [latency] cond=C Id=57454529 retrieval_sec=2.322 total_sec=9.602
+17:05:35 |       [debug-write] Id=57454529 bytes_written_this_line=24634 file_size_now=2468902 f_out.tell()=2468902
+17:05:35 |       [98/384] Id=57454529 anchors=3 context=5 citation=True valid_citation=True similarity=0.675 retrieval=2.32s
+17:05:38 |       [leakage] Id=60865431 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:05:40 |       [latency] cond=C Id=60865431 retrieval_sec=2.573 total_sec=4.763
+17:05:40 |       [debug-write] Id=60865431 bytes_written_this_line=24671 file_size_now=2493573 f_out.tell()=2493573
+17:05:40 |       [99/384] Id=60865431 anchors=3 context=5 citation=False valid_citation=False similarity=0.528 retrieval=2.57s
+17:05:43 |       [leakage] Id=777455 mode=thread n_excluded_q=1 n_excluded_a=8 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:05:48 |       [latency] cond=C Id=777455 retrieval_sec=2.395 total_sec=7.389
+17:05:48 |       [debug-write] Id=777455 bytes_written_this_line=24664 file_size_now=2518237 f_out.tell()=2518237
+17:05:48 |       [100/384] Id=777455 anchors=3 context=5 citation=True valid_citation=True similarity=0.408 retrieval=2.40s
+17:05:51 |       [leakage] Id=18309684 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:05:52 |       [latency] cond=C Id=18309684 retrieval_sec=2.734 total_sec=3.832
+17:05:52 |       [debug-write] Id=18309684 bytes_written_this_line=21196 file_size_now=2539433 f_out.tell()=2539433
+17:05:52 |       [101/384] Id=18309684 anchors=3 context=5 citation=False valid_citation=False similarity=0.598 retrieval=2.73s
+17:05:55 |       [leakage] Id=68809614 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:06:01 |       [latency] cond=C Id=68809614 retrieval_sec=2.556 total_sec=8.096
+17:06:01 |       [debug-write] Id=68809614 bytes_written_this_line=23912 file_size_now=2563345 f_out.tell()=2563345
+17:06:01 |       [102/384] Id=68809614 anchors=3 context=5 citation=False valid_citation=False similarity=0.613 retrieval=2.56s
+17:06:04 |       [leakage] Id=12797933 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:06:19 |       [latency] cond=C Id=12797933 retrieval_sec=3.096 total_sec=17.529
+17:06:19 |       [debug-write] Id=12797933 bytes_written_this_line=42703 file_size_now=2606048 f_out.tell()=2606048
+17:06:19 |       [103/384] Id=12797933 anchors=3 context=5 citation=True valid_citation=True similarity=0.760 retrieval=3.10s
+17:06:21 |       [leakage] Id=52723163 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:06:37 |       [latency] cond=C Id=52723163 retrieval_sec=1.969 total_sec=17.511
+17:06:37 |       [debug-write] Id=52723163 bytes_written_this_line=37413 file_size_now=2643461 f_out.tell()=2643461
+17:06:37 |       [104/384] Id=52723163 anchors=3 context=5 citation=False valid_citation=False similarity=0.685 retrieval=1.97s
+17:06:41 |       [leakage] Id=81104 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:06:49 |       [latency] cond=C Id=81104 retrieval_sec=3.222 total_sec=11.419
+17:06:49 |       [debug-write] Id=81104 bytes_written_this_line=27610 file_size_now=2671071 f_out.tell()=2671071
+17:06:49 |       [105/384] Id=81104 anchors=3 context=5 citation=True valid_citation=True similarity=0.434 retrieval=3.22s
+17:06:52 |       [leakage] Id=9452854 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:06:57 |       [latency] cond=C Id=9452854 retrieval_sec=2.809 total_sec=7.323
+17:06:57 |       [debug-write] Id=9452854 bytes_written_this_line=23838 file_size_now=2694909 f_out.tell()=2694909
+17:06:57 |       [106/384] Id=9452854 anchors=3 context=5 citation=True valid_citation=True similarity=0.694 retrieval=2.81s
+17:06:59 |       [leakage] Id=32480267 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:07:01 |       [latency] cond=C Id=32480267 retrieval_sec=2.415 total_sec=3.876
+17:07:01 |       [debug-write] Id=32480267 bytes_written_this_line=22524 file_size_now=2717433 f_out.tell()=2717433
+17:07:01 |       [107/384] Id=32480267 anchors=3 context=5 citation=False valid_citation=False similarity=0.332 retrieval=2.41s
+17:07:05 |       [leakage] Id=52984173 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:07:10 |       [latency] cond=C Id=52984173 retrieval_sec=3.313 total_sec=8.245
+17:07:10 |       [debug-write] Id=52984173 bytes_written_this_line=26094 file_size_now=2743527 f_out.tell()=2743527
+17:07:10 |       [108/384] Id=52984173 anchors=3 context=5 citation=False valid_citation=False similarity=0.816 retrieval=3.31s
+17:07:12 |       [leakage] Id=37533291 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:07:19 |       [latency] cond=C Id=37533291 retrieval_sec=2.296 total_sec=9.465
+17:07:19 |       [debug-write] Id=37533291 bytes_written_this_line=27506 file_size_now=2771033 f_out.tell()=2771033
+17:07:19 |       [109/384] Id=37533291 anchors=3 context=5 citation=True valid_citation=True similarity=0.622 retrieval=2.30s
+17:07:23 |       [leakage] Id=28923244 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:07:29 |       [latency] cond=C Id=28923244 retrieval_sec=2.914 total_sec=9.395
+17:07:29 |       [debug-write] Id=28923244 bytes_written_this_line=26492 file_size_now=2797525 f_out.tell()=2797525
+17:07:29 |       [110/384] Id=28923244 anchors=3 context=5 citation=True valid_citation=True similarity=0.436 retrieval=2.91s
+17:07:32 |       [leakage] Id=4262483 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:07:37 |       [latency] cond=C Id=4262483 retrieval_sec=2.213 total_sec=7.221
+17:07:37 |       [debug-write] Id=4262483 bytes_written_this_line=28159 file_size_now=2825684 f_out.tell()=2825684
+17:07:37 |       [111/384] Id=4262483 anchors=3 context=5 citation=True valid_citation=True similarity=0.642 retrieval=2.21s
+17:07:42 |       [leakage] Id=40634865 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:07:51 |       [latency] cond=C Id=40634865 retrieval_sec=5.293 total_sec=13.376
+17:07:51 |       [debug-write] Id=40634865 bytes_written_this_line=33967 file_size_now=2859651 f_out.tell()=2859651
+17:07:51 |       [112/384] Id=40634865 anchors=3 context=5 citation=True valid_citation=True similarity=0.533 retrieval=5.29s
+17:07:53 |       [leakage] Id=62392775 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:07:57 |       [latency] cond=C Id=62392775 retrieval_sec=2.463 total_sec=6.051
+17:07:57 |       [debug-write] Id=62392775 bytes_written_this_line=27606 file_size_now=2887257 f_out.tell()=2887257
+17:07:57 |       [113/384] Id=62392775 anchors=3 context=5 citation=True valid_citation=True similarity=0.648 retrieval=2.46s
+17:08:00 |       [leakage] Id=2279646 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:08:05 |       [latency] cond=C Id=2279646 retrieval_sec=2.886 total_sec=7.791
+17:08:05 |       [debug-write] Id=2279646 bytes_written_this_line=25802 file_size_now=2913059 f_out.tell()=2913059
+17:08:05 |       [114/384] Id=2279646 anchors=3 context=5 citation=True valid_citation=True similarity=0.515 retrieval=2.89s
+17:08:08 |       [leakage] Id=64559981 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=13 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:08:12 |       [latency] cond=C Id=64559981 retrieval_sec=1.920 total_sec=5.942
+17:08:12 |       [debug-write] Id=64559981 bytes_written_this_line=29776 file_size_now=2942835 f_out.tell()=2942835
+17:08:12 |       [115/384] Id=64559981 anchors=3 context=5 citation=True valid_citation=True similarity=0.316 retrieval=1.92s
+17:08:15 |       [leakage] Id=50363191 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:08:21 |       [latency] cond=C Id=50363191 retrieval_sec=2.668 total_sec=9.090
+17:08:21 |       [debug-write] Id=50363191 bytes_written_this_line=22185 file_size_now=2965020 f_out.tell()=2965020
+17:08:21 |       [116/384] Id=50363191 anchors=3 context=5 citation=True valid_citation=True similarity=0.593 retrieval=2.67s
+17:08:25 |       [leakage] Id=56702129 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:08:29 |       [latency] cond=C Id=56702129 retrieval_sec=3.512 total_sec=7.721
+17:08:29 |       [debug-write] Id=56702129 bytes_written_this_line=24150 file_size_now=2989170 f_out.tell()=2989170
+17:08:29 |       [117/384] Id=56702129 anchors=3 context=5 citation=True valid_citation=True similarity=0.711 retrieval=3.51s
+17:08:31 |       [leakage] Id=32038020 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=13 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:08:36 |       [latency] cond=C Id=32038020 retrieval_sec=1.766 total_sec=6.412
+17:08:36 |       [debug-write] Id=32038020 bytes_written_this_line=19018 file_size_now=3008188 f_out.tell()=3008188
+17:08:36 |       [118/384] Id=32038020 anchors=3 context=5 citation=True valid_citation=True similarity=0.082 retrieval=1.77s
+17:08:40 |       [leakage] Id=70420820 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:08:46 |       [latency] cond=C Id=70420820 retrieval_sec=3.473 total_sec=9.871
+17:08:46 |       [debug-write] Id=70420820 bytes_written_this_line=30487 file_size_now=3038675 f_out.tell()=3038675
+17:08:46 |       [119/384] Id=70420820 anchors=3 context=5 citation=False valid_citation=False similarity=0.738 retrieval=3.47s
+17:08:49 |       [leakage] Id=70606547 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:08:51 |       [latency] cond=C Id=70606547 retrieval_sec=2.333 total_sec=4.433
+17:08:51 |       [debug-write] Id=70606547 bytes_written_this_line=24366 file_size_now=3063041 f_out.tell()=3063041
+17:08:51 |       [120/384] Id=70606547 anchors=3 context=5 citation=False valid_citation=False similarity=0.637 retrieval=2.33s
+17:08:55 |       [leakage] Id=19834982 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:08:59 |       [latency] cond=C Id=19834982 retrieval_sec=3.178 total_sec=7.806
+17:08:59 |       [debug-write] Id=19834982 bytes_written_this_line=26310 file_size_now=3089351 f_out.tell()=3089351
+17:08:59 |       [121/384] Id=19834982 anchors=3 context=5 citation=True valid_citation=True similarity=0.439 retrieval=3.18s
+17:09:02 |       [leakage] Id=55975155 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:09:06 |       [latency] cond=C Id=55975155 retrieval_sec=2.561 total_sec=5.893
+17:09:06 |       [debug-write] Id=55975155 bytes_written_this_line=29906 file_size_now=3119257 f_out.tell()=3119257
+17:09:06 |       [122/384] Id=55975155 anchors=3 context=5 citation=True valid_citation=True similarity=0.486 retrieval=2.56s
+17:09:09 |       [leakage] Id=12167581 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:09:15 |       [latency] cond=C Id=12167581 retrieval_sec=2.802 total_sec=9.080
+17:09:15 |       [debug-write] Id=12167581 bytes_written_this_line=28990 file_size_now=3148247 f_out.tell()=3148247
+17:09:15 |       [123/384] Id=12167581 anchors=3 context=5 citation=True valid_citation=True similarity=0.585 retrieval=2.80s
+17:09:18 |       [leakage] Id=68603561 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:09:23 |       [latency] cond=C Id=68603561 retrieval_sec=2.206 total_sec=7.059
+17:09:23 |       [debug-write] Id=68603561 bytes_written_this_line=32783 file_size_now=3181030 f_out.tell()=3181030
+17:09:23 |       [124/384] Id=68603561 anchors=3 context=5 citation=True valid_citation=True similarity=0.541 retrieval=2.21s
+17:09:25 |       [leakage] Id=14096116 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:09:29 |       [latency] cond=C Id=14096116 retrieval_sec=2.209 total_sec=5.949
+17:09:29 |       [debug-write] Id=14096116 bytes_written_this_line=26154 file_size_now=3207184 f_out.tell()=3207184
+17:09:29 |       [125/384] Id=14096116 anchors=3 context=5 citation=False valid_citation=False similarity=0.455 retrieval=2.21s
+17:09:32 |       [leakage] Id=39814960 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:09:33 |       [latency] cond=C Id=39814960 retrieval_sec=2.487 total_sec=3.906
+17:09:33 |       [debug-write] Id=39814960 bytes_written_this_line=20588 file_size_now=3227772 f_out.tell()=3227772
+17:09:33 |       [126/384] Id=39814960 anchors=3 context=5 citation=False valid_citation=False similarity=0.317 retrieval=2.49s
+17:09:38 |       [leakage] Id=46974080 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:09:43 |       [latency] cond=C Id=46974080 retrieval_sec=4.424 total_sec=9.140
+17:09:43 |       [debug-write] Id=46974080 bytes_written_this_line=28248 file_size_now=3256020 f_out.tell()=3256020
+17:09:43 |       [127/384] Id=46974080 anchors=3 context=5 citation=True valid_citation=True similarity=0.716 retrieval=4.42s
+17:09:45 |       [leakage] Id=35860385 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:09:53 |       [latency] cond=C Id=35860385 retrieval_sec=2.154 total_sec=9.611
+17:09:53 |       [debug-write] Id=35860385 bytes_written_this_line=25542 file_size_now=3281562 f_out.tell()=3281562
+17:09:53 |       [128/384] Id=35860385 anchors=3 context=5 citation=True valid_citation=True similarity=0.791 retrieval=2.15s
+17:10:01 |       [leakage] Id=42264064 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:10:07 |       [latency] cond=C Id=42264064 retrieval_sec=7.391 total_sec=13.531
+17:10:07 |       [debug-write] Id=42264064 bytes_written_this_line=23358 file_size_now=3304920 f_out.tell()=3304920
+17:10:07 |       [129/384] Id=42264064 anchors=3 context=5 citation=False valid_citation=False similarity=0.528 retrieval=7.39s
+17:10:09 |       [leakage] Id=10825926 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:10:12 |       [latency] cond=C Id=10825926 retrieval_sec=1.908 total_sec=5.167
+17:10:12 |       [debug-write] Id=10825926 bytes_written_this_line=25469 file_size_now=3330389 f_out.tell()=3330389
+17:10:12 |       [130/384] Id=10825926 anchors=3 context=5 citation=True valid_citation=True similarity=0.821 retrieval=1.91s
+17:10:14 |       [leakage] Id=26887131 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:10:18 |       [latency] cond=C Id=26887131 retrieval_sec=1.709 total_sec=5.630
+17:10:18 |       [debug-write] Id=26887131 bytes_written_this_line=21924 file_size_now=3352313 f_out.tell()=3352313
+17:10:18 |       [131/384] Id=26887131 anchors=3 context=5 citation=True valid_citation=True similarity=0.869 retrieval=1.71s
+17:10:22 |       [leakage] Id=40804393 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:10:24 |       [latency] cond=C Id=40804393 retrieval_sec=2.987 total_sec=5.460
+17:10:24 |       [debug-write] Id=40804393 bytes_written_this_line=22955 file_size_now=3375268 f_out.tell()=3375268
+17:10:24 |       [132/384] Id=40804393 anchors=3 context=5 citation=True valid_citation=True similarity=0.648 retrieval=2.99s
+17:10:26 |       [leakage] Id=27341939 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:10:29 |       [latency] cond=C Id=27341939 retrieval_sec=1.890 total_sec=4.938
+17:10:29 |       [debug-write] Id=27341939 bytes_written_this_line=17533 file_size_now=3392801 f_out.tell()=3392801
+17:10:29 |       [133/384] Id=27341939 anchors=3 context=5 citation=True valid_citation=True similarity=0.460 retrieval=1.89s
+17:10:32 |       [leakage] Id=56218265 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:10:38 |       [latency] cond=C Id=56218265 retrieval_sec=2.617 total_sec=8.158
+17:10:38 |       [debug-write] Id=56218265 bytes_written_this_line=29266 file_size_now=3422067 f_out.tell()=3422067
+17:10:38 |       [134/384] Id=56218265 anchors=3 context=5 citation=True valid_citation=False similarity=0.688 retrieval=2.62s
+17:10:41 |       [leakage] Id=29901703 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=1 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:10:47 |       [latency] cond=C Id=29901703 retrieval_sec=2.850 total_sec=8.465
+17:10:47 |       [debug-write] Id=29901703 bytes_written_this_line=21144 file_size_now=3443211 f_out.tell()=3443211
+17:10:47 |       [135/384] Id=29901703 anchors=3 context=5 citation=True valid_citation=True similarity=0.711 retrieval=2.85s
+17:10:50 |       [leakage] Id=11444578 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:10:58 |       [latency] cond=C Id=11444578 retrieval_sec=3.051 total_sec=10.634
+17:10:58 |       [debug-write] Id=11444578 bytes_written_this_line=28428 file_size_now=3471639 f_out.tell()=3471639
+17:10:58 |       [136/384] Id=11444578 anchors=3 context=5 citation=True valid_citation=True similarity=0.444 retrieval=3.05s
+17:11:01 |       [leakage] Id=28147169 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:11:04 |       [latency] cond=C Id=28147169 retrieval_sec=2.762 total_sec=5.758
+17:11:04 |       [debug-write] Id=28147169 bytes_written_this_line=23415 file_size_now=3495054 f_out.tell()=3495054
+17:11:04 |       [137/384] Id=28147169 anchors=3 context=5 citation=True valid_citation=True similarity=0.237 retrieval=2.76s
+17:11:07 |       [leakage] Id=13494938 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:11:13 |       [latency] cond=C Id=13494938 retrieval_sec=2.639 total_sec=8.275
+17:11:13 |       [debug-write] Id=13494938 bytes_written_this_line=20732 file_size_now=3515786 f_out.tell()=3515786
+17:11:13 |       [138/384] Id=13494938 anchors=3 context=5 citation=True valid_citation=True similarity=0.567 retrieval=2.64s
+17:11:16 |       [leakage] Id=13936168 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:11:19 |       [latency] cond=C Id=13936168 retrieval_sec=2.493 total_sec=5.741
+17:11:19 |       [debug-write] Id=13936168 bytes_written_this_line=16436 file_size_now=3532222 f_out.tell()=3532222
+17:11:19 |       [139/384] Id=13936168 anchors=3 context=5 citation=True valid_citation=True similarity=0.632 retrieval=2.49s
+17:11:22 |       [leakage] Id=12170271 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:11:27 |       [latency] cond=C Id=12170271 retrieval_sec=2.610 total_sec=7.912
+17:11:27 |       [debug-write] Id=12170271 bytes_written_this_line=28318 file_size_now=3560540 f_out.tell()=3560540
+17:11:27 |       [140/384] Id=12170271 anchors=3 context=5 citation=True valid_citation=True similarity=0.573 retrieval=2.61s
+17:11:30 |       [leakage] Id=50160748 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:11:35 |       [latency] cond=C Id=50160748 retrieval_sec=2.923 total_sec=7.608
+17:11:35 |       [debug-write] Id=50160748 bytes_written_this_line=19746 file_size_now=3580286 f_out.tell()=3580286
+17:11:35 |       [141/384] Id=50160748 anchors=3 context=5 citation=False valid_citation=False similarity=0.570 retrieval=2.92s
+17:11:38 |       [leakage] Id=77877019 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:11:42 |       [latency] cond=C Id=77877019 retrieval_sec=2.499 total_sec=6.734
+17:11:42 |       [debug-write] Id=77877019 bytes_written_this_line=33300 file_size_now=3613586 f_out.tell()=3613586
+17:11:42 |       [142/384] Id=77877019 anchors=3 context=5 citation=True valid_citation=True similarity=0.728 retrieval=2.50s
+17:11:44 |       [leakage] Id=20468454 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:11:53 |       [latency] cond=C Id=20468454 retrieval_sec=1.918 total_sec=10.113
+17:11:53 |       [debug-write] Id=20468454 bytes_written_this_line=26574 file_size_now=3640160 f_out.tell()=3640160
+17:11:53 |       [143/384] Id=20468454 anchors=3 context=5 citation=True valid_citation=True similarity=0.612 retrieval=1.92s
+17:11:55 |       [leakage] Id=54964432 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:11:58 |       [latency] cond=C Id=54964432 retrieval_sec=2.401 total_sec=4.909
+17:11:58 |       [debug-write] Id=54964432 bytes_written_this_line=25001 file_size_now=3665161 f_out.tell()=3665161
+17:11:58 |       [144/384] Id=54964432 anchors=3 context=5 citation=False valid_citation=False similarity=0.418 retrieval=2.40s
+17:12:01 |       [leakage] Id=11022616 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:12:05 |       [latency] cond=C Id=11022616 retrieval_sec=2.534 total_sec=6.961
+17:12:05 |       [debug-write] Id=11022616 bytes_written_this_line=18619 file_size_now=3683780 f_out.tell()=3683780
+17:12:05 |       [145/384] Id=11022616 anchors=3 context=5 citation=True valid_citation=True similarity=0.573 retrieval=2.53s
+17:12:08 |       [leakage] Id=18259098 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:12:12 |       [latency] cond=C Id=18259098 retrieval_sec=2.514 total_sec=6.578
+17:12:12 |       [debug-write] Id=18259098 bytes_written_this_line=31173 file_size_now=3714953 f_out.tell()=3714953
+17:12:12 |       [146/384] Id=18259098 anchors=3 context=5 citation=True valid_citation=True similarity=0.558 retrieval=2.51s
+17:12:15 |       [leakage] Id=53099327 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:12:17 |       [latency] cond=C Id=53099327 retrieval_sec=2.274 total_sec=3.899
+17:12:17 |       [debug-write] Id=53099327 bytes_written_this_line=23839 file_size_now=3738792 f_out.tell()=3738792
+17:12:17 |       [147/384] Id=53099327 anchors=3 context=5 citation=False valid_citation=False similarity=0.541 retrieval=2.27s
+17:12:20 |       [leakage] Id=32166791 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:12:26 |       [latency] cond=C Id=32166791 retrieval_sec=3.356 total_sec=8.925
+17:12:26 |       [debug-write] Id=32166791 bytes_written_this_line=30616 file_size_now=3769408 f_out.tell()=3769408
+17:12:26 |       [148/384] Id=32166791 anchors=3 context=5 citation=False valid_citation=False similarity=0.419 retrieval=3.36s
+17:12:29 |       [leakage] Id=14586569 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:12:32 |       [latency] cond=C Id=14586569 retrieval_sec=2.779 total_sec=5.745
+17:12:32 |       [debug-write] Id=14586569 bytes_written_this_line=19995 file_size_now=3789403 f_out.tell()=3789403
+17:12:32 |       [149/384] Id=14586569 anchors=3 context=5 citation=True valid_citation=True similarity=0.693 retrieval=2.78s
+17:12:35 |       [leakage] Id=52743253 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:12:38 |       [latency] cond=C Id=52743253 retrieval_sec=2.363 total_sec=5.907
+17:12:38 |       [debug-write] Id=52743253 bytes_written_this_line=25189 file_size_now=3814592 f_out.tell()=3814592
+17:12:38 |       [150/384] Id=52743253 anchors=3 context=5 citation=True valid_citation=True similarity=0.766 retrieval=2.36s
+17:12:43 |       [leakage] Id=43043351 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:12:47 |       [latency] cond=C Id=43043351 retrieval_sec=3.945 total_sec=8.127
+17:12:47 |       [debug-write] Id=43043351 bytes_written_this_line=21186 file_size_now=3835778 f_out.tell()=3835778
+17:12:47 |       [151/384] Id=43043351 anchors=3 context=5 citation=True valid_citation=True similarity=0.779 retrieval=3.94s
+17:12:50 |       [leakage] Id=35606349 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:12:54 |       [latency] cond=C Id=35606349 retrieval_sec=2.586 total_sec=6.698
+17:12:54 |       [debug-write] Id=35606349 bytes_written_this_line=23447 file_size_now=3859225 f_out.tell()=3859225
+17:12:54 |       [152/384] Id=35606349 anchors=3 context=5 citation=True valid_citation=True similarity=0.662 retrieval=2.59s
+17:12:57 |       [leakage] Id=30438159 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:13:04 |       [latency] cond=C Id=30438159 retrieval_sec=2.543 total_sec=9.255
+17:13:04 |       [debug-write] Id=30438159 bytes_written_this_line=30519 file_size_now=3889744 f_out.tell()=3889744
+17:13:04 |       [153/384] Id=30438159 anchors=3 context=5 citation=False valid_citation=False similarity=0.785 retrieval=2.54s
+17:13:07 |       [leakage] Id=78607102 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=1 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:13:11 |       [latency] cond=C Id=78607102 retrieval_sec=3.137 total_sec=7.201
+17:13:11 |       [debug-write] Id=78607102 bytes_written_this_line=27496 file_size_now=3917240 f_out.tell()=3917240
+17:13:11 |       [154/384] Id=78607102 anchors=3 context=5 citation=False valid_citation=False similarity=0.681 retrieval=3.14s
+17:13:14 |       [leakage] Id=845265 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:13:24 |       [latency] cond=C Id=845265 retrieval_sec=1.942 total_sec=12.530
+17:13:24 |       [debug-write] Id=845265 bytes_written_this_line=23877 file_size_now=3941117 f_out.tell()=3941117
+17:13:24 |       [155/384] Id=845265 anchors=3 context=5 citation=True valid_citation=True similarity=0.490 retrieval=1.94s
+17:13:26 |       [leakage] Id=46709158 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:13:31 |       [latency] cond=C Id=46709158 retrieval_sec=1.967 total_sec=6.825
+17:13:31 |       [debug-write] Id=46709158 bytes_written_this_line=30541 file_size_now=3971658 f_out.tell()=3971658
+17:13:31 |       [156/384] Id=46709158 anchors=3 context=5 citation=False valid_citation=False similarity=0.537 retrieval=1.97s
+17:13:34 |       [leakage] Id=71769408 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:13:39 |       [latency] cond=C Id=71769408 retrieval_sec=2.177 total_sec=6.775
+17:13:39 |       [debug-write] Id=71769408 bytes_written_this_line=24403 file_size_now=3996061 f_out.tell()=3996061
+17:13:39 |       [157/384] Id=71769408 anchors=3 context=5 citation=True valid_citation=True similarity=0.372 retrieval=2.18s
+17:13:41 |       [leakage] Id=47389202 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:13:45 |       [latency] cond=C Id=47389202 retrieval_sec=2.043 total_sec=5.666
+17:13:45 |       [debug-write] Id=47389202 bytes_written_this_line=24968 file_size_now=4021029 f_out.tell()=4021029
+17:13:45 |       [158/384] Id=47389202 anchors=3 context=5 citation=True valid_citation=True similarity=0.810 retrieval=2.04s
+17:13:49 |       [leakage] Id=59020654 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:13:54 |       [latency] cond=C Id=59020654 retrieval_sec=4.130 total_sec=8.671
+17:13:54 |       [debug-write] Id=59020654 bytes_written_this_line=27835 file_size_now=4048864 f_out.tell()=4048864
+17:13:54 |       [159/384] Id=59020654 anchors=3 context=5 citation=False valid_citation=False similarity=0.656 retrieval=4.13s
+17:13:58 |       [leakage] Id=72691645 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:14:03 |       [latency] cond=C Id=72691645 retrieval_sec=4.352 total_sec=9.127
+17:14:03 |       [debug-write] Id=72691645 bytes_written_this_line=21013 file_size_now=4069877 f_out.tell()=4069877
+17:14:03 |       [160/384] Id=72691645 anchors=3 context=5 citation=True valid_citation=True similarity=0.480 retrieval=4.35s
+17:14:06 |       [leakage] Id=2010746 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:14:12 |       [latency] cond=C Id=2010746 retrieval_sec=2.109 total_sec=8.503
+17:14:12 |       [debug-write] Id=2010746 bytes_written_this_line=20312 file_size_now=4090189 f_out.tell()=4090189
+17:14:12 |       [161/384] Id=2010746 anchors=3 context=5 citation=True valid_citation=True similarity=0.634 retrieval=2.11s
+17:14:14 |       [leakage] Id=76920841 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:14:21 |       [latency] cond=C Id=76920841 retrieval_sec=1.429 total_sec=7.802
+17:14:21 |       [debug-write] Id=76920841 bytes_written_this_line=28936 file_size_now=4119125 f_out.tell()=4119125
+17:14:21 |       [162/384] Id=76920841 anchors=3 context=5 citation=True valid_citation=True similarity=0.629 retrieval=1.43s
+17:14:24 |       [leakage] Id=35890180 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:14:28 |       [latency] cond=C Id=35890180 retrieval_sec=2.730 total_sec=6.839
+17:14:28 |       [debug-write] Id=35890180 bytes_written_this_line=27786 file_size_now=4146911 f_out.tell()=4146911
+17:14:28 |       [163/384] Id=35890180 anchors=3 context=5 citation=True valid_citation=True similarity=0.606 retrieval=2.73s
+17:14:31 |       [leakage] Id=55154364 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:14:39 |       [latency] cond=C Id=55154364 retrieval_sec=2.612 total_sec=10.651
+17:14:39 |       [debug-write] Id=55154364 bytes_written_this_line=27233 file_size_now=4174144 f_out.tell()=4174144
+17:14:39 |       [164/384] Id=55154364 anchors=3 context=5 citation=True valid_citation=True similarity=0.350 retrieval=2.61s
+17:14:46 |       [leakage] Id=12993316 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:14:52 |       [latency] cond=C Id=12993316 retrieval_sec=7.119 total_sec=12.954
+17:14:52 |       [debug-write] Id=12993316 bytes_written_this_line=24281 file_size_now=4198425 f_out.tell()=4198425
+17:14:52 |       [165/384] Id=12993316 anchors=3 context=5 citation=True valid_citation=True similarity=0.582 retrieval=7.12s
+17:14:54 |       [leakage] Id=72638867 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=8 n_expansion_q_empty=0
+17:14:54 |       [expansion] Id=72638867 hanya 8/9 Question expansion ber-answer.
+17:15:01 |       [latency] cond=C Id=72638867 retrieval_sec=1.523 total_sec=8.788
+17:15:01 |       [debug-write] Id=72638867 bytes_written_this_line=26677 file_size_now=4225102 f_out.tell()=4225102
+17:15:01 |       [166/384] Id=72638867 anchors=3 context=5 citation=False valid_citation=False similarity=0.733 retrieval=1.52s
+17:15:04 |       [leakage] Id=34345734 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:15:10 |       [latency] cond=C Id=34345734 retrieval_sec=2.597 total_sec=8.343
+17:15:10 |       [debug-write] Id=34345734 bytes_written_this_line=23993 file_size_now=4249095 f_out.tell()=4249095
+17:15:10 |       [167/384] Id=34345734 anchors=3 context=5 citation=False valid_citation=False similarity=0.730 retrieval=2.60s
+17:15:13 |       [leakage] Id=7174887 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:15:16 |       [latency] cond=C Id=7174887 retrieval_sec=2.492 total_sec=5.549
+17:15:16 |       [debug-write] Id=7174887 bytes_written_this_line=19041 file_size_now=4268136 f_out.tell()=4268136
+17:15:16 |       [168/384] Id=7174887 anchors=3 context=5 citation=True valid_citation=True similarity=0.361 retrieval=2.49s
+17:15:19 |       [leakage] Id=48894172 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:15:32 |       [latency] cond=C Id=48894172 retrieval_sec=2.708 total_sec=15.030
+17:15:32 |       [debug-write] Id=48894172 bytes_written_this_line=27095 file_size_now=4295231 f_out.tell()=4295231
+17:15:32 |       [169/384] Id=48894172 anchors=3 context=5 citation=True valid_citation=True similarity=0.649 retrieval=2.71s
+17:15:34 |       [leakage] Id=65706387 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:15:37 |       [latency] cond=C Id=65706387 retrieval_sec=2.276 total_sec=5.455
+17:15:37 |       [debug-write] Id=65706387 bytes_written_this_line=23402 file_size_now=4318633 f_out.tell()=4318633
+17:15:37 |       [170/384] Id=65706387 anchors=3 context=5 citation=True valid_citation=True similarity=0.735 retrieval=2.28s
+17:15:40 |       [leakage] Id=13367810 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:15:45 |       [latency] cond=C Id=13367810 retrieval_sec=2.071 total_sec=7.458
+17:15:45 |       [debug-write] Id=13367810 bytes_written_this_line=28088 file_size_now=4346721 f_out.tell()=4346721
+17:15:45 |       [171/384] Id=13367810 anchors=3 context=5 citation=True valid_citation=True similarity=0.668 retrieval=2.07s
+17:15:48 |       [leakage] Id=14891387 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:15:53 |       [latency] cond=C Id=14891387 retrieval_sec=2.563 total_sec=7.794
+17:15:53 |       [debug-write] Id=14891387 bytes_written_this_line=30811 file_size_now=4377532 f_out.tell()=4377532
+17:15:53 |       [172/384] Id=14891387 anchors=3 context=5 citation=False valid_citation=False similarity=0.443 retrieval=2.56s
+17:15:56 |       [leakage] Id=48652510 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:16:00 |       [latency] cond=C Id=48652510 retrieval_sec=2.556 total_sec=5.985
+17:16:00 |       [debug-write] Id=48652510 bytes_written_this_line=28974 file_size_now=4406506 f_out.tell()=4406506
+17:16:00 |       [173/384] Id=48652510 anchors=3 context=5 citation=True valid_citation=True similarity=0.651 retrieval=2.56s
+17:16:02 |       [leakage] Id=15465867 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:16:07 |       [latency] cond=C Id=15465867 retrieval_sec=2.142 total_sec=6.465
+17:16:07 |       [debug-write] Id=15465867 bytes_written_this_line=25115 file_size_now=4431621 f_out.tell()=4431621
+17:16:07 |       [174/384] Id=15465867 anchors=3 context=5 citation=True valid_citation=True similarity=0.689 retrieval=2.14s
+17:16:09 |       [leakage] Id=36587126 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:16:15 |       [latency] cond=C Id=36587126 retrieval_sec=2.327 total_sec=7.588
+17:16:15 |       [debug-write] Id=36587126 bytes_written_this_line=24122 file_size_now=4455743 f_out.tell()=4455743
+17:16:15 |       [175/384] Id=36587126 anchors=3 context=5 citation=True valid_citation=True similarity=0.762 retrieval=2.33s
+17:16:17 |       [leakage] Id=23378932 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:16:19 |       [latency] cond=C Id=23378932 retrieval_sec=2.242 total_sec=4.010
+17:16:19 |       [debug-write] Id=23378932 bytes_written_this_line=25568 file_size_now=4481311 f_out.tell()=4481311
+17:16:19 |       [176/384] Id=23378932 anchors=3 context=5 citation=False valid_citation=False similarity=0.559 retrieval=2.24s
+17:16:22 |       [leakage] Id=65668554 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:16:29 |       [latency] cond=C Id=65668554 retrieval_sec=2.452 total_sec=9.512
+17:16:29 |       [debug-write] Id=65668554 bytes_written_this_line=22996 file_size_now=4504307 f_out.tell()=4504307
+17:16:29 |       [177/384] Id=65668554 anchors=3 context=5 citation=True valid_citation=True similarity=0.629 retrieval=2.45s
+17:16:32 |       [leakage] Id=47750045 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:16:36 |       [latency] cond=C Id=47750045 retrieval_sec=2.695 total_sec=6.570
+17:16:36 |       [debug-write] Id=47750045 bytes_written_this_line=20020 file_size_now=4524327 f_out.tell()=4524327
+17:16:36 |       [178/384] Id=47750045 anchors=3 context=5 citation=True valid_citation=True similarity=0.601 retrieval=2.69s
+17:16:39 |       [leakage] Id=65930192 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:16:41 |       [latency] cond=C Id=65930192 retrieval_sec=2.467 total_sec=4.102
+17:16:41 |       [debug-write] Id=65930192 bytes_written_this_line=24595 file_size_now=4548922 f_out.tell()=4548922
+17:16:41 |       [179/384] Id=65930192 anchors=3 context=5 citation=False valid_citation=False similarity=0.676 retrieval=2.47s
+17:16:43 |       [leakage] Id=41656678 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:16:48 |       [latency] cond=C Id=41656678 retrieval_sec=2.542 total_sec=6.867
+17:16:48 |       [debug-write] Id=41656678 bytes_written_this_line=26404 file_size_now=4575326 f_out.tell()=4575326
+17:16:48 |       [180/384] Id=41656678 anchors=3 context=5 citation=True valid_citation=True similarity=0.521 retrieval=2.54s
+17:16:51 |       [leakage] Id=60998890 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:17:00 |       [latency] cond=C Id=60998890 retrieval_sec=2.686 total_sec=11.780
+17:17:00 |       [debug-write] Id=60998890 bytes_written_this_line=28945 file_size_now=4604271 f_out.tell()=4604271
+17:17:00 |       [181/384] Id=60998890 anchors=3 context=5 citation=True valid_citation=True similarity=0.691 retrieval=2.69s
+17:17:02 |       [leakage] Id=6850081 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:17:04 |       [latency] cond=C Id=6850081 retrieval_sec=1.970 total_sec=3.661
+17:17:04 |       [debug-write] Id=6850081 bytes_written_this_line=19528 file_size_now=4623799 f_out.tell()=4623799
+17:17:04 |       [182/384] Id=6850081 anchors=3 context=5 citation=True valid_citation=True similarity=0.721 retrieval=1.97s
+17:17:07 |       [leakage] Id=10043401 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:17:16 |       [latency] cond=C Id=10043401 retrieval_sec=2.610 total_sec=11.111
+17:17:16 |       [debug-write] Id=10043401 bytes_written_this_line=32110 file_size_now=4655909 f_out.tell()=4655909
+17:17:16 |       [183/384] Id=10043401 anchors=3 context=5 citation=True valid_citation=True similarity=0.573 retrieval=2.61s
+17:17:18 |       [leakage] Id=19896928 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:17:20 |       [latency] cond=C Id=19896928 retrieval_sec=2.185 total_sec=3.626
+17:17:20 |       [debug-write] Id=19896928 bytes_written_this_line=22337 file_size_now=4678246 f_out.tell()=4678246
+17:17:20 |       [184/384] Id=19896928 anchors=3 context=5 citation=False valid_citation=False similarity=0.697 retrieval=2.19s
+17:17:23 |       [leakage] Id=74847804 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:17:28 |       [latency] cond=C Id=74847804 retrieval_sec=2.655 total_sec=7.951
+17:17:28 |       [debug-write] Id=74847804 bytes_written_this_line=20852 file_size_now=4699098 f_out.tell()=4699098
+17:17:28 |       [185/384] Id=74847804 anchors=3 context=5 citation=True valid_citation=True similarity=0.674 retrieval=2.65s
+17:17:31 |       [leakage] Id=58903419 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:17:42 |       [latency] cond=C Id=58903419 retrieval_sec=2.395 total_sec=13.095
+17:17:42 |       [debug-write] Id=58903419 bytes_written_this_line=34250 file_size_now=4733348 f_out.tell()=4733348
+17:17:42 |       [186/384] Id=58903419 anchors=3 context=5 citation=False valid_citation=False similarity=0.810 retrieval=2.39s
+17:17:45 |       [leakage] Id=21152452 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=2 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:17:50 |       [latency] cond=C Id=21152452 retrieval_sec=2.850 total_sec=8.345
+17:17:50 |       [debug-write] Id=21152452 bytes_written_this_line=23505 file_size_now=4756853 f_out.tell()=4756853
+17:17:50 |       [187/384] Id=21152452 anchors=3 context=5 citation=False valid_citation=False similarity=0.850 retrieval=2.85s
+17:17:53 |       [leakage] Id=63794755 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:17:58 |       [latency] cond=C Id=63794755 retrieval_sec=2.211 total_sec=7.166
+17:17:58 |       [debug-write] Id=63794755 bytes_written_this_line=24080 file_size_now=4780933 f_out.tell()=4780933
+17:17:58 |       [188/384] Id=63794755 anchors=3 context=5 citation=False valid_citation=False similarity=0.690 retrieval=2.21s
+17:18:06 |       [leakage] Id=6898635 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:18:09 |       [latency] cond=C Id=6898635 retrieval_sec=7.983 total_sec=11.012
+17:18:09 |       [debug-write] Id=6898635 bytes_written_this_line=24603 file_size_now=4805536 f_out.tell()=4805536
+17:18:09 |       [189/384] Id=6898635 anchors=3 context=5 citation=False valid_citation=False similarity=0.447 retrieval=7.98s
+17:18:14 |       [leakage] Id=55036479 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:18:17 |       [latency] cond=C Id=55036479 retrieval_sec=3.909 total_sec=6.865
+17:18:17 |       [debug-write] Id=55036479 bytes_written_this_line=22579 file_size_now=4828115 f_out.tell()=4828115
+17:18:17 |       [190/384] Id=55036479 anchors=3 context=5 citation=True valid_citation=True similarity=0.729 retrieval=3.91s
+17:18:20 |       [leakage] Id=56335097 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:18:25 |       [latency] cond=C Id=56335097 retrieval_sec=3.273 total_sec=7.815
+17:18:25 |       [debug-write] Id=56335097 bytes_written_this_line=23426 file_size_now=4851541 f_out.tell()=4851541
+17:18:25 |       [191/384] Id=56335097 anchors=3 context=5 citation=False valid_citation=False similarity=0.287 retrieval=3.27s
+17:18:28 |       [leakage] Id=43801949 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:18:37 |       [latency] cond=C Id=43801949 retrieval_sec=3.001 total_sec=11.612
+17:18:37 |       [debug-write] Id=43801949 bytes_written_this_line=27943 file_size_now=4879484 f_out.tell()=4879484
+17:18:37 |       [192/384] Id=43801949 anchors=3 context=5 citation=True valid_citation=True similarity=0.537 retrieval=3.00s
+17:18:42 |       [leakage] Id=33736047 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:18:52 |       [latency] cond=C Id=33736047 retrieval_sec=4.730 total_sec=15.056
+17:18:52 |       [debug-write] Id=33736047 bytes_written_this_line=39799 file_size_now=4919283 f_out.tell()=4919283
+17:18:52 |       [193/384] Id=33736047 anchors=3 context=5 citation=True valid_citation=True similarity=0.719 retrieval=4.73s
+17:18:56 |       [leakage] Id=5828957 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:19:04 |       [latency] cond=C Id=5828957 retrieval_sec=3.693 total_sec=10.937
+17:19:04 |       [debug-write] Id=5828957 bytes_written_this_line=27977 file_size_now=4947260 f_out.tell()=4947260
+17:19:04 |       [194/384] Id=5828957 anchors=3 context=5 citation=True valid_citation=True similarity=0.398 retrieval=3.69s
+17:19:06 |       [leakage] Id=12474491 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:19:16 |       [latency] cond=C Id=12474491 retrieval_sec=2.408 total_sec=12.276
+17:19:16 |       [debug-write] Id=12474491 bytes_written_this_line=28007 file_size_now=4975267 f_out.tell()=4975267
+17:19:16 |       [195/384] Id=12474491 anchors=3 context=5 citation=True valid_citation=True similarity=0.718 retrieval=2.41s
+17:19:19 |       [leakage] Id=75375140 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:19:22 |       [latency] cond=C Id=75375140 retrieval_sec=2.582 total_sec=5.001
+17:19:22 |       [debug-write] Id=75375140 bytes_written_this_line=32154 file_size_now=5007421 f_out.tell()=5007421
+17:19:22 |       [196/384] Id=75375140 anchors=3 context=5 citation=True valid_citation=True similarity=0.679 retrieval=2.58s
+17:19:25 |       [leakage] Id=45180021 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:19:27 |       [latency] cond=C Id=45180021 retrieval_sec=2.681 total_sec=4.394
+17:19:27 |       [debug-write] Id=45180021 bytes_written_this_line=15448 file_size_now=5022869 f_out.tell()=5022869
+17:19:27 |       [197/384] Id=45180021 anchors=3 context=5 citation=False valid_citation=False similarity=0.661 retrieval=2.68s
+17:19:30 |       [leakage] Id=28291182 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:19:36 |       [latency] cond=C Id=28291182 retrieval_sec=3.376 total_sec=9.036
+17:19:36 |       [debug-write] Id=28291182 bytes_written_this_line=24766 file_size_now=5047635 f_out.tell()=5047635
+17:19:36 |       [198/384] Id=28291182 anchors=3 context=5 citation=True valid_citation=True similarity=0.700 retrieval=3.38s
+17:19:42 |       [leakage] Id=14247142 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=12 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:19:47 |       [latency] cond=C Id=14247142 retrieval_sec=5.864 total_sec=10.894
+17:19:47 |       [debug-write] Id=14247142 bytes_written_this_line=22299 file_size_now=5069934 f_out.tell()=5069934
+17:19:47 |       [199/384] Id=14247142 anchors=3 context=5 citation=True valid_citation=True similarity=0.482 retrieval=5.86s
+17:19:50 |       [leakage] Id=25044388 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:19:55 |       [latency] cond=C Id=25044388 retrieval_sec=2.639 total_sec=7.586
+17:19:55 |       [debug-write] Id=25044388 bytes_written_this_line=25262 file_size_now=5095196 f_out.tell()=5095196
+17:19:55 |       [200/384] Id=25044388 anchors=3 context=5 citation=False valid_citation=False similarity=0.557 retrieval=2.64s
+17:19:58 |       [leakage] Id=25760770 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:20:03 |       [latency] cond=C Id=25760770 retrieval_sec=2.547 total_sec=6.831
+17:20:03 |       [debug-write] Id=25760770 bytes_written_this_line=23408 file_size_now=5118604 f_out.tell()=5118604
+17:20:03 |       [201/384] Id=25760770 anchors=3 context=5 citation=False valid_citation=False similarity=0.372 retrieval=2.55s
+17:20:06 |       [leakage] Id=58254853 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:20:13 |       [latency] cond=C Id=58254853 retrieval_sec=3.152 total_sec=9.983
+17:20:13 |       [debug-write] Id=58254853 bytes_written_this_line=32071 file_size_now=5150675 f_out.tell()=5150675
+17:20:13 |       [202/384] Id=58254853 anchors=3 context=5 citation=False valid_citation=False similarity=0.500 retrieval=3.15s
+17:20:16 |       [leakage] Id=64057889 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:20:20 |       [latency] cond=C Id=64057889 retrieval_sec=2.948 total_sec=6.971
+17:20:20 |       [debug-write] Id=64057889 bytes_written_this_line=23049 file_size_now=5173724 f_out.tell()=5173724
+17:20:20 |       [203/384] Id=64057889 anchors=3 context=5 citation=True valid_citation=True similarity=0.522 retrieval=2.95s
+17:20:23 |       [leakage] Id=45546616 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:20:25 |       [latency] cond=C Id=45546616 retrieval_sec=2.039 total_sec=4.053
+17:20:25 |       [debug-write] Id=45546616 bytes_written_this_line=20014 file_size_now=5193738 f_out.tell()=5193738
+17:20:25 |       [204/384] Id=45546616 anchors=3 context=5 citation=False valid_citation=False similarity=0.410 retrieval=2.04s
+17:20:28 |       [leakage] Id=31435661 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:20:32 |       [latency] cond=C Id=31435661 retrieval_sec=2.564 total_sec=7.106
+17:20:32 |       [debug-write] Id=31435661 bytes_written_this_line=22896 file_size_now=5216634 f_out.tell()=5216634
+17:20:32 |       [205/384] Id=31435661 anchors=3 context=5 citation=True valid_citation=True similarity=0.676 retrieval=2.56s
+17:20:36 |       [leakage] Id=73272235 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:20:45 |       [latency] cond=C Id=73272235 retrieval_sec=3.069 total_sec=12.658
+17:20:45 |       [debug-write] Id=73272235 bytes_written_this_line=26255 file_size_now=5242889 f_out.tell()=5242889
+17:20:45 |       [206/384] Id=73272235 anchors=3 context=5 citation=True valid_citation=True similarity=0.482 retrieval=3.07s
+17:20:50 |       [leakage] Id=7692713 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:20:55 |       [latency] cond=C Id=7692713 retrieval_sec=3.830 total_sec=8.795
+17:20:55 |       [debug-write] Id=7692713 bytes_written_this_line=22842 file_size_now=5265731 f_out.tell()=5265731
+17:20:55 |       [207/384] Id=7692713 anchors=3 context=5 citation=True valid_citation=True similarity=0.520 retrieval=3.83s
+17:20:58 |       [leakage] Id=32173898 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:21:05 |       [latency] cond=C Id=32173898 retrieval_sec=2.734 total_sec=10.024
+17:21:05 |       [debug-write] Id=32173898 bytes_written_this_line=30831 file_size_now=5296562 f_out.tell()=5296562
+17:21:05 |       [208/384] Id=32173898 anchors=3 context=5 citation=True valid_citation=True similarity=0.217 retrieval=2.73s
+17:21:08 |       [leakage] Id=37863974 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:21:13 |       [latency] cond=C Id=37863974 retrieval_sec=2.936 total_sec=7.573
+17:21:13 |       [debug-write] Id=37863974 bytes_written_this_line=23679 file_size_now=5320241 f_out.tell()=5320241
+17:21:13 |       [209/384] Id=37863974 anchors=3 context=5 citation=True valid_citation=True similarity=0.820 retrieval=2.94s
+17:21:16 |       [leakage] Id=48897453 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:21:20 |       [latency] cond=C Id=48897453 retrieval_sec=2.702 total_sec=6.310
+17:21:20 |       [debug-write] Id=48897453 bytes_written_this_line=24318 file_size_now=5344559 f_out.tell()=5344559
+17:21:20 |       [210/384] Id=48897453 anchors=3 context=5 citation=False valid_citation=False similarity=0.771 retrieval=2.70s
+17:21:23 |       [leakage] Id=39312836 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:21:32 |       [latency] cond=C Id=39312836 retrieval_sec=3.250 total_sec=11.985
+17:21:32 |       [debug-write] Id=39312836 bytes_written_this_line=25298 file_size_now=5369857 f_out.tell()=5369857
+17:21:32 |       [211/384] Id=39312836 anchors=3 context=5 citation=True valid_citation=True similarity=0.654 retrieval=3.25s
+17:21:35 |       [leakage] Id=77792490 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:21:39 |       [latency] cond=C Id=77792490 retrieval_sec=2.665 total_sec=5.989
+17:21:39 |       [debug-write] Id=77792490 bytes_written_this_line=26799 file_size_now=5396656 f_out.tell()=5396656
+17:21:39 |       [212/384] Id=77792490 anchors=3 context=5 citation=True valid_citation=True similarity=0.622 retrieval=2.67s
+17:21:42 |       [leakage] Id=812945 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:21:48 |       [latency] cond=C Id=812945 retrieval_sec=3.206 total_sec=8.945
+17:21:48 |       [debug-write] Id=812945 bytes_written_this_line=22752 file_size_now=5419408 f_out.tell()=5419408
+17:21:48 |       [213/384] Id=812945 anchors=3 context=5 citation=True valid_citation=True similarity=0.442 retrieval=3.21s
+17:21:52 |       [leakage] Id=10209021 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:22:03 |       [latency] cond=C Id=10209021 retrieval_sec=3.315 total_sec=14.765
+17:22:03 |       [debug-write] Id=10209021 bytes_written_this_line=30794 file_size_now=5450202 f_out.tell()=5450202
+17:22:03 |       [214/384] Id=10209021 anchors=3 context=5 citation=True valid_citation=True similarity=0.555 retrieval=3.32s
+17:22:06 |       [leakage] Id=73405232 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:22:11 |       [latency] cond=C Id=73405232 retrieval_sec=2.125 total_sec=7.280
+17:22:11 |       [debug-write] Id=73405232 bytes_written_this_line=33237 file_size_now=5483439 f_out.tell()=5483439
+17:22:11 |       [215/384] Id=73405232 anchors=3 context=5 citation=True valid_citation=True similarity=0.334 retrieval=2.12s
+17:22:14 |       [leakage] Id=37813074 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:22:17 |       [latency] cond=C Id=37813074 retrieval_sec=2.333 total_sec=5.399
+17:22:17 |       [debug-write] Id=37813074 bytes_written_this_line=25281 file_size_now=5508720 f_out.tell()=5508720
+17:22:17 |       [216/384] Id=37813074 anchors=3 context=5 citation=True valid_citation=True similarity=0.596 retrieval=2.33s
+17:22:20 |       [leakage] Id=45148327 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:22:27 |       [latency] cond=C Id=45148327 retrieval_sec=2.555 total_sec=9.726
+17:22:27 |       [debug-write] Id=45148327 bytes_written_this_line=23838 file_size_now=5532558 f_out.tell()=5532558
+17:22:27 |       [217/384] Id=45148327 anchors=3 context=5 citation=False valid_citation=False similarity=0.445 retrieval=2.55s
+17:22:29 |       [leakage] Id=46860197 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:22:34 |       [latency] cond=C Id=46860197 retrieval_sec=1.984 total_sec=6.853
+17:22:34 |       [debug-write] Id=46860197 bytes_written_this_line=30495 file_size_now=5563053 f_out.tell()=5563053
+17:22:34 |       [218/384] Id=46860197 anchors=3 context=5 citation=True valid_citation=True similarity=0.517 retrieval=1.98s
+17:22:38 |       [leakage] Id=2072812 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:22:40 |       [latency] cond=C Id=2072812 retrieval_sec=3.273 total_sec=5.825
+17:22:40 |       [debug-write] Id=2072812 bytes_written_this_line=19847 file_size_now=5582900 f_out.tell()=5582900
+17:22:40 |       [219/384] Id=2072812 anchors=3 context=5 citation=False valid_citation=False similarity=0.620 retrieval=3.27s
+17:22:43 |       [leakage] Id=12713232 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:22:49 |       [latency] cond=C Id=12713232 retrieval_sec=2.666 total_sec=8.323
+17:22:49 |       [debug-write] Id=12713232 bytes_written_this_line=17802 file_size_now=5600702 f_out.tell()=5600702
+17:22:49 |       [220/384] Id=12713232 anchors=3 context=5 citation=True valid_citation=True similarity=0.344 retrieval=2.67s
+17:22:52 |       [leakage] Id=6503057 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:22:58 |       [latency] cond=C Id=6503057 retrieval_sec=2.435 total_sec=8.694
+17:22:58 |       [debug-write] Id=6503057 bytes_written_this_line=28802 file_size_now=5629504 f_out.tell()=5629504
+17:22:58 |       [221/384] Id=6503057 anchors=3 context=5 citation=True valid_citation=True similarity=0.544 retrieval=2.44s
+17:23:04 |       [leakage] Id=59175375 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:23:11 |       [latency] cond=C Id=59175375 retrieval_sec=5.412 total_sec=12.142
+17:23:11 |       [debug-write] Id=59175375 bytes_written_this_line=29180 file_size_now=5658684 f_out.tell()=5658684
+17:23:11 |       [222/384] Id=59175375 anchors=3 context=5 citation=False valid_citation=False similarity=0.747 retrieval=5.41s
+17:23:13 |       [leakage] Id=73440004 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:23:20 |       [latency] cond=C Id=73440004 retrieval_sec=2.031 total_sec=8.487
+17:23:20 |       [debug-write] Id=73440004 bytes_written_this_line=23732 file_size_now=5682416 f_out.tell()=5682416
+17:23:20 |       [223/384] Id=73440004 anchors=3 context=5 citation=True valid_citation=True similarity=0.599 retrieval=2.03s
+17:23:22 |       [leakage] Id=4612659 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:23:31 |       [latency] cond=C Id=4612659 retrieval_sec=1.947 total_sec=10.972
+17:23:31 |       [debug-write] Id=4612659 bytes_written_this_line=22622 file_size_now=5705038 f_out.tell()=5705038
+17:23:31 |       [224/384] Id=4612659 anchors=3 context=5 citation=True valid_citation=True similarity=0.725 retrieval=1.95s
+17:23:34 |       [leakage] Id=55633603 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:23:38 |       [latency] cond=C Id=55633603 retrieval_sec=2.765 total_sec=6.506
+17:23:38 |       [debug-write] Id=55633603 bytes_written_this_line=21271 file_size_now=5726309 f_out.tell()=5726309
+17:23:38 |       [225/384] Id=55633603 anchors=3 context=5 citation=False valid_citation=False similarity=0.486 retrieval=2.76s
+17:23:43 |       [leakage] Id=43809688 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:23:47 |       [latency] cond=C Id=43809688 retrieval_sec=5.090 total_sec=8.659
+17:23:47 |       [debug-write] Id=43809688 bytes_written_this_line=37039 file_size_now=5763348 f_out.tell()=5763348
+17:23:47 |       [226/384] Id=43809688 anchors=3 context=5 citation=True valid_citation=True similarity=0.562 retrieval=5.09s
+17:23:49 |       [leakage] Id=69053706 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:23:58 |       [latency] cond=C Id=69053706 retrieval_sec=2.131 total_sec=10.903
+17:23:58 |       [debug-write] Id=69053706 bytes_written_this_line=29230 file_size_now=5792578 f_out.tell()=5792578
+17:23:58 |       [227/384] Id=69053706 anchors=3 context=5 citation=True valid_citation=True similarity=0.455 retrieval=2.13s
+17:24:02 |       [leakage] Id=6108432 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:24:14 |       [latency] cond=C Id=6108432 retrieval_sec=3.393 total_sec=14.732
+17:24:14 |       [debug-write] Id=6108432 bytes_written_this_line=25475 file_size_now=5818053 f_out.tell()=5818053
+17:24:14 |       [228/384] Id=6108432 anchors=3 context=5 citation=True valid_citation=True similarity=0.317 retrieval=3.39s
+17:24:20 |       [leakage] Id=48416802 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:24:27 |       [latency] cond=C Id=48416802 retrieval_sec=5.916 total_sec=12.623
+17:24:27 |       [debug-write] Id=48416802 bytes_written_this_line=30796 file_size_now=5848849 f_out.tell()=5848849
+17:24:27 |       [229/384] Id=48416802 anchors=3 context=5 citation=True valid_citation=True similarity=0.449 retrieval=5.92s
+17:24:30 |       [leakage] Id=41152052 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:24:32 |       [latency] cond=C Id=41152052 retrieval_sec=2.562 total_sec=5.267
+17:24:32 |       [debug-write] Id=41152052 bytes_written_this_line=19413 file_size_now=5868262 f_out.tell()=5868262
+17:24:32 |       [230/384] Id=41152052 anchors=3 context=5 citation=True valid_citation=True similarity=0.737 retrieval=2.56s
+17:24:37 |       [leakage] Id=20711466 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:24:42 |       [latency] cond=C Id=20711466 retrieval_sec=4.102 total_sec=8.851
+17:24:42 |       [debug-write] Id=20711466 bytes_written_this_line=21833 file_size_now=5890095 f_out.tell()=5890095
+17:24:42 |       [231/384] Id=20711466 anchors=3 context=5 citation=True valid_citation=True similarity=0.454 retrieval=4.10s
+17:24:45 |       [leakage] Id=58081035 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:24:51 |       [latency] cond=C Id=58081035 retrieval_sec=3.075 total_sec=8.988
+17:24:51 |       [debug-write] Id=58081035 bytes_written_this_line=20272 file_size_now=5910367 f_out.tell()=5910367
+17:24:51 |       [232/384] Id=58081035 anchors=3 context=5 citation=True valid_citation=True similarity=0.801 retrieval=3.08s
+17:24:55 |       [leakage] Id=22177915 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:24:56 |       [latency] cond=C Id=22177915 retrieval_sec=3.826 total_sec=5.060
+17:24:56 |       [debug-write] Id=22177915 bytes_written_this_line=18132 file_size_now=5928499 f_out.tell()=5928499
+17:24:56 |       [233/384] Id=22177915 anchors=3 context=5 citation=False valid_citation=False similarity=0.197 retrieval=3.83s
+17:24:59 |       [leakage] Id=59157364 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:25:07 |       [latency] cond=C Id=59157364 retrieval_sec=2.796 total_sec=10.354
+17:25:07 |       [debug-write] Id=59157364 bytes_written_this_line=28187 file_size_now=5956686 f_out.tell()=5956686
+17:25:07 |       [234/384] Id=59157364 anchors=3 context=5 citation=False valid_citation=False similarity=0.843 retrieval=2.80s
+17:25:09 |       [leakage] Id=2836515 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=13 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:25:12 |       [latency] cond=C Id=2836515 retrieval_sec=1.908 total_sec=4.348
+17:25:12 |       [debug-write] Id=2836515 bytes_written_this_line=19456 file_size_now=5976142 f_out.tell()=5976142
+17:25:12 |       [235/384] Id=2836515 anchors=3 context=5 citation=True valid_citation=True similarity=0.682 retrieval=1.91s
+17:25:15 |       [leakage] Id=8033495 mode=thread n_excluded_q=1 n_excluded_a=4 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:25:20 |       [latency] cond=C Id=8033495 retrieval_sec=2.514 total_sec=7.997
+17:25:20 |       [debug-write] Id=8033495 bytes_written_this_line=17535 file_size_now=5993677 f_out.tell()=5993677
+17:25:20 |       [236/384] Id=8033495 anchors=3 context=5 citation=True valid_citation=True similarity=0.514 retrieval=2.51s
+17:25:23 |       [leakage] Id=17386179 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:25:30 |       [latency] cond=C Id=17386179 retrieval_sec=2.560 total_sec=9.328
+17:25:30 |       [debug-write] Id=17386179 bytes_written_this_line=19531 file_size_now=6013208 f_out.tell()=6013208
+17:25:30 |       [237/384] Id=17386179 anchors=3 context=5 citation=False valid_citation=False similarity=0.078 retrieval=2.56s
+17:25:33 |       [leakage] Id=26289173 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:25:39 |       [latency] cond=C Id=26289173 retrieval_sec=2.653 total_sec=8.678
+17:25:39 |       [debug-write] Id=26289173 bytes_written_this_line=29574 file_size_now=6042782 f_out.tell()=6042782
+17:25:39 |       [238/384] Id=26289173 anchors=3 context=5 citation=True valid_citation=True similarity=0.639 retrieval=2.65s
+17:25:41 |       [leakage] Id=60216530 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:25:45 |       [latency] cond=C Id=60216530 retrieval_sec=1.824 total_sec=5.333
+17:25:45 |       [debug-write] Id=60216530 bytes_written_this_line=19113 file_size_now=6061895 f_out.tell()=6061895
+17:25:45 |       [239/384] Id=60216530 anchors=3 context=5 citation=True valid_citation=True similarity=0.530 retrieval=1.82s
+17:25:48 |       [leakage] Id=8670234 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:25:55 |       [latency] cond=C Id=8670234 retrieval_sec=2.834 total_sec=9.906
+17:25:55 |       [debug-write] Id=8670234 bytes_written_this_line=27643 file_size_now=6089538 f_out.tell()=6089538
+17:25:55 |       [240/384] Id=8670234 anchors=3 context=5 citation=True valid_citation=True similarity=0.624 retrieval=2.83s
+17:25:58 |       [leakage] Id=71097445 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:26:01 |       [latency] cond=C Id=71097445 retrieval_sec=2.288 total_sec=5.665
+17:26:01 |       [debug-write] Id=71097445 bytes_written_this_line=29359 file_size_now=6118897 f_out.tell()=6118897
+17:26:01 |       [241/384] Id=71097445 anchors=3 context=5 citation=False valid_citation=False similarity=0.424 retrieval=2.29s
+17:26:04 |       [leakage] Id=14528967 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:26:06 |       [latency] cond=C Id=14528967 retrieval_sec=2.489 total_sec=4.061
+17:26:06 |       [debug-write] Id=14528967 bytes_written_this_line=25871 file_size_now=6144768 f_out.tell()=6144768
+17:26:06 |       [242/384] Id=14528967 anchors=3 context=5 citation=False valid_citation=False similarity=0.625 retrieval=2.49s
+17:26:09 |       [leakage] Id=43174502 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:26:11 |       [latency] cond=C Id=43174502 retrieval_sec=2.851 total_sec=4.964
+17:26:11 |       [debug-write] Id=43174502 bytes_written_this_line=27157 file_size_now=6171925 f_out.tell()=6171925
+17:26:11 |       [243/384] Id=43174502 anchors=3 context=5 citation=False valid_citation=False similarity=0.592 retrieval=2.85s
+17:26:13 |       [leakage] Id=42030271 mode=thread n_excluded_q=1 n_excluded_a=4 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:26:19 |       [latency] cond=C Id=42030271 retrieval_sec=2.141 total_sec=7.775
+17:26:19 |       [debug-write] Id=42030271 bytes_written_this_line=21377 file_size_now=6193302 f_out.tell()=6193302
+17:26:19 |       [244/384] Id=42030271 anchors=3 context=5 citation=True valid_citation=True similarity=0.678 retrieval=2.14s
+17:26:22 |       [leakage] Id=6930094 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:26:26 |       [latency] cond=C Id=6930094 retrieval_sec=2.180 total_sec=6.911
+17:26:26 |       [debug-write] Id=6930094 bytes_written_this_line=23974 file_size_now=6217276 f_out.tell()=6217276
+17:26:26 |       [245/384] Id=6930094 anchors=3 context=5 citation=False valid_citation=False similarity=0.639 retrieval=2.18s
+17:26:29 |       [leakage] Id=72022205 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:26:31 |       [latency] cond=C Id=72022205 retrieval_sec=2.648 total_sec=4.416
+17:26:31 |       [debug-write] Id=72022205 bytes_written_this_line=23409 file_size_now=6240685 f_out.tell()=6240685
+17:26:31 |       [246/384] Id=72022205 anchors=3 context=5 citation=False valid_citation=False similarity=0.683 retrieval=2.65s
+17:26:34 |       [leakage] Id=56237729 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:26:44 |       [latency] cond=C Id=56237729 retrieval_sec=2.878 total_sec=12.559
+17:26:44 |       [debug-write] Id=56237729 bytes_written_this_line=44442 file_size_now=6285127 f_out.tell()=6285127
+17:26:44 |       [247/384] Id=56237729 anchors=3 context=5 citation=True valid_citation=True similarity=0.643 retrieval=2.88s
+17:26:46 |       [leakage] Id=8237958 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:26:56 |       [latency] cond=C Id=8237958 retrieval_sec=2.015 total_sec=11.389
+17:26:56 |       [debug-write] Id=8237958 bytes_written_this_line=22850 file_size_now=6307977 f_out.tell()=6307977
+17:26:56 |       [248/384] Id=8237958 anchors=3 context=5 citation=True valid_citation=True similarity=0.572 retrieval=2.02s
+17:26:59 |       [leakage] Id=60405015 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:27:00 |       [latency] cond=C Id=60405015 retrieval_sec=2.739 total_sec=3.915
+17:27:00 |       [debug-write] Id=60405015 bytes_written_this_line=29676 file_size_now=6337653 f_out.tell()=6337653
+17:27:00 |       [249/384] Id=60405015 anchors=3 context=5 citation=False valid_citation=False similarity=0.476 retrieval=2.74s
+17:27:03 |       [leakage] Id=52387886 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:27:11 |       [latency] cond=C Id=52387886 retrieval_sec=2.705 total_sec=10.132
+17:27:11 |       [debug-write] Id=52387886 bytes_written_this_line=23585 file_size_now=6361238 f_out.tell()=6361238
+17:27:11 |       [250/384] Id=52387886 anchors=3 context=5 citation=True valid_citation=True similarity=0.781 retrieval=2.70s
+17:27:13 |       [leakage] Id=52224948 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:27:19 |       [latency] cond=C Id=52224948 retrieval_sec=2.263 total_sec=7.840
+17:27:19 |       [debug-write] Id=52224948 bytes_written_this_line=20869 file_size_now=6382107 f_out.tell()=6382107
+17:27:19 |       [251/384] Id=52224948 anchors=3 context=5 citation=True valid_citation=True similarity=0.840 retrieval=2.26s
+17:27:22 |       [leakage] Id=37452300 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:27:24 |       [latency] cond=C Id=37452300 retrieval_sec=2.894 total_sec=4.725
+17:27:24 |       [debug-write] Id=37452300 bytes_written_this_line=19423 file_size_now=6401530 f_out.tell()=6401530
+17:27:24 |       [252/384] Id=37452300 anchors=3 context=5 citation=False valid_citation=False similarity=0.573 retrieval=2.89s
+17:27:27 |       [leakage] Id=25247409 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:27:34 |       [latency] cond=C Id=25247409 retrieval_sec=2.360 total_sec=9.666
+17:27:34 |       [debug-write] Id=25247409 bytes_written_this_line=24449 file_size_now=6425979 f_out.tell()=6425979
+17:27:34 |       [253/384] Id=25247409 anchors=3 context=5 citation=True valid_citation=True similarity=0.512 retrieval=2.36s
+17:27:37 |       [leakage] Id=18904280 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:27:40 |       [latency] cond=C Id=18904280 retrieval_sec=2.271 total_sec=5.822
+17:27:40 |       [debug-write] Id=18904280 bytes_written_this_line=22171 file_size_now=6448150 f_out.tell()=6448150
+17:27:40 |       [254/384] Id=18904280 anchors=3 context=5 citation=False valid_citation=False similarity=0.743 retrieval=2.27s
+17:27:44 |       [leakage] Id=28961941 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:27:52 |       [latency] cond=C Id=28961941 retrieval_sec=2.866 total_sec=10.916
+17:27:52 |       [debug-write] Id=28961941 bytes_written_this_line=22037 file_size_now=6470187 f_out.tell()=6470187
+17:27:52 |       [255/384] Id=28961941 anchors=3 context=5 citation=True valid_citation=True similarity=0.811 retrieval=2.87s
+17:27:55 |       [leakage] Id=58941764 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:28:00 |       [latency] cond=C Id=58941764 retrieval_sec=3.166 total_sec=7.457
+17:28:00 |       [debug-write] Id=58941764 bytes_written_this_line=23219 file_size_now=6493406 f_out.tell()=6493406
+17:28:00 |       [256/384] Id=58941764 anchors=3 context=5 citation=True valid_citation=True similarity=0.445 retrieval=3.17s
+17:28:04 |       [leakage] Id=60580674 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:28:06 |       [latency] cond=C Id=60580674 retrieval_sec=3.980 total_sec=6.217
+17:28:06 |       [debug-write] Id=60580674 bytes_written_this_line=20387 file_size_now=6513793 f_out.tell()=6513793
+17:28:06 |       [257/384] Id=60580674 anchors=3 context=5 citation=False valid_citation=False similarity=0.662 retrieval=3.98s
+17:28:10 |       [leakage] Id=35416823 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:28:16 |       [latency] cond=C Id=35416823 retrieval_sec=3.434 total_sec=9.382
+17:28:16 |       [debug-write] Id=35416823 bytes_written_this_line=25135 file_size_now=6538928 f_out.tell()=6538928
+17:28:16 |       [258/384] Id=35416823 anchors=3 context=5 citation=True valid_citation=True similarity=0.848 retrieval=3.43s
+17:28:19 |       [leakage] Id=5917610 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:28:25 |       [latency] cond=C Id=5917610 retrieval_sec=2.837 total_sec=8.103
+17:28:25 |       [debug-write] Id=5917610 bytes_written_this_line=23548 file_size_now=6562476 f_out.tell()=6562476
+17:28:25 |       [259/384] Id=5917610 anchors=3 context=5 citation=True valid_citation=True similarity=0.474 retrieval=2.84s
+17:28:27 |       [leakage] Id=61812445 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:28:30 |       [latency] cond=C Id=61812445 retrieval_sec=2.634 total_sec=4.982
+17:28:30 |       [debug-write] Id=61812445 bytes_written_this_line=26064 file_size_now=6588540 f_out.tell()=6588540
+17:28:30 |       [260/384] Id=61812445 anchors=3 context=5 citation=True valid_citation=True similarity=0.685 retrieval=2.63s
+17:28:32 |       [leakage] Id=1888411 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:28:38 |       [latency] cond=C Id=1888411 retrieval_sec=2.232 total_sec=7.299
+17:28:38 |       [debug-write] Id=1888411 bytes_written_this_line=30090 file_size_now=6618630 f_out.tell()=6618630
+17:28:38 |       [261/384] Id=1888411 anchors=3 context=5 citation=True valid_citation=True similarity=0.701 retrieval=2.23s
+17:28:40 |       [leakage] Id=68722934 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:28:50 |       [latency] cond=C Id=68722934 retrieval_sec=2.250 total_sec=11.548
+17:28:50 |       [debug-write] Id=68722934 bytes_written_this_line=40412 file_size_now=6659042 f_out.tell()=6659042
+17:28:50 |       [262/384] Id=68722934 anchors=3 context=5 citation=True valid_citation=True similarity=0.759 retrieval=2.25s
+17:28:53 |       [leakage] Id=55056802 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:28:58 |       [latency] cond=C Id=55056802 retrieval_sec=2.764 total_sec=7.842
+17:28:58 |       [debug-write] Id=55056802 bytes_written_this_line=20941 file_size_now=6679983 f_out.tell()=6679983
+17:28:58 |       [263/384] Id=55056802 anchors=3 context=5 citation=True valid_citation=True similarity=0.505 retrieval=2.76s
+17:29:02 |       [leakage] Id=75361328 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:29:03 |       [latency] cond=C Id=75361328 retrieval_sec=3.433 total_sec=5.227
+17:29:03 |       [debug-write] Id=75361328 bytes_written_this_line=23145 file_size_now=6703128 f_out.tell()=6703128
+17:29:03 |       [264/384] Id=75361328 anchors=3 context=5 citation=False valid_citation=False similarity=0.897 retrieval=3.43s
+17:29:06 |       [leakage] Id=38499202 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:29:11 |       [latency] cond=C Id=38499202 retrieval_sec=2.743 total_sec=7.296
+17:29:11 |       [debug-write] Id=38499202 bytes_written_this_line=27969 file_size_now=6731097 f_out.tell()=6731097
+17:29:11 |       [265/384] Id=38499202 anchors=3 context=5 citation=True valid_citation=True similarity=0.607 retrieval=2.74s
+17:29:14 |       [leakage] Id=2201058 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:29:18 |       [latency] cond=C Id=2201058 retrieval_sec=2.745 total_sec=6.870
+17:29:18 |       [debug-write] Id=2201058 bytes_written_this_line=25679 file_size_now=6756776 f_out.tell()=6756776
+17:29:18 |       [266/384] Id=2201058 anchors=3 context=5 citation=True valid_citation=True similarity=0.715 retrieval=2.75s
+17:29:21 |       [leakage] Id=63497365 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:29:28 |       [latency] cond=C Id=63497365 retrieval_sec=2.556 total_sec=9.244
+17:29:28 |       [debug-write] Id=63497365 bytes_written_this_line=21317 file_size_now=6778093 f_out.tell()=6778093
+17:29:28 |       [267/384] Id=63497365 anchors=3 context=5 citation=False valid_citation=False similarity=0.555 retrieval=2.56s
+17:29:31 |       [leakage] Id=19477784 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:29:39 |       [latency] cond=C Id=19477784 retrieval_sec=2.626 total_sec=10.870
+17:29:39 |       [debug-write] Id=19477784 bytes_written_this_line=24529 file_size_now=6802622 f_out.tell()=6802622
+17:29:39 |       [268/384] Id=19477784 anchors=3 context=5 citation=True valid_citation=True similarity=0.621 retrieval=2.63s
+17:29:42 |       [leakage] Id=44322592 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:29:49 |       [latency] cond=C Id=44322592 retrieval_sec=2.025 total_sec=9.068
+17:29:49 |       [debug-write] Id=44322592 bytes_written_this_line=24396 file_size_now=6827018 f_out.tell()=6827018
+17:29:49 |       [269/384] Id=44322592 anchors=3 context=5 citation=True valid_citation=True similarity=0.678 retrieval=2.02s
+17:29:53 |       [leakage] Id=20208142 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:30:01 |       [latency] cond=C Id=20208142 retrieval_sec=4.281 total_sec=11.892
+17:30:01 |       [debug-write] Id=20208142 bytes_written_this_line=30898 file_size_now=6857916 f_out.tell()=6857916
+17:30:01 |       [270/384] Id=20208142 anchors=3 context=5 citation=True valid_citation=True similarity=0.591 retrieval=4.28s
+17:30:04 |       [leakage] Id=39237769 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:30:05 |       [latency] cond=C Id=39237769 retrieval_sec=2.630 total_sec=3.907
+17:30:05 |       [debug-write] Id=39237769 bytes_written_this_line=23346 file_size_now=6881262 f_out.tell()=6881262
+17:30:05 |       [271/384] Id=39237769 anchors=3 context=5 citation=False valid_citation=False similarity=0.347 retrieval=2.63s
+17:30:09 |       [leakage] Id=20629294 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=8 n_expansion_q_empty=0
+17:30:09 |       [expansion] Id=20629294 hanya 8/9 Question expansion ber-answer.
+17:30:13 |       [latency] cond=C Id=20629294 retrieval_sec=2.783 total_sec=7.299
+17:30:13 |       [debug-write] Id=20629294 bytes_written_this_line=18197 file_size_now=6899459 f_out.tell()=6899459
+17:30:13 |       [272/384] Id=20629294 anchors=3 context=5 citation=True valid_citation=True similarity=0.749 retrieval=2.78s
+17:30:16 |       [leakage] Id=57771364 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:30:19 |       [latency] cond=C Id=57771364 retrieval_sec=2.781 total_sec=5.670
+17:30:19 |       [debug-write] Id=57771364 bytes_written_this_line=25440 file_size_now=6924899 f_out.tell()=6924899
+17:30:19 |       [273/384] Id=57771364 anchors=3 context=5 citation=True valid_citation=True similarity=0.744 retrieval=2.78s
+17:30:22 |       [leakage] Id=79761984 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:30:25 |       [latency] cond=C Id=79761984 retrieval_sec=2.573 total_sec=5.864
+17:30:25 |       [debug-write] Id=79761984 bytes_written_this_line=20871 file_size_now=6945770 f_out.tell()=6945770
+17:30:25 |       [274/384] Id=79761984 anchors=3 context=5 citation=True valid_citation=True similarity=0.597 retrieval=2.57s
+17:30:28 |       [leakage] Id=76821539 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:30:30 |       [latency] cond=C Id=76821539 retrieval_sec=2.599 total_sec=3.822
+17:30:30 |       [debug-write] Id=76821539 bytes_written_this_line=20904 file_size_now=6966674 f_out.tell()=6966674
+17:30:30 |       [275/384] Id=76821539 anchors=3 context=5 citation=False valid_citation=False similarity=0.500 retrieval=2.60s
+17:30:32 |       [leakage] Id=42022132 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:30:35 |       [latency] cond=C Id=42022132 retrieval_sec=2.057 total_sec=5.287
+17:30:35 |       [debug-write] Id=42022132 bytes_written_this_line=28871 file_size_now=6995545 f_out.tell()=6995545
+17:30:35 |       [276/384] Id=42022132 anchors=3 context=5 citation=True valid_citation=False similarity=0.635 retrieval=2.06s
+17:30:38 |       [leakage] Id=17862629 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:30:42 |       [latency] cond=C Id=17862629 retrieval_sec=2.415 total_sec=6.463
+17:30:42 |       [debug-write] Id=17862629 bytes_written_this_line=19436 file_size_now=7014981 f_out.tell()=7014981
+17:30:42 |       [277/384] Id=17862629 anchors=3 context=5 citation=True valid_citation=True similarity=0.600 retrieval=2.41s
+17:30:45 |       [leakage] Id=36000817 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:30:50 |       [latency] cond=C Id=36000817 retrieval_sec=2.259 total_sec=7.565
+17:30:50 |       [debug-write] Id=36000817 bytes_written_this_line=28485 file_size_now=7043466 f_out.tell()=7043466
+17:30:50 |       [278/384] Id=36000817 anchors=3 context=5 citation=True valid_citation=True similarity=0.655 retrieval=2.26s
+17:30:53 |       [leakage] Id=33902718 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:31:00 |       [latency] cond=C Id=33902718 retrieval_sec=2.213 total_sec=9.803
+17:31:00 |       [debug-write] Id=33902718 bytes_written_this_line=26913 file_size_now=7070379 f_out.tell()=7070379
+17:31:00 |       [279/384] Id=33902718 anchors=3 context=5 citation=True valid_citation=True similarity=0.513 retrieval=2.21s
+17:31:04 |       [leakage] Id=35815615 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:31:13 |       [latency] cond=C Id=35815615 retrieval_sec=3.408 total_sec=12.485
+17:31:13 |       [debug-write] Id=35815615 bytes_written_this_line=38749 file_size_now=7109128 f_out.tell()=7109128
+17:31:13 |       [280/384] Id=35815615 anchors=3 context=5 citation=True valid_citation=True similarity=0.698 retrieval=3.41s
+17:31:16 |       [leakage] Id=61139346 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:31:22 |       [latency] cond=C Id=61139346 retrieval_sec=2.889 total_sec=8.884
+17:31:22 |       [debug-write] Id=61139346 bytes_written_this_line=25009 file_size_now=7134137 f_out.tell()=7134137
+17:31:22 |       [281/384] Id=61139346 anchors=3 context=5 citation=False valid_citation=False similarity=0.374 retrieval=2.89s
+17:31:26 |       [leakage] Id=41430638 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:31:31 |       [latency] cond=C Id=41430638 retrieval_sec=3.332 total_sec=7.617
+17:31:31 |       [debug-write] Id=41430638 bytes_written_this_line=24669 file_size_now=7158806 f_out.tell()=7158806
+17:31:31 |       [282/384] Id=41430638 anchors=3 context=5 citation=False valid_citation=False similarity=0.772 retrieval=3.33s
+17:31:33 |       [leakage] Id=43898834 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:31:39 |       [latency] cond=C Id=43898834 retrieval_sec=2.625 total_sec=7.938
+17:31:39 |       [debug-write] Id=43898834 bytes_written_this_line=29138 file_size_now=7187944 f_out.tell()=7187944
+17:31:39 |       [283/384] Id=43898834 anchors=3 context=5 citation=True valid_citation=True similarity=0.355 retrieval=2.62s
+17:31:46 |       [leakage] Id=9390590 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:31:54 |       [latency] cond=C Id=9390590 retrieval_sec=6.379 total_sec=14.305
+17:31:54 |       [debug-write] Id=9390590 bytes_written_this_line=27329 file_size_now=7215273 f_out.tell()=7215273
+17:31:54 |       [284/384] Id=9390590 anchors=3 context=5 citation=False valid_citation=False similarity=0.718 retrieval=6.38s
+17:31:57 |       [leakage] Id=67596144 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=13 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:32:02 |       [latency] cond=C Id=67596144 retrieval_sec=2.565 total_sec=7.713
+17:32:02 |       [debug-write] Id=67596144 bytes_written_this_line=24835 file_size_now=7240108 f_out.tell()=7240108
+17:32:02 |       [285/384] Id=67596144 anchors=3 context=5 citation=True valid_citation=True similarity=0.725 retrieval=2.57s
+17:32:04 |       [leakage] Id=6067799 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=13 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:32:08 |       [latency] cond=C Id=6067799 retrieval_sec=2.308 total_sec=5.576
+17:32:08 |       [debug-write] Id=6067799 bytes_written_this_line=27004 file_size_now=7267112 f_out.tell()=7267112
+17:32:08 |       [286/384] Id=6067799 anchors=3 context=5 citation=True valid_citation=True similarity=0.654 retrieval=2.31s
+17:32:11 |       [leakage] Id=54524535 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:32:13 |       [latency] cond=C Id=54524535 retrieval_sec=3.015 total_sec=5.178
+17:32:13 |       [debug-write] Id=54524535 bytes_written_this_line=21377 file_size_now=7288489 f_out.tell()=7288489
+17:32:13 |       [287/384] Id=54524535 anchors=3 context=5 citation=True valid_citation=True similarity=0.588 retrieval=3.01s
+17:32:17 |       [leakage] Id=9430682 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:32:24 |       [latency] cond=C Id=9430682 retrieval_sec=3.395 total_sec=10.112
+17:32:24 |       [debug-write] Id=9430682 bytes_written_this_line=22788 file_size_now=7311277 f_out.tell()=7311277
+17:32:24 |       [288/384] Id=9430682 anchors=3 context=5 citation=True valid_citation=True similarity=0.851 retrieval=3.40s
+17:32:27 |       [leakage] Id=3728507 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:32:30 |       [latency] cond=C Id=3728507 retrieval_sec=2.597 total_sec=5.409
+17:32:30 |       [debug-write] Id=3728507 bytes_written_this_line=19588 file_size_now=7330865 f_out.tell()=7330865
+17:32:30 |       [289/384] Id=3728507 anchors=3 context=5 citation=True valid_citation=True similarity=0.658 retrieval=2.60s
+17:32:33 |       [leakage] Id=3261540 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:32:34 |       [latency] cond=C Id=3261540 retrieval_sec=2.505 total_sec=3.688
+17:32:34 |       [debug-write] Id=3261540 bytes_written_this_line=21994 file_size_now=7352859 f_out.tell()=7352859
+17:32:34 |       [290/384] Id=3261540 anchors=3 context=5 citation=False valid_citation=False similarity=0.746 retrieval=2.51s
+17:32:39 |       [leakage] Id=24920900 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:32:44 |       [latency] cond=C Id=24920900 retrieval_sec=4.923 total_sec=9.199
+17:32:44 |       [debug-write] Id=24920900 bytes_written_this_line=23447 file_size_now=7376306 f_out.tell()=7376306
+17:32:44 |       [291/384] Id=24920900 anchors=3 context=5 citation=True valid_citation=True similarity=0.585 retrieval=4.92s
+17:32:46 |       [leakage] Id=4690569 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:32:54 |       [latency] cond=C Id=4690569 retrieval_sec=2.221 total_sec=10.514
+17:32:54 |       [debug-write] Id=4690569 bytes_written_this_line=25720 file_size_now=7402026 f_out.tell()=7402026
+17:32:54 |       [292/384] Id=4690569 anchors=3 context=5 citation=True valid_citation=True similarity=0.801 retrieval=2.22s
+17:32:57 |       [leakage] Id=4030462 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:33:06 |       [latency] cond=C Id=4030462 retrieval_sec=1.925 total_sec=10.634
+17:33:06 |       [debug-write] Id=4030462 bytes_written_this_line=30483 file_size_now=7432509 f_out.tell()=7432509
+17:33:06 |       [293/384] Id=4030462 anchors=3 context=5 citation=False valid_citation=False similarity=0.489 retrieval=1.93s
+17:33:08 |       [leakage] Id=75338059 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:33:14 |       [latency] cond=C Id=75338059 retrieval_sec=2.365 total_sec=8.122
+17:33:14 |       [debug-write] Id=75338059 bytes_written_this_line=29326 file_size_now=7461835 f_out.tell()=7461835
+17:33:14 |       [294/384] Id=75338059 anchors=3 context=5 citation=True valid_citation=True similarity=0.240 retrieval=2.36s
+17:33:16 |       [leakage] Id=47896990 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:33:18 |       [latency] cond=C Id=47896990 retrieval_sec=1.755 total_sec=3.111
+17:33:18 |       [debug-write] Id=47896990 bytes_written_this_line=22742 file_size_now=7484577 f_out.tell()=7484577
+17:33:18 |       [295/384] Id=47896990 anchors=3 context=5 citation=False valid_citation=False similarity=0.207 retrieval=1.75s
+17:33:21 |       [leakage] Id=52516584 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:33:27 |       [latency] cond=C Id=52516584 retrieval_sec=2.879 total_sec=9.259
+17:33:27 |       [debug-write] Id=52516584 bytes_written_this_line=27646 file_size_now=7512223 f_out.tell()=7512223
+17:33:27 |       [296/384] Id=52516584 anchors=3 context=5 citation=True valid_citation=True similarity=0.564 retrieval=2.88s
+17:33:29 |       [leakage] Id=8511176 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:33:32 |       [latency] cond=C Id=8511176 retrieval_sec=2.026 total_sec=4.627
+17:33:32 |       [debug-write] Id=8511176 bytes_written_this_line=20040 file_size_now=7532263 f_out.tell()=7532263
+17:33:32 |       [297/384] Id=8511176 anchors=3 context=5 citation=False valid_citation=False similarity=0.661 retrieval=2.03s
+17:33:35 |       [leakage] Id=61137802 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:33:41 |       [latency] cond=C Id=61137802 retrieval_sec=2.692 total_sec=8.464
+17:33:41 |       [debug-write] Id=61137802 bytes_written_this_line=22093 file_size_now=7554356 f_out.tell()=7554356
+17:33:41 |       [298/384] Id=61137802 anchors=3 context=5 citation=False valid_citation=False similarity=0.824 retrieval=2.69s
+17:33:44 |       [leakage] Id=33117 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:33:50 |       [latency] cond=C Id=33117 retrieval_sec=2.702 total_sec=8.673
+17:33:50 |       [debug-write] Id=33117 bytes_written_this_line=25377 file_size_now=7579733 f_out.tell()=7579733
+17:33:50 |       [299/384] Id=33117 anchors=3 context=5 citation=False valid_citation=False similarity=0.643 retrieval=2.70s
+17:33:54 |       [leakage] Id=56193318 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:34:06 |       [latency] cond=C Id=56193318 retrieval_sec=3.596 total_sec=15.122
+17:34:06 |       [debug-write] Id=56193318 bytes_written_this_line=26568 file_size_now=7606301 f_out.tell()=7606301
+17:34:06 |       [300/384] Id=56193318 anchors=3 context=5 citation=False valid_citation=False similarity=0.658 retrieval=3.60s
+17:34:08 |       [leakage] Id=62534577 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:34:19 |       [latency] cond=C Id=62534577 retrieval_sec=2.497 total_sec=13.178
+17:34:19 |       [debug-write] Id=62534577 bytes_written_this_line=23498 file_size_now=7629799 f_out.tell()=7629799
+17:34:19 |       [301/384] Id=62534577 anchors=3 context=5 citation=True valid_citation=True similarity=0.342 retrieval=2.50s
+17:34:22 |       [leakage] Id=61872888 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:34:28 |       [latency] cond=C Id=61872888 retrieval_sec=2.874 total_sec=8.675
+17:34:28 |       [debug-write] Id=61872888 bytes_written_this_line=22955 file_size_now=7652754 f_out.tell()=7652754
+17:34:28 |       [302/384] Id=61872888 anchors=3 context=5 citation=True valid_citation=True similarity=0.532 retrieval=2.87s
+17:34:31 |       [leakage] Id=62832082 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:34:34 |       [latency] cond=C Id=62832082 retrieval_sec=2.765 total_sec=4.778
+17:34:34 |       [debug-write] Id=62832082 bytes_written_this_line=25186 file_size_now=7677940 f_out.tell()=7677940
+17:34:34 |       [303/384] Id=62832082 anchors=3 context=5 citation=False valid_citation=False similarity=0.676 retrieval=2.77s
+17:34:36 |       [leakage] Id=69656262 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:34:45 |       [latency] cond=C Id=69656262 retrieval_sec=2.484 total_sec=10.502
+17:34:45 |       [debug-write] Id=69656262 bytes_written_this_line=26454 file_size_now=7704394 f_out.tell()=7704394
+17:34:45 |       [304/384] Id=69656262 anchors=3 context=5 citation=True valid_citation=True similarity=0.710 retrieval=2.48s
+17:34:47 |       [leakage] Id=17801270 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:34:53 |       [latency] cond=C Id=17801270 retrieval_sec=2.352 total_sec=8.344
+17:34:53 |       [debug-write] Id=17801270 bytes_written_this_line=24581 file_size_now=7728975 f_out.tell()=7728975
+17:34:53 |       [305/384] Id=17801270 anchors=3 context=5 citation=True valid_citation=True similarity=0.676 retrieval=2.35s
+17:34:56 |       [leakage] Id=50358170 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:34:58 |       [latency] cond=C Id=50358170 retrieval_sec=2.638 total_sec=4.248
+17:34:58 |       [debug-write] Id=50358170 bytes_written_this_line=20105 file_size_now=7749080 f_out.tell()=7749080
+17:34:58 |       [306/384] Id=50358170 anchors=3 context=5 citation=False valid_citation=False similarity=0.590 retrieval=2.64s
+17:35:01 |       [leakage] Id=51190966 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=2 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:35:09 |       [latency] cond=C Id=51190966 retrieval_sec=2.377 total_sec=11.055
+17:35:09 |       [debug-write] Id=51190966 bytes_written_this_line=24552 file_size_now=7773632 f_out.tell()=7773632
+17:35:09 |       [307/384] Id=51190966 anchors=3 context=5 citation=True valid_citation=True similarity=0.717 retrieval=2.38s
+17:35:13 |       [leakage] Id=7387956 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:35:19 |       [latency] cond=C Id=7387956 retrieval_sec=3.761 total_sec=8.795
+17:35:19 |       [debug-write] Id=7387956 bytes_written_this_line=28725 file_size_now=7802357 f_out.tell()=7802357
+17:35:19 |       [308/384] Id=7387956 anchors=3 context=5 citation=True valid_citation=True similarity=0.742 retrieval=3.76s
+17:35:22 |       [leakage] Id=15873302 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:35:28 |       [latency] cond=C Id=15873302 retrieval_sec=2.762 total_sec=8.631
+17:35:28 |       [debug-write] Id=15873302 bytes_written_this_line=22827 file_size_now=7825184 f_out.tell()=7825184
+17:35:28 |       [309/384] Id=15873302 anchors=3 context=5 citation=True valid_citation=True similarity=0.651 retrieval=2.76s
+17:35:30 |       [leakage] Id=22296991 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:35:35 |       [latency] cond=C Id=22296991 retrieval_sec=2.284 total_sec=6.728
+17:35:35 |       [debug-write] Id=22296991 bytes_written_this_line=19535 file_size_now=7844719 f_out.tell()=7844719
+17:35:35 |       [310/384] Id=22296991 anchors=3 context=5 citation=True valid_citation=True similarity=0.809 retrieval=2.28s
+17:35:41 |       [leakage] Id=28633147 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:35:44 |       [latency] cond=C Id=28633147 retrieval_sec=5.378 total_sec=9.109
+17:35:44 |       [debug-write] Id=28633147 bytes_written_this_line=21168 file_size_now=7865887 f_out.tell()=7865887
+17:35:44 |       [311/384] Id=28633147 anchors=3 context=5 citation=False valid_citation=False similarity=0.130 retrieval=5.38s
+17:35:49 |       [leakage] Id=41877918 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:35:55 |       [latency] cond=C Id=41877918 retrieval_sec=3.902 total_sec=9.854
+17:35:55 |       [debug-write] Id=41877918 bytes_written_this_line=22890 file_size_now=7888777 f_out.tell()=7888777
+17:35:55 |       [312/384] Id=41877918 anchors=3 context=5 citation=True valid_citation=True similarity=0.656 retrieval=3.90s
+17:35:58 |       [leakage] Id=64270057 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:36:03 |       [latency] cond=C Id=64270057 retrieval_sec=3.446 total_sec=7.977
+17:36:03 |       [debug-write] Id=64270057 bytes_written_this_line=21802 file_size_now=7910579 f_out.tell()=7910579
+17:36:03 |       [313/384] Id=64270057 anchors=3 context=5 citation=False valid_citation=False similarity=0.605 retrieval=3.45s
+17:36:06 |       [leakage] Id=37242704 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:36:07 |       [latency] cond=C Id=37242704 retrieval_sec=2.233 total_sec=3.944
+17:36:07 |       [debug-write] Id=37242704 bytes_written_this_line=18504 file_size_now=7929083 f_out.tell()=7929083
+17:36:07 |       [314/384] Id=37242704 anchors=3 context=5 citation=False valid_citation=False similarity=0.612 retrieval=2.23s
+17:36:11 |       [leakage] Id=34059457 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:36:19 |       [latency] cond=C Id=34059457 retrieval_sec=3.334 total_sec=11.537
+17:36:19 |       [debug-write] Id=34059457 bytes_written_this_line=27560 file_size_now=7956643 f_out.tell()=7956643
+17:36:19 |       [315/384] Id=34059457 anchors=3 context=5 citation=True valid_citation=True similarity=0.821 retrieval=3.33s
+17:36:23 |       [leakage] Id=58550954 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:36:29 |       [latency] cond=C Id=58550954 retrieval_sec=3.196 total_sec=9.667
+17:36:29 |       [debug-write] Id=58550954 bytes_written_this_line=27619 file_size_now=7984262 f_out.tell()=7984262
+17:36:29 |       [316/384] Id=58550954 anchors=3 context=5 citation=True valid_citation=True similarity=0.738 retrieval=3.20s
+17:36:33 |       [leakage] Id=46308484 mode=thread n_excluded_q=1 n_excluded_a=4 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:36:36 |       [latency] cond=C Id=46308484 retrieval_sec=3.047 total_sec=5.847
+17:36:36 |       [debug-write] Id=46308484 bytes_written_this_line=27366 file_size_now=8011628 f_out.tell()=8011628
+17:36:36 |       [317/384] Id=46308484 anchors=3 context=5 citation=True valid_citation=True similarity=0.491 retrieval=3.05s
+17:36:39 |       [leakage] Id=8516239 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:36:52 |       [latency] cond=C Id=8516239 retrieval_sec=3.140 total_sec=16.004
+17:36:52 |       [debug-write] Id=8516239 bytes_written_this_line=22111 file_size_now=8033739 f_out.tell()=8033739
+17:36:52 |       [318/384] Id=8516239 anchors=3 context=5 citation=True valid_citation=True similarity=0.374 retrieval=3.14s
+17:36:54 |       [leakage] Id=20255227 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:37:00 |       [latency] cond=C Id=20255227 retrieval_sec=2.052 total_sec=7.388
+17:37:00 |       [debug-write] Id=20255227 bytes_written_this_line=25252 file_size_now=8058991 f_out.tell()=8058991
+17:37:00 |       [319/384] Id=20255227 anchors=3 context=5 citation=True valid_citation=True similarity=0.854 retrieval=2.05s
+17:37:03 |       [leakage] Id=10549310 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:37:04 |       [latency] cond=C Id=10549310 retrieval_sec=2.592 total_sec=3.813
+17:37:04 |       [debug-write] Id=10549310 bytes_written_this_line=22830 file_size_now=8081821 f_out.tell()=8081821
+17:37:04 |       [320/384] Id=10549310 anchors=3 context=5 citation=False valid_citation=False similarity=0.696 retrieval=2.59s
+17:37:07 |       [leakage] Id=26494671 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:37:12 |       [latency] cond=C Id=26494671 retrieval_sec=3.140 total_sec=7.814
+17:37:12 |       [debug-write] Id=26494671 bytes_written_this_line=26398 file_size_now=8108219 f_out.tell()=8108219
+17:37:12 |       [321/384] Id=26494671 anchors=3 context=5 citation=True valid_citation=True similarity=0.615 retrieval=3.14s
+17:37:15 |       [leakage] Id=52030222 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:37:21 |       [latency] cond=C Id=52030222 retrieval_sec=2.850 total_sec=8.139
+17:37:21 |       [debug-write] Id=52030222 bytes_written_this_line=22065 file_size_now=8130284 f_out.tell()=8130284
+17:37:21 |       [322/384] Id=52030222 anchors=3 context=5 citation=True valid_citation=True similarity=0.388 retrieval=2.85s
+17:37:25 |       [leakage] Id=70868297 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=2 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:37:34 |       [latency] cond=C Id=70868297 retrieval_sec=3.414 total_sec=12.159
+17:37:34 |       [debug-write] Id=70868297 bytes_written_this_line=34290 file_size_now=8164574 f_out.tell()=8164574
+17:37:34 |       [323/384] Id=70868297 anchors=3 context=5 citation=False valid_citation=False similarity=0.512 retrieval=3.41s
+17:37:42 |       [leakage] Id=1666588 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:37:48 |       [latency] cond=C Id=1666588 retrieval_sec=8.638 total_sec=13.902
+17:37:48 |       [debug-write] Id=1666588 bytes_written_this_line=23574 file_size_now=8188148 f_out.tell()=8188148
+17:37:48 |       [324/384] Id=1666588 anchors=3 context=5 citation=True valid_citation=True similarity=0.622 retrieval=8.64s
+17:37:51 |       [leakage] Id=13073148 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:37:54 |       [latency] cond=C Id=13073148 retrieval_sec=2.807 total_sec=5.933
+17:37:54 |       [debug-write] Id=13073148 bytes_written_this_line=17713 file_size_now=8205861 f_out.tell()=8205861
+17:37:54 |       [325/384] Id=13073148 anchors=3 context=5 citation=True valid_citation=True similarity=0.576 retrieval=2.81s
+17:37:57 |       [leakage] Id=64754720 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:38:03 |       [latency] cond=C Id=64754720 retrieval_sec=2.954 total_sec=8.051
+17:38:03 |       [debug-write] Id=64754720 bytes_written_this_line=24679 file_size_now=8230540 f_out.tell()=8230540
+17:38:03 |       [326/384] Id=64754720 anchors=3 context=5 citation=False valid_citation=False similarity=0.578 retrieval=2.95s
+17:38:06 |       [leakage] Id=23296403 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:38:14 |       [latency] cond=C Id=23296403 retrieval_sec=3.367 total_sec=10.800
+17:38:14 |       [debug-write] Id=23296403 bytes_written_this_line=27445 file_size_now=8257985 f_out.tell()=8257985
+17:38:14 |       [327/384] Id=23296403 anchors=3 context=5 citation=True valid_citation=True similarity=0.698 retrieval=3.37s
+17:38:17 |       [leakage] Id=10549131 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:38:24 |       [latency] cond=C Id=10549131 retrieval_sec=3.336 total_sec=9.927
+17:38:24 |       [debug-write] Id=10549131 bytes_written_this_line=24573 file_size_now=8282558 f_out.tell()=8282558
+17:38:24 |       [328/384] Id=10549131 anchors=3 context=5 citation=True valid_citation=True similarity=0.607 retrieval=3.34s
+17:38:27 |       [leakage] Id=36337063 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:38:32 |       [latency] cond=C Id=36337063 retrieval_sec=2.730 total_sec=6.987
+17:38:32 |       [debug-write] Id=36337063 bytes_written_this_line=22921 file_size_now=8305479 f_out.tell()=8305479
+17:38:32 |       [329/384] Id=36337063 anchors=3 context=5 citation=False valid_citation=False similarity=0.221 retrieval=2.73s
+17:38:35 |       [leakage] Id=21364253 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:38:46 |       [latency] cond=C Id=21364253 retrieval_sec=2.988 total_sec=13.921
+17:38:46 |       [debug-write] Id=21364253 bytes_written_this_line=34712 file_size_now=8340191 f_out.tell()=8340191
+17:38:46 |       [330/384] Id=21364253 anchors=3 context=5 citation=True valid_citation=True similarity=0.309 retrieval=2.99s
+17:38:49 |       [leakage] Id=32479996 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=7 n_expansion_q_empty=0
+17:38:49 |       [expansion] Id=32479996 hanya 7/9 Question expansion ber-answer.
+17:38:54 |       [latency] cond=C Id=32479996 retrieval_sec=2.413 total_sec=8.207
+17:38:54 |       [debug-write] Id=32479996 bytes_written_this_line=25258 file_size_now=8365449 f_out.tell()=8365449
+17:38:54 |       [331/384] Id=32479996 anchors=3 context=5 citation=True valid_citation=True similarity=0.350 retrieval=2.41s
+17:38:57 |       [leakage] Id=4841647 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:39:02 |       [latency] cond=C Id=4841647 retrieval_sec=2.411 total_sec=7.502
+17:39:02 |       [debug-write] Id=4841647 bytes_written_this_line=26040 file_size_now=8391489 f_out.tell()=8391489
+17:39:02 |       [332/384] Id=4841647 anchors=3 context=5 citation=True valid_citation=True similarity=0.675 retrieval=2.41s
+17:39:05 |       [leakage] Id=78025629 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:39:08 |       [latency] cond=C Id=78025629 retrieval_sec=2.518 total_sec=5.431
+17:39:08 |       [debug-write] Id=78025629 bytes_written_this_line=30669 file_size_now=8422158 f_out.tell()=8422158
+17:39:08 |       [333/384] Id=78025629 anchors=3 context=5 citation=True valid_citation=True similarity=0.638 retrieval=2.52s
+17:39:11 |       [leakage] Id=12707990 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:39:16 |       [latency] cond=C Id=12707990 retrieval_sec=2.731 total_sec=7.393
+17:39:16 |       [debug-write] Id=12707990 bytes_written_this_line=22050 file_size_now=8444208 f_out.tell()=8444208
+17:39:16 |       [334/384] Id=12707990 anchors=3 context=5 citation=True valid_citation=True similarity=0.630 retrieval=2.73s
+17:39:19 |       [leakage] Id=6420371 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:39:22 |       [latency] cond=C Id=6420371 retrieval_sec=2.592 total_sec=5.660
+17:39:22 |       [debug-write] Id=6420371 bytes_written_this_line=17484 file_size_now=8461692 f_out.tell()=8461692
+17:39:22 |       [335/384] Id=6420371 anchors=3 context=5 citation=True valid_citation=True similarity=0.785 retrieval=2.59s
+17:39:24 |       [leakage] Id=63290521 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:39:31 |       [latency] cond=C Id=63290521 retrieval_sec=2.194 total_sec=8.866
+17:39:31 |       [debug-write] Id=63290521 bytes_written_this_line=31625 file_size_now=8493317 f_out.tell()=8493317
+17:39:31 |       [336/384] Id=63290521 anchors=3 context=5 citation=True valid_citation=True similarity=0.587 retrieval=2.19s
+17:39:34 |       [leakage] Id=8448866 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=13 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:39:43 |       [latency] cond=C Id=8448866 retrieval_sec=2.501 total_sec=10.945
+17:39:43 |       [debug-write] Id=8448866 bytes_written_this_line=26060 file_size_now=8519377 f_out.tell()=8519377
+17:39:43 |       [337/384] Id=8448866 anchors=3 context=5 citation=True valid_citation=True similarity=0.510 retrieval=2.50s
+17:39:45 |       [leakage] Id=6128168 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:39:54 |       [latency] cond=C Id=6128168 retrieval_sec=2.404 total_sec=11.050
+17:39:54 |       [debug-write] Id=6128168 bytes_written_this_line=24438 file_size_now=8543815 f_out.tell()=8543815
+17:39:54 |       [338/384] Id=6128168 anchors=3 context=5 citation=True valid_citation=True similarity=0.417 retrieval=2.40s
+17:39:57 |       [leakage] Id=39551736 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:40:04 |       [latency] cond=C Id=39551736 retrieval_sec=2.924 total_sec=9.231
+17:40:04 |       [debug-write] Id=39551736 bytes_written_this_line=26394 file_size_now=8570209 f_out.tell()=8570209
+17:40:04 |       [339/384] Id=39551736 anchors=3 context=5 citation=True valid_citation=True similarity=0.684 retrieval=2.92s
+17:40:06 |       [leakage] Id=77922448 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:40:14 |       [latency] cond=C Id=77922448 retrieval_sec=2.360 total_sec=10.018
+17:40:14 |       [debug-write] Id=77922448 bytes_written_this_line=26963 file_size_now=8597172 f_out.tell()=8597172
+17:40:14 |       [340/384] Id=77922448 anchors=3 context=5 citation=True valid_citation=True similarity=0.439 retrieval=2.36s
+17:40:17 |       [leakage] Id=44953125 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:40:20 |       [latency] cond=C Id=44953125 retrieval_sec=2.823 total_sec=5.975
+17:40:20 |       [debug-write] Id=44953125 bytes_written_this_line=18685 file_size_now=8615857 f_out.tell()=8615857
+17:40:20 |       [341/384] Id=44953125 anchors=3 context=5 citation=False valid_citation=False similarity=0.577 retrieval=2.82s
+17:40:23 |       [leakage] Id=831300 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=12 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:40:27 |       [latency] cond=C Id=831300 retrieval_sec=2.041 total_sec=6.436
+17:40:27 |       [debug-write] Id=831300 bytes_written_this_line=21022 file_size_now=8636879 f_out.tell()=8636879
+17:40:27 |       [342/384] Id=831300 anchors=3 context=5 citation=True valid_citation=True similarity=0.779 retrieval=2.04s
+17:40:31 |       [leakage] Id=68885154 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:40:33 |       [latency] cond=C Id=68885154 retrieval_sec=3.259 total_sec=4.937
+17:40:33 |       [debug-write] Id=68885154 bytes_written_this_line=25401 file_size_now=8662280 f_out.tell()=8662280
+17:40:33 |       [343/384] Id=68885154 anchors=3 context=5 citation=False valid_citation=False similarity=0.585 retrieval=3.26s
+17:40:36 |       [leakage] Id=75016678 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:40:40 |       [latency] cond=C Id=75016678 retrieval_sec=2.646 total_sec=6.993
+17:40:40 |       [debug-write] Id=75016678 bytes_written_this_line=21236 file_size_now=8683516 f_out.tell()=8683516
+17:40:40 |       [344/384] Id=75016678 anchors=3 context=5 citation=True valid_citation=True similarity=0.680 retrieval=2.65s
+17:40:43 |       [leakage] Id=61446971 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:40:52 |       [latency] cond=C Id=61446971 retrieval_sec=2.846 total_sec=11.705
+17:40:52 |       [debug-write] Id=61446971 bytes_written_this_line=24358 file_size_now=8707874 f_out.tell()=8707874
+17:40:52 |       [345/384] Id=61446971 anchors=3 context=5 citation=True valid_citation=True similarity=0.706 retrieval=2.85s
+17:40:55 |       [leakage] Id=60192381 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:40:57 |       [latency] cond=C Id=60192381 retrieval_sec=2.698 total_sec=4.214
+17:40:57 |       [debug-write] Id=60192381 bytes_written_this_line=20559 file_size_now=8728433 f_out.tell()=8728433
+17:40:57 |       [346/384] Id=60192381 anchors=3 context=5 citation=False valid_citation=False similarity=0.537 retrieval=2.70s
+17:40:59 |       [leakage] Id=70693691 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:41:00 |       [latency] cond=C Id=70693691 retrieval_sec=1.706 total_sec=3.190
+17:41:00 |       [debug-write] Id=70693691 bytes_written_this_line=34309 file_size_now=8762742 f_out.tell()=8762742
+17:41:00 |       [347/384] Id=70693691 anchors=3 context=5 citation=False valid_citation=False similarity=0.565 retrieval=1.71s
+17:41:03 |       [leakage] Id=22847672 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:41:08 |       [latency] cond=C Id=22847672 retrieval_sec=2.387 total_sec=7.022
+17:41:08 |       [debug-write] Id=22847672 bytes_written_this_line=20856 file_size_now=8783598 f_out.tell()=8783598
+17:41:08 |       [348/384] Id=22847672 anchors=3 context=5 citation=True valid_citation=True similarity=0.341 retrieval=2.39s
+17:41:10 |       [leakage] Id=1345677 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:41:16 |       [latency] cond=C Id=1345677 retrieval_sec=1.825 total_sec=8.334
+17:41:16 |       [debug-write] Id=1345677 bytes_written_this_line=27833 file_size_now=8811431 f_out.tell()=8811431
+17:41:16 |       [349/384] Id=1345677 anchors=3 context=5 citation=False valid_citation=False similarity=0.559 retrieval=1.83s
+17:41:19 |       [leakage] Id=50100052 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:41:24 |       [latency] cond=C Id=50100052 retrieval_sec=2.266 total_sec=6.978
+17:41:24 |       [debug-write] Id=50100052 bytes_written_this_line=28928 file_size_now=8840359 f_out.tell()=8840359
+17:41:24 |       [350/384] Id=50100052 anchors=3 context=5 citation=False valid_citation=False similarity=0.748 retrieval=2.27s
+17:41:26 |       [leakage] Id=69866058 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:41:30 |       [latency] cond=C Id=69866058 retrieval_sec=2.223 total_sec=6.256
+17:41:30 |       [debug-write] Id=69866058 bytes_written_this_line=30207 file_size_now=8870566 f_out.tell()=8870566
+17:41:30 |       [351/384] Id=69866058 anchors=3 context=5 citation=True valid_citation=True similarity=0.786 retrieval=2.22s
+17:41:33 |       [leakage] Id=15936370 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:41:41 |       [latency] cond=C Id=15936370 retrieval_sec=2.266 total_sec=10.162
+17:41:41 |       [debug-write] Id=15936370 bytes_written_this_line=26858 file_size_now=8897424 f_out.tell()=8897424
+17:41:41 |       [352/384] Id=15936370 anchors=3 context=5 citation=True valid_citation=True similarity=0.525 retrieval=2.27s
+17:41:44 |       [leakage] Id=8262587 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:41:48 |       [latency] cond=C Id=8262587 retrieval_sec=2.227 total_sec=6.721
+17:41:48 |       [debug-write] Id=8262587 bytes_written_this_line=19132 file_size_now=8916556 f_out.tell()=8916556
+17:41:48 |       [353/384] Id=8262587 anchors=3 context=5 citation=True valid_citation=True similarity=0.786 retrieval=2.23s
+17:41:51 |       [leakage] Id=46936195 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:41:56 |       [latency] cond=C Id=46936195 retrieval_sec=2.293 total_sec=7.898
+17:41:56 |       [debug-write] Id=46936195 bytes_written_this_line=27203 file_size_now=8943759 f_out.tell()=8943759
+17:41:56 |       [354/384] Id=46936195 anchors=3 context=5 citation=True valid_citation=True similarity=0.885 retrieval=2.29s
+17:41:58 |       [leakage] Id=9469021 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:42:09 |       [latency] cond=C Id=9469021 retrieval_sec=1.559 total_sec=12.114
+17:42:09 |       [debug-write] Id=9469021 bytes_written_this_line=24015 file_size_now=8967774 f_out.tell()=8967774
+17:42:09 |       [355/384] Id=9469021 anchors=3 context=5 citation=True valid_citation=True similarity=0.611 retrieval=1.56s
+17:42:11 |       [leakage] Id=36478158 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:42:21 |       [latency] cond=C Id=36478158 retrieval_sec=2.021 total_sec=11.524
+17:42:21 |       [debug-write] Id=36478158 bytes_written_this_line=30657 file_size_now=8998431 f_out.tell()=8998431
+17:42:21 |       [356/384] Id=36478158 anchors=3 context=5 citation=True valid_citation=True similarity=0.778 retrieval=2.02s
+17:42:25 |       [leakage] Id=28524224 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:42:28 |       [latency] cond=C Id=28524224 retrieval_sec=3.567 total_sec=6.707
+17:42:28 |       [debug-write] Id=28524224 bytes_written_this_line=17579 file_size_now=9016010 f_out.tell()=9016010
+17:42:28 |       [357/384] Id=28524224 anchors=3 context=5 citation=True valid_citation=True similarity=0.305 retrieval=3.57s
+17:42:30 |       [leakage] Id=73988256 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:42:32 |       [latency] cond=C Id=73988256 retrieval_sec=2.234 total_sec=3.396
+17:42:32 |       [debug-write] Id=73988256 bytes_written_this_line=19603 file_size_now=9035613 f_out.tell()=9035613
+17:42:32 |       [358/384] Id=73988256 anchors=3 context=5 citation=False valid_citation=False similarity=0.562 retrieval=2.23s
+17:42:34 |       [leakage] Id=54593528 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:42:42 |       [latency] cond=C Id=54593528 retrieval_sec=1.868 total_sec=10.233
+17:42:42 |       [debug-write] Id=54593528 bytes_written_this_line=38061 file_size_now=9073674 f_out.tell()=9073674
+17:42:42 |       [359/384] Id=54593528 anchors=3 context=5 citation=True valid_citation=True similarity=0.747 retrieval=1.87s
+17:42:44 |       [leakage] Id=56862004 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:42:50 |       [latency] cond=C Id=56862004 retrieval_sec=1.781 total_sec=7.243
+17:42:50 |       [debug-write] Id=56862004 bytes_written_this_line=25977 file_size_now=9099651 f_out.tell()=9099651
+17:42:50 |       [360/384] Id=56862004 anchors=3 context=5 citation=True valid_citation=True similarity=0.770 retrieval=1.78s
+17:42:52 |       [leakage] Id=15677156 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:43:02 |       [latency] cond=C Id=15677156 retrieval_sec=1.726 total_sec=11.772
+17:43:02 |       [debug-write] Id=15677156 bytes_written_this_line=29898 file_size_now=9129549 f_out.tell()=9129549
+17:43:02 |       [361/384] Id=15677156 anchors=3 context=5 citation=True valid_citation=True similarity=0.542 retrieval=1.73s
+17:43:05 |       [leakage] Id=37522082 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:43:12 |       [latency] cond=C Id=37522082 retrieval_sec=2.005 total_sec=9.525
+17:43:12 |       [debug-write] Id=37522082 bytes_written_this_line=26500 file_size_now=9156049 f_out.tell()=9156049
+17:43:12 |       [362/384] Id=37522082 anchors=3 context=5 citation=False valid_citation=False similarity=0.766 retrieval=2.00s
+17:43:14 |       [leakage] Id=15232682 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:43:16 |       [latency] cond=C Id=15232682 retrieval_sec=1.938 total_sec=3.686
+17:43:16 |       [debug-write] Id=15232682 bytes_written_this_line=19652 file_size_now=9175701 f_out.tell()=9175701
+17:43:16 |       [363/384] Id=15232682 anchors=3 context=5 citation=False valid_citation=False similarity=0.679 retrieval=1.94s
+17:43:19 |       [leakage] Id=55463357 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:43:21 |       [latency] cond=C Id=55463357 retrieval_sec=2.193 total_sec=4.831
+17:43:21 |       [debug-write] Id=55463357 bytes_written_this_line=20350 file_size_now=9196051 f_out.tell()=9196051
+17:43:21 |       [364/384] Id=55463357 anchors=3 context=5 citation=True valid_citation=True similarity=0.743 retrieval=2.19s
+17:43:24 |       [leakage] Id=3418748 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:43:25 |       [latency] cond=C Id=3418748 retrieval_sec=1.810 total_sec=3.592
+17:43:25 |       [debug-write] Id=3418748 bytes_written_this_line=18737 file_size_now=9214788 f_out.tell()=9214788
+17:43:25 |       [365/384] Id=3418748 anchors=3 context=5 citation=False valid_citation=False similarity=0.587 retrieval=1.81s
+17:43:27 |       [leakage] Id=60194863 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=11 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:43:35 |       [latency] cond=C Id=60194863 retrieval_sec=1.698 total_sec=9.560
+17:43:35 |       [debug-write] Id=60194863 bytes_written_this_line=25273 file_size_now=9240061 f_out.tell()=9240061
+17:43:35 |       [366/384] Id=60194863 anchors=3 context=5 citation=True valid_citation=True similarity=0.830 retrieval=1.70s
+17:43:41 |       [leakage] Id=41602216 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:43:47 |       [latency] cond=C Id=41602216 retrieval_sec=5.090 total_sec=11.678
+17:43:47 |       [debug-write] Id=41602216 bytes_written_this_line=24589 file_size_now=9264650 f_out.tell()=9264650
+17:43:47 |       [367/384] Id=41602216 anchors=3 context=5 citation=True valid_citation=True similarity=0.694 retrieval=5.09s
+17:43:50 |       [leakage] Id=19639497 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:43:53 |       [latency] cond=C Id=19639497 retrieval_sec=1.902 total_sec=4.826
+17:43:53 |       [debug-write] Id=19639497 bytes_written_this_line=26143 file_size_now=9290793 f_out.tell()=9290793
+17:43:53 |       [368/384] Id=19639497 anchors=3 context=5 citation=True valid_citation=True similarity=0.518 retrieval=1.90s
+17:43:55 |       [leakage] Id=46758690 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:01 |       [latency] cond=C Id=46758690 retrieval_sec=2.168 total_sec=7.929
+17:44:01 |       [debug-write] Id=46758690 bytes_written_this_line=28352 file_size_now=9319145 f_out.tell()=9319145
+17:44:01 |       [369/384] Id=46758690 anchors=3 context=5 citation=True valid_citation=True similarity=0.359 retrieval=2.17s
+17:44:03 |       [leakage] Id=45712173 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:10 |       [latency] cond=C Id=45712173 retrieval_sec=1.932 total_sec=8.815
+17:44:10 |       [debug-write] Id=45712173 bytes_written_this_line=25352 file_size_now=9344497 f_out.tell()=9344497
+17:44:10 |       [370/384] Id=45712173 anchors=3 context=5 citation=True valid_citation=True similarity=0.808 retrieval=1.93s
+17:44:13 |       [leakage] Id=15167575 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:24 |       [latency] cond=C Id=15167575 retrieval_sec=2.013 total_sec=13.699
+17:44:24 |       [debug-write] Id=15167575 bytes_written_this_line=26626 file_size_now=9371123 f_out.tell()=9371123
+17:44:24 |       [371/384] Id=15167575 anchors=3 context=5 citation=True valid_citation=True similarity=0.569 retrieval=2.01s
+17:44:26 |       [leakage] Id=38256304 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=7 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:29 |       [latency] cond=C Id=38256304 retrieval_sec=1.461 total_sec=4.810
+17:44:29 |       [debug-write] Id=38256304 bytes_written_this_line=21575 file_size_now=9392698 f_out.tell()=9392698
+17:44:29 |       [372/384] Id=38256304 anchors=3 context=5 citation=True valid_citation=True similarity=0.416 retrieval=1.46s
+17:44:32 |       [leakage] Id=25715021 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:33 |       [latency] cond=C Id=25715021 retrieval_sec=2.295 total_sec=3.500
+17:44:33 |       [debug-write] Id=25715021 bytes_written_this_line=20576 file_size_now=9413274 f_out.tell()=9413274
+17:44:33 |       [373/384] Id=25715021 anchors=3 context=5 citation=False valid_citation=False similarity=0.541 retrieval=2.30s
+17:44:36 |       [leakage] Id=12344289 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:42 |       [latency] cond=C Id=12344289 retrieval_sec=2.220 total_sec=8.322
+17:44:42 |       [debug-write] Id=12344289 bytes_written_this_line=26311 file_size_now=9439585 f_out.tell()=9439585
+17:44:42 |       [374/384] Id=12344289 anchors=3 context=5 citation=False valid_citation=False similarity=0.815 retrieval=2.22s
+17:44:44 |       [leakage] Id=18113909 mode=thread n_excluded_q=1 n_excluded_a=3 n_hits_filtered=9 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:46 |       [latency] cond=C Id=18113909 retrieval_sec=1.650 total_sec=3.188
+17:44:46 |       [debug-write] Id=18113909 bytes_written_this_line=17090 file_size_now=9456675 f_out.tell()=9456675
+17:44:46 |       [375/384] Id=18113909 anchors=3 context=5 citation=False valid_citation=False similarity=0.527 retrieval=1.65s
+17:44:48 |       [leakage] Id=43707115 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=3 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:54 |       [latency] cond=C Id=43707115 retrieval_sec=1.901 total_sec=7.578
+17:44:54 |       [debug-write] Id=43707115 bytes_written_this_line=22060 file_size_now=9478735 f_out.tell()=9478735
+17:44:54 |       [376/384] Id=43707115 anchors=3 context=5 citation=True valid_citation=True similarity=0.769 retrieval=1.90s
+17:44:56 |       [leakage] Id=33238732 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=8 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:44:58 |       [latency] cond=C Id=33238732 retrieval_sec=1.816 total_sec=3.584
+17:44:58 |       [debug-write] Id=33238732 bytes_written_this_line=23200 file_size_now=9501935 f_out.tell()=9501935
+17:44:58 |       [377/384] Id=33238732 anchors=3 context=5 citation=True valid_citation=True similarity=0.631 retrieval=1.82s
+17:45:00 |       [leakage] Id=5925097 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=13 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:45:06 |       [latency] cond=C Id=5925097 retrieval_sec=2.262 total_sec=7.503
+17:45:06 |       [debug-write] Id=5925097 bytes_written_this_line=29265 file_size_now=9531200 f_out.tell()=9531200
+17:45:06 |       [378/384] Id=5925097 anchors=3 context=5 citation=True valid_citation=True similarity=0.641 retrieval=2.26s
+17:45:07 |       [leakage] Id=29415352 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:45:09 |       [latency] cond=C Id=29415352 retrieval_sec=1.627 total_sec=2.834
+17:45:09 |       [debug-write] Id=29415352 bytes_written_this_line=36375 file_size_now=9567575 f_out.tell()=9567575
+17:45:09 |       [379/384] Id=29415352 anchors=3 context=5 citation=False valid_citation=False similarity=0.629 retrieval=1.63s
+17:45:12 |       [leakage] Id=60721576 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:45:17 |       [latency] cond=C Id=60721576 retrieval_sec=2.593 total_sec=8.276
+17:45:17 |       [debug-write] Id=60721576 bytes_written_this_line=25838 file_size_now=9593413 f_out.tell()=9593413
+17:45:17 |       [380/384] Id=60721576 anchors=3 context=5 citation=True valid_citation=True similarity=0.615 retrieval=2.59s
+17:45:20 |       [leakage] Id=18080102 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:45:27 |       [latency] cond=C Id=18080102 retrieval_sec=2.128 total_sec=8.767
+17:45:27 |       [debug-write] Id=18080102 bytes_written_this_line=25338 file_size_now=9618751 f_out.tell()=9618751
+17:45:27 |       [381/384] Id=18080102 anchors=3 context=5 citation=False valid_citation=False similarity=0.636 retrieval=2.13s
+17:45:29 |       [leakage] Id=23247190 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:45:32 |       [latency] cond=C Id=23247190 retrieval_sec=2.299 total_sec=5.453
+17:45:32 |       [debug-write] Id=23247190 bytes_written_this_line=33234 file_size_now=9651985 f_out.tell()=9651985
+17:45:32 |       [382/384] Id=23247190 anchors=3 context=5 citation=False valid_citation=False similarity=0.619 retrieval=2.30s
+17:45:35 |       [leakage] Id=37514614 mode=thread n_excluded_q=1 n_excluded_a=2 n_hits_filtered=6 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:45:40 |       [latency] cond=C Id=37514614 retrieval_sec=2.605 total_sec=6.988
+17:45:40 |       [debug-write] Id=37514614 bytes_written_this_line=28908 file_size_now=9680893 f_out.tell()=9680893
+17:45:40 |       [383/384] Id=37514614 anchors=3 context=5 citation=True valid_citation=True similarity=0.745 retrieval=2.61s
+17:45:42 |       [leakage] Id=52558999 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=5 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+17:45:46 |       [latency] cond=C Id=52558999 retrieval_sec=1.925 total_sec=5.284
+17:45:46 |       [debug-write] Id=52558999 bytes_written_this_line=26642 file_size_now=9707535 f_out.tell()=9707535
+17:45:46 |       [384/384] Id=52558999 anchors=3 context=5 citation=True valid_citation=True similarity=0.648 retrieval=1.93s
+17:45:46 | [8/9] Selesai memproses seluruh sample.
+17:45:46 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n384_seed42_fw0-7-0-3_v4-alpha0-5_v3_95d2f39d2c.jsonl size_bytes=9707535
+17:45:47 | 
+======================================================================
+17:45:47 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+17:45:47 | ======================================================================
+17:45:47 | Total pertanyaan diproses      : 384
+17:45:47 | Cosine similarity rata-rata    : 0.5997
+17:45:47 | Cosine similarity median       : 0.6215
+17:45:47 | % similarity > 0.5             : 77.9%
+17:45:47 | % jawaban dgn >=1 kutipan format cocok  : 68.8% (longgar, toleransi variasi format)
+17:45:47 | % jawaban dgn >=1 kutipan VALID (NF2)   : 68.2% [target: 100%] BELUM TERCAPAI (ID kutipan divalidasi ada di retrieved_context yg sebenarnya)
+17:45:47 |   -- 3-way split: valid=68.2% / no_citation=31.2% / invalid_only=0.5%
+17:45:47 |   -- fabricated citation rate (>=1 invalid token, even if also has a valid one): 1.0%
+17:45:47 |   -- citation precision (valid tokens / all citation tokens incl. placeholders): 0.993
+17:45:47 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+17:45:47 | Retrieval latency -- avg: 2.82s, p95: 4.68s [NF3 target: <=15s] PASS
+17:45:47 | 
+Hasil lengkap tersimpan -> results/condition_c_openai_gpt-4o-mini_n384_seed42_fw0-7-0-3_v4-alpha0-5_v3_95d2f39d2c.jsonl
+17:45:47 | [logging] Ringkasan run dicatat -> /Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/logs/run_history.jsonl
+17:45:47 | [logging] Manifest ditulis -> results/condition_c_openai_gpt-4o-mini_n384_seed42_fw0-7-0-3_v4-alpha0-5_v3_95d2f39d2c.jsonl.manifest.json
