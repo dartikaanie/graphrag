@@ -299,3 +299,26 @@ Status: run juri resmi R1 (Kondisi A) selesai dan pemeriksaan identitas OK; berh
 - **Pengamatan:** Llama jauh lebih longgar (361 FAKTUAL) daripada DeepSeek dan Qwen, sehingga ia biasanya juri yang kalah suara. Kesepakatan antarjuri (mis. kappa) perlu dilaporkan di metodologi.
 - **Biaya:** aktual **$1,2908** vs dry run $1,5358 (16% di bawah), vs perkiraan $1,36 (5% di bawah), vs batas $1,91. Tidak ada panggilan yang dilewati oleh pengaman anggaran. Ledger dibukukan sekali, ditandai dengan nama berkas. Total ledger **$2,4655**, sisa **$6,5345** dari $9,00.
 - **Berikutnya:** R5 (C), dry run $1,7642 untuk 1152 panggilan, batas 1,25x = $2,2053.
+
+
+### 12f. R5 (C): penilaian juri resmi selesai (angka sementara, hanya R5)
+
+Status: run juri resmi R5 (Kondisi C-primary-grounded, α 0,5) selesai dan pemeriksaan identitas OK; berhenti sesuai instruksi. R3, R9, metrik sekunder, dan `official_report.py` **belum** dijalankan. Angka di bagian ini adalah angka sementara khusus R5 (dari `llm/evaluation/results/panel_official_R5_judge-v2.3{,_panel}.jsonl`), bukan keluaran akhir `official_report.py`. Perintah: `judge_panel.py --official --panel panel-v2 --judge-version judge-v2.3 --max-cost-usd 2.2053` dari commit `ea85648` (tidak ada berkas `.py` yang berubah sejak tag `official-judging-start`).
+
+- **Identitas:** 1152 rekaman, 1152 pasangan (pertanyaan, juri) unik, id sama dengan daftar uji, 0 id dev, 0 id di luar daftar. Tidak ada berkas kegagalan, tidak ada stall atau galat juri.
+- **Rekaman usable:** 384/384 untuk setiap juri; tidak usable 0% (batas 2%). Tidak ada konten reasoning dan tidak ada ketidakcocokan model yang dilayani.
+
+| Juri | FAKTUAL | PENUH | SEBAGIAN | ABSTAIN |
+|---|---|---|---|---|
+| Llama-3.3-70B-Turbo | 305 | 13 | 1 | 65 |
+| DeepSeek-V3.2 | 193 | 98 | 9 | 84 |
+| Qwen3-235B-A22B-Instruct-2507 | 205 | 88 | 8 | 83 |
+
+- **Panel (2 dari 3):** UNRESOLVED 0, tidak lengkap 0, ABSTAIN 72. Label: 242 FAKTUAL, 66 PENUH, 4 SEBAGIAN, 72 ABSTAIN. Ketiga juri sepakat pada 224 dari 384.
+- **Halusinasi (panel):** ABSTAIN dikeluarkan **70/312 = 22,4%**; ABSTAIN dihitung gagal **142/384 = 37,0%**. R1 (A) adalah 25,8% pada kedua versi.
+- **Catatan penting:**
+  1. Kedua angka berbeda karena prompt grounded dapat menolak menjawab (ABSTAIN), sehingga keduanya harus dilaporkan berdampingan.
+  2. Penyebut berbeda (312 vs 384), jadi C vs A bukan perbandingan setara di sini; perbandingan berpasangan menjadi tugas `official_report.py`.
+  3. Kenaikan kesepakatan tiga juri (206 → 224) sebagian karena ABSTAIN kategori yang mudah disepakati: 64 dari 224 jawaban yang disepakati ketiga juri adalah ABSTAIN (dihitung dari berkas panel). Tanpa itu, 160 dari 312 jawaban non-ABSTAIN (51,3%) disepakati, dibanding 206 dari 384 (53,6%) pada R1.
+- **Biaya:** aktual **$1,3451** vs dry run $1,7642 (24% di bawah), vs batas $2,2053. Tidak ada panggilan yang dilewati oleh pengaman anggaran. Ledger dibukukan sekali, ditandai `panel_official_R5_judge-v2.3.jsonl`. Total ledger **$3,8105**, sisa **$5,1895** dari $9,00.
+- **Sel tersisa (dry run):** R3 (B) $1,7741, R9 (D) $1,7439, metrik sekunder $1,318 (termasuk buffer 10%).
