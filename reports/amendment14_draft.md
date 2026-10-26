@@ -8,6 +8,8 @@ its byte-exact pre-registered text is `reports/amendment14_eligibility_rule_prer
 `62569fc9bb11…`, the value stored in both screening runs' history entries,
 `llm/evaluation/logs/judge_panel_run_history.jsonl`, field `screening.rule_sha256`).
 
+**Update note (2026-10-26):** Stage 1 was re-run under Amendment 17 with leakage thread; the stage-1 of record is stage1_anchors_report_20261025T165734Z. Stage 2 was run on 2026-10-25/26 (see docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md); α* = 0.5 at the tie-break step. Statements above that say otherwise are historical, as written when the draft was made. The drafts of Amendments 14, 15, 16 and 17 were written before stage 2 but are committed after it.
+
 ## (a) No human gate
 
 The judge panel is used without any human annotation, human-agreement threshold or human-validated acceptance step.
@@ -84,7 +86,8 @@ A comparison is called **"consistent"** only if the panel difference and the Dee
 ABSTAIN) have the **same sign**; otherwise it is **"inconclusive"**. A difference of exactly 0 under either estimate is
 "inconclusive". The rule labels the direction only. Nothing else is pre-registered as a primary comparison: there is
 no plain-vs-grounded comparison and no trust-ablation comparison in the official evaluation. The report additionally
-gives, per comparison and per question, how many times C is better, equal or worse on the binary label (section (i)).
+gives, per comparison and per question, how many times C is better, equal or worse on the binary label (section (i)); the 2 x 2 table
+(only C hallucinated, only the other, both, neither) is the **primary paired report**.
 
 ## (f) Time standard of the metric
 
@@ -95,11 +98,7 @@ unverifiable).
 
 ## (g) Alpha stage 2 uses the frozen panel
 
-Alpha stage 2 (dev set, n = 50, candidates 0.25 and 0) is judged with the frozen panel-v2 configuration of section (b).
-The label of the pre-registered stage-2 selection rule is the **panel label**: binary hallucination rate excluding
-ABSTAIN, pooled over grounding on and off (100 answers per alpha), tie margin 2 answers, then ABSTAIN counted as failed,
-then the larger alpha. Stage 2 is a dev-split run, so it does not need the approval flag of section (b). It still
-produces a second candidate; **no official run uses it**.
+Alpha stage 2 (dev set, n = 50) is judged with the frozen panel-v2 of section (b). The candidates are the top two alphas of the stage-1 re-run of Amendment 17 (0.5 and 0.25); alpha 0 is run as an exploratory reference and is not eligible for selection. The label of the pre-registered selection rule is the panel label: binary hallucination rate excluding ABSTAIN, pooled over grounding on and off (100 answers per alpha), tie margin 2 answers, then ABSTAIN counted as failed, then the larger alpha. Stage 2 is a dev-split run and does not need the approval flag of section (b). No official run uses the second candidate. Result: docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md.
 
 ## (h) Reported limitations
 
@@ -110,7 +109,10 @@ produces a second candidate; **no official run uses it**.
   different mechanism, time-dependent facts, single wrong detail, the ABSTAIN boundary) are listed in the archived
   reports `results/_archive/2026-10-19_pre-official/llm/evaluation/results/` and are cited as qualitative limitations,
   not as acceptance numbers.
-- Context relevance and answer relevance (section (i)) come from one judge, not the panel.
+- Context relevance and answer relevance (section (i)) come from one judge, not the panel. That judge is
+  `meta-llama/Llama-3.3-70B-Instruct`, while the panel uses the Turbo variant (`Llama-3.3-70B-Instruct-Turbo`).
+- In stage 2 Llama flagged very few answers as hallucinated (1, 1 and 4 of about 92 answers for alpha 0.5, 0.25 and 0), so
+  the panel label (2 of 3) is in practice decided by DeepSeek and Qwen.
 
 ## (i) Reporting rule for every official run
 
@@ -139,17 +141,25 @@ answers on which all three judges gave the same label.
 
 **Paired counts.** For C vs A, C vs B and C vs D, per question: C better, equal, worse on the binary label of the panel
 (version (a): pairs where either answer is ABSTAIN or unusable are left out and counted; version (b): ABSTAIN counts as
-failed). Also the 2 x 2 table (only C hallucinated, only the other, both, neither).
+failed). The 2 x 2 table (only C hallucinated, only the other, both, neither) is the primary paired report; the better / equal / worse counts are secondary.
 
 ## (j) Execution
 
-1. Alpha stage 2 first (4 dev runs, 200 answers; writes alpha\* and the second candidate to `official_params.json`).
+1. Alpha stage 2 first: two candidates plus one exploratory reference, grounding on and off, 300 answers; run 2026-10-25/26 (alpha\* = 0.5 at the tie-break step; applied to `official_params.json` on 2026-10-26).
 2. The four official runs (A, B-grounded, C-primary-grounded, D-grounded), then judging with the frozen panel, then the
    secondary metrics, then `llm/evaluation/official_report.py`.
 
-Each step starts only after the author's explicit "go". DeepInfra budget for judging: $9.00 (the account balance is
-$9.20; $0.20 stays untouched as a margin). The cost projection for the four-run design is `results/cost_projection.md`
-(regenerated by `llm/cost_projection.py`; the file under `results/` is the author's to regenerate).
+Each step starts only after the author's explicit "go". DeepInfra budget for judging: $9.00 (set in
+`results/run_registry.json`). **Stage-2 judging spend, three numbers that do not agree** (no account or billing endpoint
+was called for this reconciliation): (1) the registry ledger holds $0.6087 for the stage-2 judging (entries $0.5017 plus
+an explicit adjustment entry of about $0.107 for the first aborted run; ledger total including the two Qwen screenings
+$0.7024); (2) the record-level estimate, the sum of `estimated_cost_usd` over the 900 kept judge records, is $1.081; (3) the
+provider's usage figures, read earlier in a filtered form, are about $0.95 to $1.0. The ledger is therefore still lower
+than the other two by about $0.35 to $0.47 and under-records the resumed runs; the registry is not corrected beyond the
+adjustment entry. For the budget, use the higher figure: stage 2 consumed about $1.08 plus the screenings ($0.094), so
+about $7.83 of the $9.00 remains for the official judging. The cost projection for the four-run design is
+`results/cost_projection.md` (regenerated by `llm/cost_projection.py`; the file under `results/` is the author's to
+regenerate).
 
 ## (k) Archive note
 
@@ -161,3 +171,11 @@ All pre-official data were archived on 2026-10-19: `results/_archive/2026-10-19_
 This amendment supersedes the acceptance parts of Amendments 11-13 (the kappa gates and the confirmation-set
 acceptance). Everything else in those amendments, and every earlier amendment, stands, except where Amendment 16 says
 otherwise (the run matrix, the second stage-2 candidate, Condition D's scoring).
+
+## (n) Runtime change in `judge_panel.py` (2026-10-26)
+
+During stage 2 the judge run stalled several times on one hanging connection. Two changes were made: the client timeout
+is 180 s per request (the SDK default is 600 s), and each result is written as soon as its call finishes
+(`as_completed`) instead of in submission order. Judge version, prompts, parser, blinding, request parameters, panel
+and aggregation are not changed, and no hash changed. Details and the checks: `docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md`,
+section 2.

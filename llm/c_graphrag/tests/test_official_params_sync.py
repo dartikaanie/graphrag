@@ -59,4 +59,7 @@ def test_official_params_alphas_null_until_selected():
 
         alphas = {from_file["alpha_primary"], from_file["alpha_ablation"]}
         assert alphas == set(STAGE2_ALPHAS), "C-primary and C-ablation must be the two stage-2 candidates"
-        assert from_file["selection_record"]["commit"], "selected params must name the commit that selected them"
+        # the commit field is filled in after the author's commit (Amendment 10 Record); until then it stays null
+        assert from_file["selection_record"]["commit"] is None or isinstance(from_file["selection_record"]["commit"], str)
+        # stage 2 of 2026-10-25 (docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md): 0.5 won at the tie-break step
+        assert (from_file["alpha_primary"], from_file["alpha_ablation"]) == (0.5, 0.25)

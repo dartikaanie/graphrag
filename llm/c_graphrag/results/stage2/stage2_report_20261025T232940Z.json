@@ -1,0 +1,707 @@
+{
+  "judge_version": "judge-v2.3",
+  "pooled": {
+    "0.5": {
+      "n": 100,
+      "n_abstain": 9,
+      "n_not_hallucinated": 68,
+      "n_hallucinated": 23,
+      "hallucination_count_excl_abstain": 23,
+      "n_excl_abstain": 91,
+      "hallucination_count_incl_abstain": 32,
+      "n_incl_abstain": 100,
+      "rate_excl_abstain": 0.2527,
+      "rate_incl_abstain": 0.32,
+      "abstain_rate": 0.09,
+      "severity": {
+        "PENUH": 22,
+        "SEBAGIAN": 1
+      },
+      "unverifiable_claim_rate": null
+    },
+    "0.25": {
+      "n": 100,
+      "n_abstain": 10,
+      "n_not_hallucinated": 69,
+      "n_hallucinated": 21,
+      "hallucination_count_excl_abstain": 21,
+      "n_excl_abstain": 90,
+      "hallucination_count_incl_abstain": 31,
+      "n_incl_abstain": 100,
+      "rate_excl_abstain": 0.2333,
+      "rate_incl_abstain": 0.31,
+      "abstain_rate": 0.1,
+      "severity": {
+        "PENUH": 20,
+        "SEBAGIAN": 1
+      },
+      "unverifiable_claim_rate": null
+    }
+  },
+  "per_run": {
+    "0.5|on": {
+      "n": 50,
+      "n_abstain": 9,
+      "n_not_hallucinated": 30,
+      "n_hallucinated": 11,
+      "hallucination_count_excl_abstain": 11,
+      "n_excl_abstain": 41,
+      "hallucination_count_incl_abstain": 20,
+      "n_incl_abstain": 50,
+      "rate_excl_abstain": 0.2683,
+      "rate_incl_abstain": 0.4,
+      "abstain_rate": 0.18,
+      "severity": {
+        "PENUH": 11
+      },
+      "unverifiable_claim_rate": null
+    },
+    "0.5|off": {
+      "n": 50,
+      "n_abstain": 0,
+      "n_not_hallucinated": 38,
+      "n_hallucinated": 12,
+      "hallucination_count_excl_abstain": 12,
+      "n_excl_abstain": 50,
+      "hallucination_count_incl_abstain": 12,
+      "n_incl_abstain": 50,
+      "rate_excl_abstain": 0.24,
+      "rate_incl_abstain": 0.24,
+      "abstain_rate": 0.0,
+      "severity": {
+        "PENUH": 11,
+        "SEBAGIAN": 1
+      },
+      "unverifiable_claim_rate": null
+    },
+    "0.25|on": {
+      "n": 50,
+      "n_abstain": 10,
+      "n_not_hallucinated": 32,
+      "n_hallucinated": 8,
+      "hallucination_count_excl_abstain": 8,
+      "n_excl_abstain": 40,
+      "hallucination_count_incl_abstain": 18,
+      "n_incl_abstain": 50,
+      "rate_excl_abstain": 0.2,
+      "rate_incl_abstain": 0.36,
+      "abstain_rate": 0.2,
+      "severity": {
+        "PENUH": 7,
+        "SEBAGIAN": 1
+      },
+      "unverifiable_claim_rate": null
+    },
+    "0.25|off": {
+      "n": 50,
+      "n_abstain": 0,
+      "n_not_hallucinated": 37,
+      "n_hallucinated": 13,
+      "hallucination_count_excl_abstain": 13,
+      "n_excl_abstain": 50,
+      "hallucination_count_incl_abstain": 13,
+      "n_incl_abstain": 50,
+      "rate_excl_abstain": 0.26,
+      "rate_incl_abstain": 0.26,
+      "abstain_rate": 0.0,
+      "severity": {
+        "PENUH": 13
+      },
+      "unverifiable_claim_rate": null
+    }
+  },
+  "selection": {
+    "winner": 0.5,
+    "keep_current": false,
+    "reasoning": "alpha=0.5 selected at the tie-break step; alpha=0.5 vs 0.25 differ by 2 hallucinated answers (23 vs 21), within the margin. With ABSTAIN counted as failed the difference is 1 answer(s) (32 vs 31), also within the margin.",
+    "deciding_tier": "tie-break"
+  },
+  "draft_official_params": {
+    "status": "selected",
+    "c_retrieval_version": "v4",
+    "alpha_primary": 0.5,
+    "alpha_ablation": 0.25,
+    "selection_record": {
+      "path": "docs/DECISION_C_SCORING.md#amendment-10-2026-10-18-trust-ablation-on-the-official-evaluation",
+      "commit": null
+    },
+    "sample_split": "test",
+    "max_hops": 2,
+    "edge_types": [
+      "EMBED_SIM",
+      "HAS_ACCEPTED_ANSWER",
+      "HAS_ANSWER",
+      "IS_RELATED_TO",
+      "TAG_COOCCUR"
+    ],
+    "use_author_trust": false,
+    "accepted_only": false
+  },
+  "runs": {
+    "0.0|off": "llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-0_dev_v3_1b74d6f265.jsonl",
+    "0.25|off": "llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-25_dev_v3_f23e8ff8ad.jsonl",
+    "0.5|off": "llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_ungrounded_v4-alpha0-5_dev_v3_f13dfe7ccb.jsonl",
+    "0.0|on": "llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_v4-alpha0-0_dev_v3_34d2a7c358.jsonl",
+    "0.25|on": "llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_v4-alpha0-25_dev_v3_77652a1cdf.jsonl",
+    "0.5|on": "llm/c_graphrag/results/condition_c_openai_gpt-4o-mini_n50_seed42_fw0-7-0-3_v4-alpha0-5_dev_v3_8a67681917.jsonl"
+  },
+  "judge_files": [
+    "llm/evaluation/results/panel_stage2_candidates_judge-v2.3.jsonl",
+    "llm/evaluation/results/panel_stage2_exploratory_judge-v2.3.jsonl"
+  ],
+  "panel": "panel-v2",
+  "per_judge_pooled": {
+    "llama": {
+      "0.5": {
+        "n": 100,
+        "n_abstain": 7,
+        "n_not_hallucinated": 92,
+        "n_hallucinated": 1,
+        "hallucination_count_excl_abstain": 1,
+        "n_excl_abstain": 93,
+        "hallucination_count_incl_abstain": 8,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.0108,
+        "rate_incl_abstain": 0.08,
+        "abstain_rate": 0.07,
+        "severity": {
+          "SEBAGIAN": 1
+        },
+        "unverifiable_claim_rate": 0.44
+      },
+      "0.25": {
+        "n": 100,
+        "n_abstain": 9,
+        "n_not_hallucinated": 90,
+        "n_hallucinated": 1,
+        "hallucination_count_excl_abstain": 1,
+        "n_excl_abstain": 91,
+        "hallucination_count_incl_abstain": 10,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.011,
+        "rate_incl_abstain": 0.1,
+        "abstain_rate": 0.09,
+        "severity": {
+          "PENUH": 1
+        },
+        "unverifiable_claim_rate": 0.4567
+      },
+      "0.0": {
+        "n": 100,
+        "n_abstain": 8,
+        "n_not_hallucinated": 88,
+        "n_hallucinated": 4,
+        "hallucination_count_excl_abstain": 4,
+        "n_excl_abstain": 92,
+        "hallucination_count_incl_abstain": 12,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.0435,
+        "rate_incl_abstain": 0.12,
+        "abstain_rate": 0.08,
+        "severity": {
+          "PENUH": 4
+        },
+        "unverifiable_claim_rate": 0.4388
+      }
+    },
+    "deepseek": {
+      "0.5": {
+        "n": 100,
+        "n_abstain": 12,
+        "n_not_hallucinated": 62,
+        "n_hallucinated": 26,
+        "hallucination_count_excl_abstain": 26,
+        "n_excl_abstain": 88,
+        "hallucination_count_incl_abstain": 38,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.2955,
+        "rate_incl_abstain": 0.38,
+        "abstain_rate": 0.12,
+        "severity": {
+          "PENUH": 26
+        },
+        "unverifiable_claim_rate": 0.4804
+      },
+      "0.25": {
+        "n": 100,
+        "n_abstain": 11,
+        "n_not_hallucinated": 58,
+        "n_hallucinated": 31,
+        "hallucination_count_excl_abstain": 31,
+        "n_excl_abstain": 89,
+        "hallucination_count_incl_abstain": 42,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.3483,
+        "rate_incl_abstain": 0.42,
+        "abstain_rate": 0.11,
+        "severity": {
+          "PENUH": 30,
+          "SEBAGIAN": 1
+        },
+        "unverifiable_claim_rate": 0.4401
+      },
+      "0.0": {
+        "n": 100,
+        "n_abstain": 10,
+        "n_not_hallucinated": 59,
+        "n_hallucinated": 31,
+        "hallucination_count_excl_abstain": 31,
+        "n_excl_abstain": 90,
+        "hallucination_count_incl_abstain": 41,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.3444,
+        "rate_incl_abstain": 0.41,
+        "abstain_rate": 0.1,
+        "severity": {
+          "PENUH": 31
+        },
+        "unverifiable_claim_rate": 0.4574
+      }
+    },
+    "qwen3-235b": {
+      "0.5": {
+        "n": 100,
+        "n_abstain": 11,
+        "n_not_hallucinated": 59,
+        "n_hallucinated": 30,
+        "hallucination_count_excl_abstain": 30,
+        "n_excl_abstain": 89,
+        "hallucination_count_incl_abstain": 41,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.3371,
+        "rate_incl_abstain": 0.41,
+        "abstain_rate": 0.11,
+        "severity": {
+          "PENUH": 28,
+          "SEBAGIAN": 2
+        },
+        "unverifiable_claim_rate": 0.306
+      },
+      "0.25": {
+        "n": 100,
+        "n_abstain": 12,
+        "n_not_hallucinated": 56,
+        "n_hallucinated": 32,
+        "hallucination_count_excl_abstain": 32,
+        "n_excl_abstain": 88,
+        "hallucination_count_incl_abstain": 44,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.3636,
+        "rate_incl_abstain": 0.44,
+        "abstain_rate": 0.12,
+        "severity": {
+          "PENUH": 27,
+          "SEBAGIAN": 5
+        },
+        "unverifiable_claim_rate": 0.3273
+      },
+      "0.0": {
+        "n": 100,
+        "n_abstain": 12,
+        "n_not_hallucinated": 53,
+        "n_hallucinated": 35,
+        "hallucination_count_excl_abstain": 35,
+        "n_excl_abstain": 88,
+        "hallucination_count_incl_abstain": 47,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.3977,
+        "rate_incl_abstain": 0.47,
+        "abstain_rate": 0.12,
+        "severity": {
+          "PENUH": 26,
+          "SEBAGIAN": 9
+        },
+        "unverifiable_claim_rate": 0.2629
+      }
+    }
+  },
+  "tie_rule_used": "alpha=0.5 selected at the tie-break step; alpha=0.5 vs 0.25 differ by 2 hallucinated answers (23 vs 21), within the margin. With ABSTAIN counted as failed the difference is 1 answer(s) (32 vs 31), also within the margin.",
+  "exploratory": {
+    "alphas": [
+      0.0
+    ],
+    "note": "pre-declared reference, not eligible for selection",
+    "pooled": {
+      "0.0": {
+        "n": 100,
+        "n_abstain": 10,
+        "n_not_hallucinated": 69,
+        "n_hallucinated": 21,
+        "hallucination_count_excl_abstain": 21,
+        "n_excl_abstain": 90,
+        "hallucination_count_incl_abstain": 31,
+        "n_incl_abstain": 100,
+        "rate_excl_abstain": 0.2333,
+        "rate_incl_abstain": 0.31,
+        "abstain_rate": 0.1,
+        "severity": {
+          "SEBAGIAN": 2,
+          "PENUH": 19
+        },
+        "unverifiable_claim_rate": null
+      }
+    },
+    "per_run": {
+      "0.0|on": {
+        "n": 50,
+        "n_abstain": 10,
+        "n_not_hallucinated": 32,
+        "n_hallucinated": 8,
+        "hallucination_count_excl_abstain": 8,
+        "n_excl_abstain": 40,
+        "hallucination_count_incl_abstain": 18,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.2,
+        "rate_incl_abstain": 0.36,
+        "abstain_rate": 0.2,
+        "severity": {
+          "SEBAGIAN": 2,
+          "PENUH": 6
+        },
+        "unverifiable_claim_rate": null
+      },
+      "0.0|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 37,
+        "n_hallucinated": 13,
+        "hallucination_count_excl_abstain": 13,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 13,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.26,
+        "rate_incl_abstain": 0.26,
+        "abstain_rate": 0.0,
+        "severity": {
+          "PENUH": 13
+        },
+        "unverifiable_claim_rate": null
+      }
+    }
+  },
+  "per_judge_per_run": {
+    "llama": {
+      "0.5|on": {
+        "n": 50,
+        "n_abstain": 7,
+        "n_not_hallucinated": 42,
+        "n_hallucinated": 1,
+        "hallucination_count_excl_abstain": 1,
+        "n_excl_abstain": 43,
+        "hallucination_count_incl_abstain": 8,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.0233,
+        "rate_incl_abstain": 0.16,
+        "abstain_rate": 0.14,
+        "severity": {
+          "SEBAGIAN": 1
+        },
+        "unverifiable_claim_rate": 0.4317
+      },
+      "0.5|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 50,
+        "n_hallucinated": 0,
+        "hallucination_count_excl_abstain": 0,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 0,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.0,
+        "rate_incl_abstain": 0.0,
+        "abstain_rate": 0.0,
+        "severity": {},
+        "unverifiable_claim_rate": 0.4463
+      },
+      "0.25|on": {
+        "n": 50,
+        "n_abstain": 9,
+        "n_not_hallucinated": 40,
+        "n_hallucinated": 1,
+        "hallucination_count_excl_abstain": 1,
+        "n_excl_abstain": 41,
+        "hallucination_count_incl_abstain": 10,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.0244,
+        "rate_incl_abstain": 0.2,
+        "abstain_rate": 0.18,
+        "severity": {
+          "PENUH": 1
+        },
+        "unverifiable_claim_rate": 0.4593
+      },
+      "0.25|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 50,
+        "n_hallucinated": 0,
+        "hallucination_count_excl_abstain": 0,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 0,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.0,
+        "rate_incl_abstain": 0.0,
+        "abstain_rate": 0.0,
+        "severity": {},
+        "unverifiable_claim_rate": 0.4549
+      },
+      "0.0|on": {
+        "n": 50,
+        "n_abstain": 8,
+        "n_not_hallucinated": 41,
+        "n_hallucinated": 1,
+        "hallucination_count_excl_abstain": 1,
+        "n_excl_abstain": 42,
+        "hallucination_count_incl_abstain": 9,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.0238,
+        "rate_incl_abstain": 0.18,
+        "abstain_rate": 0.16,
+        "severity": {
+          "PENUH": 1
+        },
+        "unverifiable_claim_rate": 0.3941
+      },
+      "0.0|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 47,
+        "n_hallucinated": 3,
+        "hallucination_count_excl_abstain": 3,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 3,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.06,
+        "rate_incl_abstain": 0.06,
+        "abstain_rate": 0.0,
+        "severity": {
+          "PENUH": 3
+        },
+        "unverifiable_claim_rate": 0.4677
+      }
+    },
+    "deepseek": {
+      "0.5|on": {
+        "n": 50,
+        "n_abstain": 12,
+        "n_not_hallucinated": 27,
+        "n_hallucinated": 11,
+        "hallucination_count_excl_abstain": 11,
+        "n_excl_abstain": 38,
+        "hallucination_count_incl_abstain": 23,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.2895,
+        "rate_incl_abstain": 0.46,
+        "abstain_rate": 0.24,
+        "severity": {
+          "PENUH": 11
+        },
+        "unverifiable_claim_rate": 0.4813
+      },
+      "0.5|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 35,
+        "n_hallucinated": 15,
+        "hallucination_count_excl_abstain": 15,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 15,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.3,
+        "rate_incl_abstain": 0.3,
+        "abstain_rate": 0.0,
+        "severity": {
+          "PENUH": 15
+        },
+        "unverifiable_claim_rate": 0.4798
+      },
+      "0.25|on": {
+        "n": 50,
+        "n_abstain": 11,
+        "n_not_hallucinated": 26,
+        "n_hallucinated": 13,
+        "hallucination_count_excl_abstain": 13,
+        "n_excl_abstain": 39,
+        "hallucination_count_incl_abstain": 24,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.3333,
+        "rate_incl_abstain": 0.48,
+        "abstain_rate": 0.22,
+        "severity": {
+          "PENUH": 13
+        },
+        "unverifiable_claim_rate": 0.4053
+      },
+      "0.25|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 32,
+        "n_hallucinated": 18,
+        "hallucination_count_excl_abstain": 18,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 18,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.36,
+        "rate_incl_abstain": 0.36,
+        "abstain_rate": 0.0,
+        "severity": {
+          "PENUH": 17,
+          "SEBAGIAN": 1
+        },
+        "unverifiable_claim_rate": 0.4607
+      },
+      "0.0|on": {
+        "n": 50,
+        "n_abstain": 10,
+        "n_not_hallucinated": 29,
+        "n_hallucinated": 11,
+        "hallucination_count_excl_abstain": 11,
+        "n_excl_abstain": 40,
+        "hallucination_count_incl_abstain": 21,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.275,
+        "rate_incl_abstain": 0.42,
+        "abstain_rate": 0.2,
+        "severity": {
+          "PENUH": 11
+        },
+        "unverifiable_claim_rate": 0.4766
+      },
+      "0.0|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 30,
+        "n_hallucinated": 20,
+        "hallucination_count_excl_abstain": 20,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 20,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.4,
+        "rate_incl_abstain": 0.4,
+        "abstain_rate": 0.0,
+        "severity": {
+          "PENUH": 20
+        },
+        "unverifiable_claim_rate": 0.4444
+      }
+    },
+    "qwen3-235b": {
+      "0.5|on": {
+        "n": 50,
+        "n_abstain": 11,
+        "n_not_hallucinated": 24,
+        "n_hallucinated": 15,
+        "hallucination_count_excl_abstain": 15,
+        "n_excl_abstain": 39,
+        "hallucination_count_incl_abstain": 26,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.3846,
+        "rate_incl_abstain": 0.52,
+        "abstain_rate": 0.22,
+        "severity": {
+          "PENUH": 14,
+          "SEBAGIAN": 1
+        },
+        "unverifiable_claim_rate": 0.2893
+      },
+      "0.5|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 35,
+        "n_hallucinated": 15,
+        "hallucination_count_excl_abstain": 15,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 15,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.3,
+        "rate_incl_abstain": 0.3,
+        "abstain_rate": 0.0,
+        "severity": {
+          "PENUH": 14,
+          "SEBAGIAN": 1
+        },
+        "unverifiable_claim_rate": 0.3168
+      },
+      "0.25|on": {
+        "n": 50,
+        "n_abstain": 12,
+        "n_not_hallucinated": 25,
+        "n_hallucinated": 13,
+        "hallucination_count_excl_abstain": 13,
+        "n_excl_abstain": 38,
+        "hallucination_count_incl_abstain": 25,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.3421,
+        "rate_incl_abstain": 0.5,
+        "abstain_rate": 0.24,
+        "severity": {
+          "PENUH": 10,
+          "SEBAGIAN": 3
+        },
+        "unverifiable_claim_rate": 0.3016
+      },
+      "0.25|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 31,
+        "n_hallucinated": 19,
+        "hallucination_count_excl_abstain": 19,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 19,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.38,
+        "rate_incl_abstain": 0.38,
+        "abstain_rate": 0.0,
+        "severity": {
+          "PENUH": 17,
+          "SEBAGIAN": 2
+        },
+        "unverifiable_claim_rate": 0.3431
+      },
+      "0.0|on": {
+        "n": 50,
+        "n_abstain": 12,
+        "n_not_hallucinated": 21,
+        "n_hallucinated": 17,
+        "hallucination_count_excl_abstain": 17,
+        "n_excl_abstain": 38,
+        "hallucination_count_incl_abstain": 29,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.4474,
+        "rate_incl_abstain": 0.58,
+        "abstain_rate": 0.24,
+        "severity": {
+          "PENUH": 13,
+          "SEBAGIAN": 4
+        },
+        "unverifiable_claim_rate": 0.1929
+      },
+      "0.0|off": {
+        "n": 50,
+        "n_abstain": 0,
+        "n_not_hallucinated": 32,
+        "n_hallucinated": 18,
+        "hallucination_count_excl_abstain": 18,
+        "n_excl_abstain": 50,
+        "hallucination_count_incl_abstain": 18,
+        "n_incl_abstain": 50,
+        "rate_excl_abstain": 0.36,
+        "rate_incl_abstain": 0.36,
+        "abstain_rate": 0.0,
+        "severity": {
+          "PENUH": 13,
+          "SEBAGIAN": 5
+        },
+        "unverifiable_claim_rate": 0.3082
+      }
+    }
+  },
+  "context_items_per_answer": {
+    "0.0|off": 5.0,
+    "0.25|off": 5.0,
+    "0.5|off": 5.0,
+    "0.0|on": 5.0,
+    "0.25|on": 5.0,
+    "0.5|on": 5.0
+  }
+}

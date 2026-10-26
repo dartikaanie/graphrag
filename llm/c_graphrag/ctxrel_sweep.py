@@ -179,7 +179,7 @@ def select_stage2_winner(stage2_metrics: dict[float, dict]) -> dict:
     Keep-current rule: if the winner is alpha=1, keep current (C
     retrieval v2).
 
-    Returns {"winner": alpha, "keep_current": bool, "reasoning": str}.
+    Returns {"winner": alpha, "keep_current": bool, "reasoning": str, "deciding_tier": "primary"|"secondary"|"tie-break"}.
     """
     if not stage2_metrics:
         raise ValueError("stage2_metrics must not be empty")
@@ -192,13 +192,34 @@ def select_stage2_winner(stage2_metrics: dict[float, dict]) -> dict:
     winner = ranked_alphas[0]
     keep_current = winner == 1.0
 
-    m = stage2_metrics[winner]
-    rate_excl = round(m["hallucination_count_excl_abstain"] / m["n_excl_abstain"], 4) if m["n_excl_abstain"] else None
-    reasoning = (
-        f"alpha={winner} has the lowest pooled hallucination rate (excl. ABSTAIN)="
-        f"{rate_excl} ({m['hallucination_count_excl_abstain']}/{m['n_excl_abstain']}) among the stage-1 finalists "
-        f"(tie margin: {STAGE2_ANSWER_COUNT_TIE_MARGIN} answers)."
-    )
+    # Which tier decided? Walk the same clusters as _tiered_rank: the winner is decided at the first tier where the
+    # cluster that contains it has no other member; if none of the tiers separates it, the larger-alpha tie-break did.
+    cluster, tier_name = dict(stage2_metrics), "tie-break"
+    for (score_fn, margin), name in zip(tiers, ("primary", "secondary")):
+        best = max(score_fn(x) for x in cluster.values())
+        cluster = {a: x for a, x in cluster.items() if best - score_fn(x) <= margin}
+        if len(cluster) == 1:
+            tier_name = name
+            break
+    others = sorted(a for a in stage2_metrics if a != winner)
+    cw = stage2_metrics[winner]["hallucination_count_excl_abstain"]
+    if tier_name == "tie-break":
+        rivals = sorted(cluster.keys() - {winner})
+        parts = [f"alpha={winner} selected at the tie-break step;"]
+        for r in rivals:
+            cr, d = stage2_metrics[r]["hallucination_count_excl_abstain"], abs(cw - stage2_metrics[r]["hallucination_count_excl_abstain"])
+            parts.append(f"alpha={winner} vs {r} differ by {d} hallucinated answers ({cw} vs {cr}), within the margin.")
+            wi, ri = stage2_metrics[winner]["hallucination_count_incl_abstain"], stage2_metrics[r]["hallucination_count_incl_abstain"]
+            parts.append(f"With ABSTAIN counted as failed the difference is {abs(wi - ri)} answer(s) ({wi} vs {ri}), also within the margin.")
+        reasoning = " ".join(parts)
+    else:
+        crit = ("hallucinated answers excl. ABSTAIN" if tier_name == "primary"
+                else "hallucinated + ABSTAIN answers (ABSTAIN counted as failed)")
+        key = "hallucination_count_excl_abstain" if tier_name == "primary" else "hallucination_count_incl_abstain"
+        cmp_ = ", ".join(f"alpha={a}: {stage2_metrics[a][key]}" for a in others)
+        reasoning = (f"alpha={winner} selected at the {tier_name} criterion ({crit}): alpha={winner}: "
+                     f"{stage2_metrics[winner][key]}; {cmp_}; the others are outside the "
+                     f"{STAGE2_ANSWER_COUNT_TIE_MARGIN}-answer margin.")
     if keep_current:
         reasoning += " Winner is alpha=1 -- keep-current rule applies, C retrieval v2 kept."
-    return {"winner": winner, "keep_current": keep_current, "reasoning": reasoning}
+    return {"winner": winner, "keep_current": keep_current, "reasoning": reasoning, "deciding_tier": tier_name}

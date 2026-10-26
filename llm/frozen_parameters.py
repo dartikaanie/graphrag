@@ -66,7 +66,7 @@ def build() -> list[dict]:
     add("Alpha selection", "stage-1 alpha grid", list(v), s, "done", "Selection procedure; stage 1 of record: Amendment 17 (C v4 re-run)")
     from llm.c_graphrag.stage2_candidates import EXPLORATORY_ALPHAS, STAGE1_REPORT_OF_RECORD, STAGE2_ALPHAS
     add("Alpha selection", "stage-2 candidates", list(STAGE2_ALPHAS),
-        _line_of("llm/c_graphrag/stage2_candidates.py", "STAGE2_ALPHAS = stage1_top_two()"), "candidate (stage 2 not run)",
+        _line_of("llm/c_graphrag/stage2_candidates.py", "STAGE2_ALPHAS = stage1_top_two()"), "stage 2 run 2026-10-25; alpha 0.5 selected at the tie-break step",
         f"derived from the top_two of {STAGE1_REPORT_OF_RECORD} (Amendment 17); never written by hand")
     add("Alpha selection", "exploratory reference alphas (not eligible for selection)", list(EXPLORATORY_ALPHAS),
         _line_of("llm/c_graphrag/stage2_candidates.py", "EXPLORATORY_ALPHAS ="), "frozen (pre-declared)",

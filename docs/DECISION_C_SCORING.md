@@ -576,10 +576,10 @@ The stage-2 selection rule, the stage-2 candidates (α = 0.25 and α = 0), the j
 This decision adds a measurement; it does not change any selection. It was made before stage 2 and before any official n = 384 run, so it cannot depend on their results.
 
 ### Record (fill in after stage 2)
-- α\* (C-primary, stage-2 winner): [ ]
-- α ablation (C-ablation, the other stage-2 candidate): [ ]
-- Stage-2 report: [path]
-- Date selected: [YYYY-MM-DD]
+- α\* (C-primary, stage-2 winner): 0.5 (selected at the tie-break step)
+- α ablation (C-ablation, the other stage-2 candidate): 0.25
+- Stage-2 report: llm/c_graphrag/results/stage2/stage2_report_20261025T232940Z.md
+- Date selected: 2026-10-26
 - Commit that fills in this Record, the Outcome section and the official_params block: [ ]
 
 ---
@@ -729,6 +729,191 @@ The 0.4 threshold is the conventional lower bound of "moderate" agreement (Landi
 
 ---
 
+<!-- Copy of reports/amendment14_draft.md as of 2026-10-26 (heading levels adjusted only). Status: DRAFT. -->
+## Amendment 14 (DRAFT, not approved): frozen judge panel for the four official runs
+
+**Status: draft for the author's review.** Rewritten 2026-10-25 for the four-run design of Amendment 16 (A, B-grounded,
+C-primary-grounded, D-grounded). The first version of 2026-10-20 was written for nine runs and carried human-agreement
+gates; both are gone. Written before any alpha stage-2 run and any official run on the test sample (n = 384). No
+stage-2 or test-sample output exists. The Qwen eligibility rule of section (c) was written before any screening call;
+its byte-exact pre-registered text is `reports/amendment14_eligibility_rule_preregistered.md` (SHA-256
+`62569fc9bb11…`, the value stored in both screening runs' history entries,
+`llm/evaluation/logs/judge_panel_run_history.jsonl`, field `screening.rule_sha256`).
+
+**Update note (2026-10-26):** Stage 1 was re-run under Amendment 17 with leakage thread; the stage-1 of record is stage1_anchors_report_20261025T165734Z. Stage 2 was run on 2026-10-25/26 (see docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md); α* = 0.5 at the tie-break step. Statements above that say otherwise are historical, as written when the draft was made. The drafts of Amendments 14, 15, 16 and 17 were written before stage 2 but are committed after it.
+
+### (a) No human gate
+
+The judge panel is used without any human annotation, human-agreement threshold or human-validated acceptance step.
+The kappa gates of Amendments 11 and 13 and the confirmation-set acceptance are **removed** for the official
+evaluation (`judge_panel.py` never asks for them on the panel path;
+`llm/evaluation/tests/test_panel_path_needs_no_human_annotation.py`). Consequently every rate this thesis reports is a
+**panel-detected hallucination rate**, not a validated hallucination rate, and the thesis says so.
+
+### (b) Official frozen judge configuration
+
+| Item | Value |
+|---|---|
+| Prompt | judge-v2.3 (`llm/evaluation/judge_prompt_v2_3.py`) |
+| Parser | pv2.3-1 |
+| Blinding | blind-v3 (citation markers and "the retrieved sources …" meta phrases removed from the candidate) |
+| Request | temperature 0, max_tokens 2000, JSON mode (`response_format: {"type": "json_object"}`), at most 2 retries |
+| Panel | **panel-v2** = `meta-llama/Llama-3.3-70B-Instruct-Turbo` + `deepseek-ai/DeepSeek-V3.2` (`reasoning_effort: "none"`) + `Qwen/Qwen3-235B-A22B-Instruct-2507` (DeepInfra) |
+| Aggregation | 2-of-3 majority (`judge_panel_aggregate.aggregate_labels`), unchanged: at least two ABSTAIN gives ABSTAIN, otherwise the median of the ordinal scores |
+
+No further prompt, parser, blinding, model or aggregation change is allowed for stage 2 or the official runs. In the
+approval commit, `judge_versions.AMENDMENT14_APPROVED` is set to `True` and `judge_versions.OFFICIAL_ALLOWED` to
+`("judge-v2.3",)` (the exact change is prepared in `docs/AMENDMENT14_APPROVAL_CHANGE.md`); until then
+`judge_panel.py --official` refuses every run, and it accepts only panel-v2.
+
+### (c) Why Qwen2.5-72B was replaced, and how the replacement was chosen
+
+**Reasons.** In the 60-item calibration run Qwen2.5-72B-Instruct was a degenerate rater: it labelled 0 of 60 items
+hallucinated with judge-v2.3 (1 of 58 with judge-v2.2). It presented candidate text as reference quotes (criterion (2)
+below: 8 violations on 4 items) and was the most expensive panel member.
+
+**Pre-registered eligibility rule** (written before any screening call). On the 60 calibration items with judge-v2.3, a
+Qwen candidate must (1) label at least 5% of its non-ABSTAIN items HALLUCINATED; (2) never present candidate text as a
+reference quote; (3) give a usable record for all 60 items with no reasoning/thinking content. Screening, not tuning:
+prompt, parser, blinding, request parameters and aggregation frozen. Candidates in order: Qwen3-235B-A22B-Instruct-2507,
+then Qwen3-32B with thinking disabled.
+
+**Screening results** (commit `a9a884c`; cap $0.10 each):
+
+| | Qwen3-235B-A22B-Instruct-2507 | Qwen3-32B |
+|---|---|---|
+| (1) HALLUCINATED / non-ABSTAIN | 14/50 = 28.0% (pass) | 6/52 = 11.5% (pass) |
+| (2) violations / affected items | 2 / 1 (CAL-033) | 1 / 1 (CAL-041) |
+| (3) usable, reasoning content, `<think>` | 60/60, 0, 0 (pass) | 60/60, 0, 0 (pass) |
+| actual cost | $0.0538 | $0.0399 |
+
+**Post-results revision of criterion (2) (author, 2026-10-20, after the screening results were known).** Criterion (2)
+was zero-tolerance; both Qwen3 candidates failed it on a single item. Because its purpose is to exclude systematic
+evidence fabrication (Qwen2.5-72B: 8 violations), it was revised to "at most 1 affected item out of 60". The retained
+panel member DeepSeek-V3.2 would also have failed the zero-tolerance version (1 affected item, CAL-033). This revision
+is reported as a limitation.
+
+**Selected judge: `Qwen/Qwen3-235B-A22B-Instruct-2507`**, on the pre-registered criterion (1): it is the more sensitive
+rater (28.0% vs 11.5%). It is a non-thinking model by design (no reasoning content in any of the 60 responses), served
+in FP8, and is called with JSON mode like the other judges.
+
+### (d) Role of each estimate
+
+All estimates are computed from the **same stored judge outputs**; no estimate needs an extra call.
+
+- **Panel rate (primary):** the 2-of-3 panel label.
+- **DeepSeek-only rate (sensitive):** DeepSeek-V3.2 was the most sensitive judge in the calibration run; it includes
+  some false alarms on valid alternative approaches.
+- **Llama-only and Qwen-only rates:** reported as supporting information.
+
+### (e) Pre-registered comparisons and interpretation rule
+
+Three comparisons on the hallucination rate of the panel label with ABSTAIN excluded (version (a) of section (i)):
+
+1. **C vs A** (C-primary-grounded vs plain LLM),
+2. **C vs B** (C vs B-grounded, conventional RAG),
+3. **C vs D** (C vs D-grounded, dual-level retrieval).
+
+A comparison is called **"consistent"** only if the panel difference and the DeepSeek-only difference (rate excluding
+ABSTAIN) have the **same sign**; otherwise it is **"inconclusive"**. A difference of exactly 0 under either estimate is
+"inconclusive". The rule labels the direction only. Nothing else is pre-registered as a primary comparison: there is
+no plain-vs-grounded comparison and no trust-ablation comparison in the official evaluation. The report additionally
+gives, per comparison and per question, how many times C is better, equal or worse on the binary label (section (i)); the 2 x 2 table
+(only C hallucinated, only the other, both, neither) is the **primary paired report**.
+
+### (f) Time standard of the metric
+
+The judge prompt lets well-established knowledge override an outdated reference answer. A claim is judged against
+knowledge valid at evaluation time, not only against the reference. Limitation: the judges applied this inconsistently
+in the calibration run (DeepSeek follows the reference literally, Qwen2.5 overrode it, Llama treated such claims as
+unverifiable).
+
+### (g) Alpha stage 2 uses the frozen panel
+
+Alpha stage 2 (dev set, n = 50) is judged with the frozen panel-v2 of section (b). The candidates are the top two alphas of the stage-1 re-run of Amendment 17 (0.5 and 0.25); alpha 0 is run as an exploratory reference and is not eligible for selection. The label of the pre-registered selection rule is the panel label: binary hallucination rate excluding ABSTAIN, pooled over grounding on and off (100 answers per alpha), tie margin 2 answers, then ABSTAIN counted as failed, then the larger alpha. Stage 2 is a dev-split run and does not need the approval flag of section (b). No official run uses the second candidate. Result: docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md.
+
+### (h) Reported limitations
+
+- Rates are "panel-detected hallucination rates"; the panel is not validated against human labels.
+- The Qwen seat was filled under a criterion revised after the screening results (section (c)).
+- The judge-side severity scale has no counterpart to a human "partial" level; severity is reported descriptively.
+- Inter-judge disagreement patterns found in the archived calibration run (valid alternative vs contradiction,
+  different mechanism, time-dependent facts, single wrong detail, the ABSTAIN boundary) are listed in the archived
+  reports `results/_archive/2026-10-19_pre-official/llm/evaluation/results/` and are cited as qualitative limitations,
+  not as acceptance numbers.
+- Context relevance and answer relevance (section (i)) come from one judge, not the panel. That judge is
+  `meta-llama/Llama-3.3-70B-Instruct`, while the panel uses the Turbo variant (`Llama-3.3-70B-Instruct-Turbo`).
+- In stage 2 Llama flagged very few answers as hallucinated (1, 1 and 4 of about 92 answers for alpha 0.5, 0.25 and 0), so
+  the panel label (2 of 3) is in practice decided by DeepSeek and Qwen.
+
+### (i) Reporting rule for every official run
+
+Per run and condition: **(a)** hallucination rate **excluding ABSTAIN** = hallucinated / (hallucinated + not
+hallucinated), the primary figure; **(b)** hallucination rate **with ABSTAIN counted as failed** = (hallucinated +
+ABSTAIN) / all usable answers; the ABSTAIN rate; the severity split (full / partial hallucination, shares of the
+hallucinated answers); the share of unverifiable claims; each **for the panel and for each judge**. Items with an
+UNRESOLVED or incomplete panel are counted and reported, never imputed.
+
+Also per run: cosine similarity (mean, median); citation validity (NF2); latency from the per-answer timing of record
+schema r3 (`end_to_end_latency_sec`, `generation_latency_sec`, `retrieval_latency_sec`), where **NF3 = the p95 of
+per-answer end-to-end latency of the Condition C run, target <= 15 s**, and retrieval p50/p95 for every run.
+
+**Faithfulness and citation support (B, C, D only; no new call).** Aggregated from the per-claim labels already stored on
+the panel records. Faithfulness = claims with `supported_by_context = YES` / claims with a YES or NO value.
+Citation support = cited claims with `cited_item_supports = YES` / cited claims with a YES or NO value. Claims with a
+null value are left out of the denominator, never imputed. Reported pooled over the three judges' claim lists and per
+judge (micro), plus the per-answer mean (macro). Condition A has no context and is excluded.
+
+**Secondary metrics (one judge, not the panel).** Context relevance (B, C, D; prompt ctxrel-v2) and answer relevance
+(A, B, C, D; prompt ansrel-v1) by `meta-llama/Llama-3.3-70B-Instruct` at temperature 0, blinded to condition and scores
+(`llm/evaluation/secondary_metrics.py`; dry run first, official files only after the approval of section (b)).
+
+**Agreement.** Fleiss' kappa and Krippendorff's alpha (nominal) between the three judges with n, and the share of
+answers on which all three judges gave the same label.
+
+**Paired counts.** For C vs A, C vs B and C vs D, per question: C better, equal, worse on the binary label of the panel
+(version (a): pairs where either answer is ABSTAIN or unusable are left out and counted; version (b): ABSTAIN counts as
+failed). The 2 x 2 table (only C hallucinated, only the other, both, neither) is the primary paired report; the better / equal / worse counts are secondary.
+
+### (j) Execution
+
+1. Alpha stage 2 first: two candidates plus one exploratory reference, grounding on and off, 300 answers; run 2026-10-25/26 (alpha\* = 0.5 at the tie-break step; applied to `official_params.json` on 2026-10-26).
+2. The four official runs (A, B-grounded, C-primary-grounded, D-grounded), then judging with the frozen panel, then the
+   secondary metrics, then `llm/evaluation/official_report.py`.
+
+Each step starts only after the author's explicit "go". DeepInfra budget for judging: $9.00 (set in
+`results/run_registry.json`). **Stage-2 judging spend, three numbers that do not agree** (no account or billing endpoint
+was called for this reconciliation): (1) the registry ledger holds $0.6087 for the stage-2 judging (entries $0.5017 plus
+an explicit adjustment entry of about $0.107 for the first aborted run; ledger total including the two Qwen screenings
+$0.7024); (2) the record-level estimate, the sum of `estimated_cost_usd` over the 900 kept judge records, is $1.081; (3) the
+provider's usage figures, read earlier in a filtered form, are about $0.95 to $1.0. The ledger is therefore still lower
+than the other two by about $0.35 to $0.47 and under-records the resumed runs; the registry is not corrected beyond the
+adjustment entry. For the budget, use the higher figure: stage 2 consumed about $1.08 plus the screenings ($0.094), so
+about $7.83 of the $9.00 remains for the official judging. The cost projection for the four-run design is
+`results/cost_projection.md` (regenerated by `llm/cost_projection.py`; the file under `results/` is the author's to
+regenerate).
+
+### (k) Archive note
+
+All pre-official data were archived on 2026-10-19: `results/_archive/2026-10-19_pre-official/ARCHIVE_INDEX.md`
+(commit `c14e430`).
+
+### (m) Scope
+
+This amendment supersedes the acceptance parts of Amendments 11-13 (the kappa gates and the confirmation-set
+acceptance). Everything else in those amendments, and every earlier amendment, stands, except where Amendment 16 says
+otherwise (the run matrix, the second stage-2 candidate, Condition D's scoring).
+
+### (n) Runtime change in `judge_panel.py` (2026-10-26)
+
+During stage 2 the judge run stalled several times on one hanging connection. Two changes were made: the client timeout
+is 180 s per request (the SDK default is 600 s), and each result is written as soon as its call finishes
+(`as_completed`) instead of in submission order. Judge version, prompts, parser, blinding, request parameters, panel
+and aggregation are not changed, and no hash changed. Details and the checks: `docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md`,
+section 2.
+
+---
+
 ## Amendment 15 (2026-10-25): leakage exclusion reduced to the evaluation question and its answers
 
 **Status: DRAFT, awaiting author confirmation.** Written BEFORE stage 2 and BEFORE any official run (R1-R9) on the test sample; no stage-2 or official run exists, `official_params.json` is still `pending_selection`. Numbering: Amendment 14 is still an untracked draft in `reports/` and is not part of this file; this amendment takes the next free number. If Amendment 14 is committed first, renumber consistently.
@@ -743,11 +928,11 @@ The 0.4 threshold is the conventional lower bound of "moderate" agreement (Landi
 Amendment 8's text is not edited. This amendment only states that, for the official evaluation of B, C and D, its exclusion rule (Decision items 1 and 3, and the default in item 4) is replaced by the `thread` rule. Its finding, its audit and its metrics stay as recorded. The modes `dup`, `dup+neardup0.95` and `dup+linked+neardup0.95` remain available as sensitivity modes (`--leakage-mode`, `LEAKAGE_EXCLUDE_DUP`, `LEAKAGE_EXCLUDE_LINKED`, `LEAKAGE_NEAR_DUP_COSINE`) and in the audit.
 
 ### Rationale
-TODO(author): isi alasan desain. (Not written by the assistant. It should answer Amendment 8's argument that a Duplicate is the evaluation question's ground truth in disguise, preferably as a design argument about scenario realism rather than one based on scores.)
+In deployment, a user's question is not labelled as a duplicate of anything, so the system cannot exclude duplicates and will retrieve answers to existing near-identical questions when they exist. Excluding duplicates in the evaluation removes that situation and makes the setting less realistic. The `thread` rule removes only what a deployed system could never see: the evaluation question's own thread. The rule is applied identically to B, C and D, so it does not favour any condition. Cost: absolute rates may be more favourable than under strict exclusion (in the smoke test, one question had a context-accepted-answer cosine of 0.9391). Items with cosine >= 0.95 are measured and reported, not filtered.
 
 ### Known impact
 - **Test sample (n = 384):** Amendment 8 counted, in aggregate only, 2 questions with a Duplicate and 1 with a near-duplicate. Under `thread` their duplicate's / near-duplicate's answers can enter the context. The frozen test list contains 10825926, 61698964 (Duplicate) and 50363191 (near-duplicate) per `results/leakage/exclusion_sets.parquet`; no retrieval has been run on them.
-- **Stage 1 is not affected.** It ran with the thread-only exclusion; in the default mode 0 of 50 dev exclusion sets differed, and C's retrieval was identical for 50/50 questions at alpha 0.5 and 0.25 (Amendment 8). Stage 1 is not re-run. Stage 2 has not been run and will run under `thread`.
+- **Stage 1 is not affected.** It ran with the thread-only exclusion; in the default mode 0 of 50 dev exclusion sets differed, and C's retrieval was identical for 50/50 questions at alpha 0.5 and 0.25 (Amendment 8). Stage 1 is not re-run (historical, superseded by Amendment 17, see the Update note). Stage 2 has not been run and will run under `thread` (historical, superseded by Amendment 17, see the Update note).
 - **Linked questions:** unchanged (never excluded in the official mode).
 - **Metric:** the ID-level self-retrieval rate must still be 0 (`assert_no_leakage` runs per query for q and its answers). The cosine >= 0.95 check between each context item and q's accepted answer is no longer guaranteed to be 0: it is MEASURED and reported, not enforced. It is never used as a filter.
 
@@ -762,6 +947,8 @@ TODO(author): isi alasan desain. (Not written by the assistant. It should answer
 
 ### Smoke test (retrieval only, no LLM call, cost $0; dev set has no Duplicate or near-duplicate, so two unused-pool questions were used; no test-sample question was touched)
 Q 35278729 (Duplicate 59533843), Q 20528668 (near-duplicate 66893076, answer 66893206), Q 19951718 (dev, Linked 44881990). Mode `thread`: exclusion set = {q} and q's thread answers only (1 question; 2, 1, 1 answers); mode `dup+neardup0.95` excluded 2 questions for the first two. Own-thread ids in the context: 0 for B, C, D in every case. For 20528668 the near-duplicate's accepted answer entered the context under `thread`: B via vector search only, C via graph traversal (1-hop `HAS_ACCEPTED_ANSWER` from anchor 66893076), D via low-level retrieval (anchor 66893076); under `dup+neardup0.95` it did not. Max cosine of a context item with q's accepted answer for that question: 0.9391 (B, C, D; context text includes the question title), versus 0.58 / 0.53 / 0.28 under `dup+neardup0.95`; items with cosine >= 0.95: 0 in all 18 cells. The Duplicate of 35278729 and the Linked question of 19951718 did not surface in any condition.
+
+**Update note (2026-10-26):** Stage 1 was re-run under Amendment 17 with leakage thread; the stage-1 of record is stage1_anchors_report_20261025T165734Z. Stage 2 was run on 2026-10-25/26 (see docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md); α* = 0.5 at the tie-break step. Statements above that say otherwise are historical, as written when the draft was made.
 
 ---
 
@@ -779,10 +966,10 @@ Bab III; it does not edit the text of any earlier amendment (history stays as wr
 | Alpha | C-primary (alpha\*) and C-ablation | **one alpha, alpha\***. Stage 2 still produces the second candidate and `official_params.json` still stores it, but **no official run uses it** |
 | Pre-registered comparisons | R5 vs R1, R3, R9, R7; R4 vs R2, R8, R6 | **C vs A, C vs B, C vs D** (R5 vs R1, R3, R9) |
 | Legacy cells | part of the matrix | still defined (R2, R4, R6, R7, R8) so old hashes and data stay reproducible; refused on the test sample unless `--allow-legacy-cells` (API `allow_legacy_cells`) is passed; never started by the Official preset, the default listings or "Run all" |
-| `C_RETRIEVAL_VERSION` default | v2 | **v3** (CLI and API) |
+| `C_RETRIEVAL_VERSION` default | v2 | **v3** (CLI and API); **superseded by Amendment 17: v4** |
 
 Amendment 10 ("trust ablation on the official evaluation") is therefore **not applied** to the official evaluation: its
-C-ablation runs are legacy cells. Its stage-2 candidate rule (two candidates, 0.25 and 0) is unchanged, and so is its
+C-ablation runs are legacy cells. Its stage-2 candidate rule (two candidates from stage 1) is unchanged (the candidates written here as 0.25 and 0 are **superseded by Amendment 17: 0.5 and 0.25**), and so is its
 statement that stage 2 alone is not evidence for an effect of trust. The thesis claims no effect of trustScore on the
 basis of a trust ablation; the C vs D comparison differs in several components at once (Bab III).
 
@@ -798,8 +985,8 @@ of them per query** (`HIGH_LEVEL_CANDIDATE_CAP`; the natural bound is 20 TAG_COO
 links per anchor; when exceeded the smallest question ids are kept, deterministic and blind to content, and the record
 stores `high_level_cap_hit`), and keeps the three best (`N_HIGH_LEVEL`). Unchanged: same graph, index and leakage rule
 as C; no trust; no accepted-answer bonus; no semantic expansion; dedup keeps the highest score; ties by answer id;
-top-5; `N_LOW_LEVEL = N_HIGH_LEVEL = 3`. `d_retrieval_version` is part of `config_hash`; the official matrix pins v4
-(`--d-retrieval-version v4`). No retrieval has been run with v4 yet: before the official run, run a retrieval-only dev
+top-5; `N_LOW_LEVEL = N_HIGH_LEVEL = 3`. `d_retrieval_version` is part of `config_hash`; the official matrix pinned v4
+(`--d-retrieval-version v4`; **superseded by Amendment 17: v5**). No retrieval has been run with v4 yet: before the official run, run a retrieval-only dev
 check (`--retrieval-only`, no LLM call).
 
 ### Reporting (`llm/evaluation/official_report.py`)
@@ -811,7 +998,9 @@ check (`--retrieval-only`, no LLM call).
   Denominators: faithfulness = claims with `supported_by_context = YES` / claims rated YES or NO; citation support = cited
   claims with `cited_item_supports = YES` / cited claims rated YES or NO; null values are left out, never imputed.
 * Paired counts per question for C vs A, B, D (C better / equal / worse on the binary label of the panel; version (a)
-  leaves out pairs with an ABSTAIN or unusable answer and counts them, version (b) counts ABSTAIN as failed) and the share
+  leaves out pairs with an ABSTAIN or unusable answer and counts them, version (b) counts ABSTAIN as failed). The **2 x 2 table**
+  (only C hallucinated, only the other, both, neither) is the **primary paired report**; the better / equal / worse counts are
+  secondary. Also the share
   of answers on which all three judges gave the same label. Fleiss, Krippendorff, bias probes and the
   consistent / inconclusive flag are unchanged.
 * Secondary metrics, one judge (`meta-llama/Llama-3.3-70B-Instruct`, temperature 0), blinded: context relevance (B, C, D;
@@ -826,9 +1015,11 @@ check (`--retrieval-only`, no LLM call).
   cosine >= 0.7, top-10). The graph was not rebuilt.
 * The Question-level trustScore stays in the data but is hidden in the dashboard unless a setting is turned on; retrieval
   never reads it.
-* Stage 1 of record (Amendment 9 recheck) ran with leakage mode `dup+neardup0.95` (the default at the time); on the 50 dev
+* Stage 1 of record at the time (Amendment 9 recheck, **superseded by Amendment 17**) ran with leakage mode `dup+neardup0.95` (the default at the time); on the 50 dev
   questions that exclusion equals the `thread` exclusion (every record: `n_excluded_q = 1`; 0 Duplicate and 0 near-duplicate
   in `results/leakage/exclusion_sets.parquet`). See `IMPLEMENTATION_STATUS.md`.
+
+**Update note (2026-10-26):** Stage 1 was re-run under Amendment 17 with leakage thread; the stage-1 of record is stage1_anchors_report_20261025T165734Z. Stage 2 was run on 2026-10-25/26 (see docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md); α* = 0.5 at the tie-break step. Statements above that say otherwise are historical, as written when the draft was made.
 
 ### Record
 * Confirmation by the author: [ ]
@@ -867,7 +1058,7 @@ is repeated with v4 anchors, the same judge (ctxrel-v2, Llama-3.3-70B-Instruct, 
 only new items are judged. The rule is unchanged and the result is accepted whatever it is. Report:
 `llm/c_graphrag/results/anchors_check/`.
 
-**Result (2026-10-25, dev set, `thread`, 254 new items judged, $0.03):** % of questions with at least one RELEVANT item
+**Result (appended 2026-10-25, after the draft above was written; dev set, `thread`, 254 new items judged, $0.03):** % of questions with at least one RELEVANT item
 and mean score per alpha: 0: 56.0 / 0.376; 0.25: 56.0 / 0.374; 0.5: 58.0 / 0.372; 0.75: 56.0 / 0.332; 1: 40.0 / 0.256.
 Under the unchanged rule the two best alphas are **0.5 and 0.25** (previously 0.25 and 0). They are the stage-2
 candidates of record (`llm/c_graphrag/stage2_candidates.py` reads them from `stage1_anchors_report_20261025T165734Z.json`).
@@ -877,10 +1068,15 @@ Alpha 0 is run in stage 2 as a pre-declared exploratory reference, not eligible 
 * Confirmation by the author: [ ]
 * Commit: [ ]
 
+**Update note (2026-10-26):** Stage 1 was re-run under Amendment 17 with leakage thread; the stage-1 of record is stage1_anchors_report_20261025T165734Z. Stage 2 was run on 2026-10-25/26 (see docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md); α* = 0.5 at the tie-break step. Statements above that say otherwise are historical, as written when the draft was made.
+
 ---
 
 ## Outcome (filled in after the procedure)
-[Stage 1 table, stage 2 table, chosen α, date]
+- Stage 1 of record: Amendment 17 re-run (C v4, answerable-only anchors), report `stage1_anchors_report_20261025T165734Z.json`; top two = 0.5 and 0.25.
+- Stage 2 (dev set, n = 50, panel-v2 / judge-v2.3, pooled grounding on + off, 100 answers per alpha), hallucinated excl. ABSTAIN: α 0.5: 23 of 91 (32 of 100 with ABSTAIN as failed); α 0.25: 21 of 90 (31 of 100); α 0 (exploratory, not eligible): 21 of 90 (31 of 100). Report: `llm/c_graphrag/results/stage2/stage2_report_20261025T232940Z.md`.
+- Chosen: **α\* = 0.5**, decided at the **tie-break step** (larger alpha): the primary difference is 2 answers and the secondary 1 answer, both within the margin of 2. This is not evidence of an effect of trust (Amendment 10). α 0.25 is the unused alpha_ablation.
+- Date: 2026-10-26  |  commit: [filled in after the author's commit]
 
 ## Machine-readable official parameters
 
@@ -890,10 +1086,10 @@ Schema (Amendment 10, 2026-10-18; values unchanged, still pending): `alpha` is r
 
 ```json official_params
 {
-  "status": "pending_selection",
+  "status": "selected",
   "c_retrieval_version": "v4",
-  "alpha_primary": null,
-  "alpha_ablation": null,
+  "alpha_primary": 0.5,
+  "alpha_ablation": 0.25,
   "selection_record": {"path": "docs/DECISION_C_SCORING.md#amendment-10-2026-10-18-trust-ablation-on-the-official-evaluation", "commit": null},
   "sample_split": "test",
   "max_hops": 2,

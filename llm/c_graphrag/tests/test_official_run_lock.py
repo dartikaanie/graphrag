@@ -87,3 +87,14 @@ def test_real_official_params_refuse_every_test_run_while_pending():
     for alpha in (0.25, 0.0):
         with pytest.raises(OfficialParamsError):
             cg.official_role_for_args(_args(alpha=alpha))
+
+
+def test_real_official_params_accept_only_alpha_star_once_selected():
+    from llm.c_graphrag.official_params import load_official_params
+
+    official = load_official_params()
+    if official["status"] != "selected":
+        pytest.skip("official_params.json is pending_selection")
+    assert cg.official_role_for_args(_args(alpha=official["alpha_primary"])) == "c_primary"
+    with pytest.raises(OfficialParamsError):
+        cg.official_role_for_args(_args(alpha=0.75))

@@ -201,6 +201,19 @@ def test_stage2_keep_current_when_winner_is_alpha_1():
     assert result["keep_current"] is True
 
 
+def test_stage2_reasoning_names_the_deciding_tier():
+    # the stage-2 result of 2026-10-25: 23/91 vs 21/90 (primary) and 32 vs 31 of 100 (secondary), both within the margin
+    r = select_stage2_winner(_stage2({0.5: (23, 91, 32, 100), 0.25: (21, 90, 31, 100)}))
+    assert r["winner"] == 0.5 and r["deciding_tier"] == "tie-break"
+    assert r["reasoning"].startswith("alpha=0.5 selected at the tie-break step; alpha=0.5 vs 0.25 differ by 2 "
+                                     "hallucinated answers (23 vs 21), within the margin.")
+    assert "lowest" not in r["reasoning"]
+    r = select_stage2_winner(_stage2({0.5: (30, 100, 40, 100), 0.75: (10, 100, 20, 100)}))
+    assert r["deciding_tier"] == "primary" and "primary criterion" in r["reasoning"] and "lowest" not in r["reasoning"]
+    r = select_stage2_winner(_stage2({0.5: (20, 100, 35, 100), 0.75: (21, 100, 30, 100)}))
+    assert r["deciding_tier"] == "secondary" and "secondary criterion" in r["reasoning"]
+
+
 def test_stage2_empty_raises():
     with pytest.raises(ValueError):
         select_stage2_winner({})
