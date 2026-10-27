@@ -324,3 +324,26 @@ Status: run juri resmi R5 (Kondisi C-primary-grounded, α 0,5) selesai dan pemer
   3. Kenaikan kesepakatan tiga juri (206 → 224) sebagian karena ABSTAIN kategori yang mudah disepakati: 64 dari 224 jawaban yang disepakati ketiga juri adalah ABSTAIN (dihitung dari berkas panel). Tanpa itu, 160 dari 312 jawaban non-ABSTAIN (51,3%) disepakati, dibanding 206 dari 384 (53,6%) pada R1.
 - **Biaya:** aktual **$1,3451** vs dry run $1,7642 (24% di bawah), vs batas $2,2053. Tidak ada panggilan yang dilewati oleh pengaman anggaran. Ledger dibukukan sekali, ditandai `panel_official_R5_judge-v2.3.jsonl`. Total ledger **$3,8105**, sisa **$5,1895** dari $9,00.
 - **Sel tersisa (dry run):** R3 (B) $1,7741, R9 (D) $1,7439, metrik sekunder $1,318 (termasuk buffer 10%).
+
+### 12g. R3 (B): penilaian juri resmi selesai, dilanjutkan satu kali (angka sementara, hanya R3)
+
+Status: run juri resmi R3 (Kondisi B-grounded) selesai (dilanjutkan sekali setelah berhenti di 1062/1152) dan pemeriksaan identitas OK; berhenti sesuai instruksi. R9, metrik sekunder, dan `official_report.py` **belum** dijalankan. Semua angka di bagian ini adalah angka sementara khusus R3 (dari `llm/evaluation/results/panel_official_R3_judge-v2.3{,_panel}.jsonl`), bukan keluaran akhir `official_report.py`. Perintah: `judge_panel.py --official --panel panel-v2 --judge-version judge-v2.3 --max-cost-usd 2.2176` (sama pada run awal dan lanjutan); tidak ada berkas `.py` yang berubah sejak tag `official-judging-start`.
+
+- **Identitas:** 1152 rekaman, 1152 pasangan (pertanyaan, juri) unik, id sama dengan daftar uji, 0 id dev, 0 id di luar daftar. Tidak ada ketidakcocokan model yang dilayani dan tidak ada konten reasoning. `failures_file_records`: 1 (kegagalan Qwen di bawah; berkas kegagalan di-gitignore dan menyimpan hanya percobaan terakhir).
+- **Rekaman usable:** 384/384 untuk setiap juri; tidak usable 0% (batas 2%). 7 rekaman di seluruh sel membutuhkan lebih dari satu percobaan berbayar.
+
+| Juri | FAKTUAL | PENUH | SEBAGIAN | ABSTAIN |
+|---|---|---|---|---|
+| Llama-3.3-70B-Turbo | 302 | 14 | 3 | 65 |
+| DeepSeek-V3.2 | 183 | 105 | 10 | 86 |
+| Qwen3-235B-A22B-Instruct-2507 | 196 | 93 | 16 | 79 |
+
+- **Panel (2 dari 3):** UNRESOLVED 0, tidak lengkap 0. Label: 231 FAKTUAL, 70 PENUH, 6 SEBAGIAN, 77 ABSTAIN. Ketiga juri sepakat pada 218 dari 384.
+- **Halusinasi (panel):** ABSTAIN dikeluarkan **76/307 = 24,8%**; ABSTAIN dihitung gagal **153/384 = 39,8%**. Sebagai pembanding: R1 (A) 25,8% / 25,8%; R5 (C) 22,4% / 37,0%.
+- **Insiden:** run berhenti di 1062/1152 setelah item `B-2790758ad0:1345677` (Qwen) gagal tiga percobaan dengan `parse_error`. Penyebab percobaan ke-3: verdict klaim `DIFFERENT_UNASSESSABLE` (nilai milik `approach_match`) berada di luar `CLAIM_VERDICTS` (`judge_prompt_v2_1.py:71`, pemeriksaan di baris 268-270), yaitu pelanggaran skema oleh juri, bukan bug parser (mengganti hanya nilai itu membuat teks yang sama lolos parse). Teks mentah percobaan 1-2 tidak tersimpan, jadi penyebabnya tidak dapat dipastikan. Lanjutan memakai perintah dan batas yang sama: runner memakai 1062 panggilan cache dan membuat 90 panggilan baru; retry Qwen berhasil pada percobaan pertama (934 token, HALUSINASI_PENUH). Tidak ada perubahan kode.
+- **Catatan penting:**
+  1. Penyebut berbeda antar sel (307 vs 312 vs 384), jadi perbandingan berpasangan menjadi tugas `official_report.py`.
+  2. ABSTAIN adalah kategori yang mudah disepakati: 65 dari 218 jawaban yang disepakati ketiga juri adalah ABSTAIN (dihitung dari berkas panel).
+  3. Parser menerima normalisasi longgar (mis. `severity` "null" sebagai string: 542 kali; 3 kunci salah eja pada rekaman yang diterima) tetapi ketat pada nilai enum.
+- **Biaya:** aktual sekitar **$1,3666** (rekaman tersimpan) vs proyeksi $1,7741, batas $2,2176. Ledger dibukukan dua kali, ditandai `panel_official_R3_judge-v2.3.jsonl`: $1,2622 di awal lanjutan (1062 rekaman tersimpan) dan $0,1044 di akhir. Total ledger **$5,1771**, sisa **$3,8229** dari $9,00.
+- **Sel tersisa (dry run):** R9 (D) $1,7439, metrik sekunder sekitar $1,318 (termasuk buffer 10%).
