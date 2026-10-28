@@ -399,3 +399,64 @@ Status: run juri resmi R9 (Kondisi D-grounded, retrieval v5) selesai dan pemerik
 **Pengujian.** Tes offline dengan klien palsu dan registri terisolasi (batas biaya, kegagalan/parse gagal → berkas failures → diulang saat resume, baris terpotong, ledger idempoten, identity, registrasi, pemilihan tahap, agregasi mayoritas/median/incomplete/unresolved, kesepakatan pada contoh hitung-tangan, laporan dengan satu tahap). Seluruh suite: 1622 lulus, 27 dilewati (semuanya Neo4j/`GRAPHRAG_INTEGRATION` dan satu tes `official_params`; tiga skip parquet tidak muncul karena drive T7 Shield terpasang), 0 gagal; sha registri tidak berubah oleh suite.
 
 **Status.** **Belum ada run panel metrik sekunder yang dijalankan** (tidak ada panggilan berbayar, tidak ada tes asap), `official_report.py` belum dijalankan dan **belum** diubah untuk membaca keluaran panel ini (pembacaan satu-juri lama `secondary_metrics.report_section` masih ada di dalamnya).
+
+### 12k. Tahap 1 (answer relevance, panel): Llama + DeepSeek selesai, Qwen belum dijalankan (angka sementara)
+
+**Status: tahap 1 (`ansrel`) parsial. 2 dari 3 juri dijalankan (Llama, DeepSeek), Qwen3-235B belum dijalankan, panel TIDAK dihitung.** Semua angka di bagian ini adalah angka sementara "Llama + DeepSeek saja, Qwen pending", **bukan** hasil panel dan bukan keluaran `official_report.py` (belum dijalankan). Tahap 2 (`ctxrel`) belum dijalankan. Sumber: `results/official_secondary_panel/ansrel_panel_official.jsonl` (+ `_failures.jsonl`, di-gitignore).
+
+**Kode.** `llm/evaluation/secondary_panel.py` di commit `855af2c` (git blob `7a5127c58441fdfdffea61127e4ef4e3f2882808`, sha256 `de36dd47d367fadc…`): opsi `--judges llama,deepseek` (baku: ketiga juri); `identity_report` melaporkan juri di luar subset atau tanpa run sebagai `"not run"` (bukan kegagalan); penjaga di `run_guarded` dan `report()`: tanpa ketiga juri lengkap tidak ada berkas panel, label panel, kesepakatan tiga juri atau rerata panel (hanya angka per juri dan kesepakatan 2-juri yang berlabel sementara). Prompt, parser (ketat), label, skor, pemburaman, pengaturan permintaan, percobaan ulang, aturan agregasi dan logika `BudgetGuard` **tidak berubah**. Seluruh suite: 1626 lulus, 27 dilewati, 0 gagal. Hash parameter beku tetap `fcbee86cbb25`.
+
+**Run.** `python3 llm/evaluation/secondary_panel.py --metric ansrel --judges llama,deepseek --run --max-cost-usd 0.90 --run-files A=… B=… C=… D=…` (semua kode dari commit `855af2c`). 148 rekaman cache dari run yang dihentikan sebelumnya dipakai ulang (Llama 50, DeepSeek 51, Qwen 47); 101 di antaranya milik Llama/DeepSeek sehingga run ini membuat **2971 panggilan** (1486 Llama + 1485 DeepSeek), semuanya usable, 0 gagal, 0 dilewati penjaga anggaran.
+
+**Identitas (`[identity] OK`).**
+
+| Juri | Rekaman | Kunci unik | Diharapkan | Kunci = yang diharapkan | Id dev | Id di luar daftar | Berkas kegagalan |
+|---|---|---|---|---|---|---|---|
+| Llama-3.3-70B-Turbo | 1536 | 1536 | 1536 | ya | 0 | 0 | 0 |
+| DeepSeek-V3.2 | 1536 | 1536 | 1536 | ya | 0 | 0 | 0 |
+| Qwen3-235B-A22B-Instruct-2507 | **not run** (47 rekaman cache dari run yang dihentikan, bukan juri yang selesai) | | 1536 | | | | 2 (insiden di bawah) |
+
+**Usable / tidak usable.** Llama 1536/1536 (0 tidak usable, 0,00% vs batas 2% = 30 dari 1536); DeepSeek 1536/1536 (0, 0,00%). Tidak ada ketidakcocokan model yang dilayani dan tidak ada konten reasoning. Percobaan ulang berbayar: Llama 0, DeepSeek 0 (dari 3072 rekaman; satu-satunya rekaman dengan lebih dari satu percobaan berbayar adalah milik Qwen).
+
+**Distribusi label per juri dan sel** (urutan kolom MENJAWAB / MENJAWAB_SEBAGIAN / TIDAK_MENJAWAB; semua jawaban):
+
+| Juri | Sel | MENJAWAB | MENJAWAB_SEBAGIAN | TIDAK_MENJAWAB | n |
+|---|---|---|---|---|---|
+| Llama-3.3-70B-Turbo | A | 382 | 2 | 0 | 384 |
+| Llama-3.3-70B-Turbo | B | 247 | 91 | 46 | 384 |
+| Llama-3.3-70B-Turbo | C | 223 | 111 | 50 | 384 |
+| Llama-3.3-70B-Turbo | D | 218 | 117 | 49 | 384 |
+| Llama-3.3-70B-Turbo | semua sel | 1070 | 321 | 145 | 1536 |
+| DeepSeek-V3.2 | A | 306 | 78 | 0 | 384 |
+| DeepSeek-V3.2 | B | 125 | 197 | 62 | 384 |
+| DeepSeek-V3.2 | C | 113 | 203 | 68 | 384 |
+| DeepSeek-V3.2 | D | 104 | 214 | 66 | 384 |
+| DeepSeek-V3.2 | semua sel | 648 | 692 | 196 | 1536 |
+
+**Rerata skor per juri dan sel** (skor 1,0 / 0,5 / 0,0). Versi non-ABSTAIN memisahkan jawaban yang oleh panel halusinasi resmi berlabel ABSTAIN (`panel_official_R*_judge-v2.3_panel.jsonl`: B 77, C 72, D 91, A 0), tanpa mengubah kode metrik:
+
+| Juri | Sel | Semua jawaban: n / rerata skor | Non-ABSTAIN: n / rerata skor |
+|---|---|---|---|
+| Llama-3.3-70B-Turbo | A | 384 / 0,9974 | 384 / 0,9974 |
+| Llama-3.3-70B-Turbo | B | 384 / 0,7617 | 307 / 0,9023 |
+| Llama-3.3-70B-Turbo | C | 384 / 0,7253 | 312 / 0,8574 |
+| Llama-3.3-70B-Turbo | D | 384 / 0,7201 | 293 / 0,8720 |
+| Llama-3.3-70B-Turbo | semua sel | 1536 / 0,8011 | 1296 / 0,9128 |
+| DeepSeek-V3.2 | A | 384 / 0,8984 | 384 / 0,8984 |
+| DeepSeek-V3.2 | B | 384 / 0,5820 | 307 / 0,6987 |
+| DeepSeek-V3.2 | C | 384 / 0,5586 | 312 / 0,6683 |
+| DeepSeek-V3.2 | D | 384 / 0,5495 | 293 / 0,6724 |
+| DeepSeek-V3.2 | semua sel | 1536 / 0,6471 | 1296 / 0,7446 |
+
+**Kesepakatan Llama-DeepSeek (angka sementara 2-juri, BUKAN kesepakatan panel):** 68,23% setuju (1536 jawaban), kappa Cohen 0,4704; per sel: A 80,21%, B 63,54%, C 66,41%, D 62,76%. Kappa/alpha tiga juri tidak dihitung.
+
+**Biaya.** Run ini **$0,6169** vs proyeksi $0,7249 untuk panggilan tersisa ($0,7495 untuk dua juri penuh; 15% lebih rendah dari proyeksi tersisa) dan batas $0,90. Panggilan dilewati penjaga anggaran: 0. Ledger dibukukan dua kali, ditandai `ansrel_panel_official.jsonl`: $0,0341 di awal (rekaman cache run yang dihentikan, termasuk 47 rekaman Qwen yang sudah dibayar) dan $0,6169 di akhir. Total ledger **$7,1404**, sisa **$1,8596** dari $9,00. Rata-rata token nyata per panggilan: Llama 1020 masuk / 68,7 keluar, DeepSeek 1040 / 62,7 (perkiraan tetap 1200 / 80).
+
+**Catatan.**
+1. Run yang dihentikan sebelumnya (148 rekaman, biaya sekitar $0,034 termasuk 47 rekaman Qwen) ada di ledger tetapi di **tidak ada entri registri**; entri registri run ini (`secondary_panel_ansrel@2026-10-28T16:27:42`, $0,6169, `judges: [llama, deepseek]`) tidak mencakupnya. Total biaya juri di `official_report.py` akan sekitar $0,034 lebih rendah dari ledger.
+2. Insiden Qwen: item 241991 dan 7705733 (keduanya berkas A) gagal 3 dari 3 percobaan; kunci JSON rusak oleh token `游戏副本` (`answer_relevance游戏副本_label`, `answer_relevance游戏副本`); parser ketat menolaknya; keluarga yang sama dengan insiden R3. Token `游戏副本` juga ada di `raw_response` rekaman Qwen yang diterima pada empat run juri halusinasi (R1 1, R3 3, R5 4, R9 3; semuanya juri Qwen, dihitung dari berkas), tempat ia jatuh di kolom yang tidak diwajibkan sehingga parser menerimanya. 2 dari 49 panggilan Qwen sampai berhenti. Qwen belum dijalankan; tidak ada keputusan tentang parser.
+3. Pesan akhir run menyebut `qwen3-235b partial` pada baris `[PANEL]` (keadaan seluruh berkas), sedangkan `[identity]` menyebutnya `not run` (di luar subset); keduanya benar menurut definisinya.
+4. Baris tabel beku `docs/FROZEN_PARAMETERS.md:139-141` ("judge (one, not the panel)") **belum diperbarui**; akan diperbarui setelah kedua tahap selesai (hash `fcbee86cbb25` berubah saat itu).
+5. Tidak ada entri `judge_panel_run_history.jsonl` untuk tahap ini (`secondary_panel.py` tidak menulis log itu).
+
+**Langkah berikutnya.** Sisa tahap 1 untuk Qwen: sekitar 1489 panggilan (1536 dikurangi 47 cache; termasuk 2 item yang gagal), perkiraan $0,20-0,23 dengan token nyata; lalu agregasi panel tahap 1; lalu tahap 2 (`ctxrel`), yang belum muat di sisa anggaran saat ini.
