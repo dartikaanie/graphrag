@@ -293,3 +293,94 @@ def test_dev_run_end_to_end_and_report_with_only_one_stage(tmp_path, monkeypatch
 
 def test_report_with_no_stage_at_all(tmp_path):
     assert sp.report(None, tmp_path) == {"ansrel": {"status": "not run"}, "ctxrel": {"status": "not run"}}
+
+
+# --- judge subset (--judges): Qwen deferred, not dropped ----------------------------------------------------------------------------
+
+SUBSET = tuple(j for j in sp.JUDGES if j.judge_id in ("llama", "deepseek"))
+
+
+def _subset_setup(tmp_path, monkeypatch, n=4):
+    runs = _stage_files(tmp_path, n)
+    path = runs["C"][1]
+    key = str(sm.archive_paths.canonical(path))
+    monkeypatch.setattr(sp, "build_items", lambda metric, runs_: [
+        {"source_file": key, "question_id": q, "messages": [{"role": "user", "content": f"Q{q}"}]} for q in range(1, n + 1)])
+    monkeypatch.setattr("llm.sample_split.load_frozen_ids", lambda split, path=None: {"ids": list(range(1, n + 1)) if split == "test" else [99]})
+    return runs, path, key
+
+
+def test_a_subset_calls_only_the_selected_judges_and_keeps_cached_records_of_the_others(tmp_path, monkeypatch):
+    out = tmp_path / "o.jsonl"
+    c = _clients(lambda j, m, n: _ans("MENJAWAB"))
+    _run(_items(2), c, out)                              # all three judges ran on 2 items: 6 cached records
+    before = out.read_text()
+    c2 = _clients(lambda j, m, n: _ans("MENJAWAB"))
+    stats = sp.run_stage("ansrel", _items(4), c2, out, None, concurrency=1, sleep=lambda s: None, judges=SUBSET)
+    assert c2["qwen3-235b"].n == 0 and c2["llama"].n == 2 and c2["deepseek"].n == 2          # only the selected judges, only the missing items
+    assert stats["calls"] == 4 and stats["cached"] == 4
+    assert out.read_text().startswith(before)                                                  # cached records are kept as they were
+    assert sum(1 for r in _recs(out) if r["judge_id"] == "qwen3-235b") == 2                    # the 2 Qwen records are neither deleted nor completed
+
+
+def test_identity_reports_unselected_or_unrun_judges_as_not_run_not_as_failure(tmp_path, monkeypatch):
+    runs, path, key = _subset_setup(tmp_path, monkeypatch)
+    out = tmp_path / "o.jsonl"
+    items = sp.build_items("ansrel", runs)
+    sp.run_stage("ansrel", items, _clients(lambda j, m, n: _ans("MENJAWAB")), out, None, concurrency=1, sleep=lambda s: None, judges=SUBSET)
+    ident = sp.identity_report("ansrel", runs, out, SUBSET)
+    assert ident["per_judge"]["qwen3-235b"] == {"status": "not run", "records_on_disk": 0, "failures_file_records": 0, "expected": 4}
+    assert ident["per_judge"]["llama"]["status"] == "run" and ident["per_judge"]["llama"]["keys_equal_expected"]
+    assert ident["ok"] and ident["panel_complete"] is False
+    # stray Qwen records from an earlier stopped run: still "not run" when the subset excludes it, and they are only counted
+    sp.run_stage("ansrel", items[:2], _clients(lambda j, m, n: _ans("MENJAWAB")), out, None, concurrency=1,
+                 sleep=lambda s: None, judges=tuple(j for j in sp.JUDGES if j.judge_id == "qwen3-235b"))
+    ident2 = sp.identity_report("ansrel", runs, out, SUBSET)
+    assert ident2["per_judge"]["qwen3-235b"]["status"] == "not run" and ident2["per_judge"]["qwen3-235b"]["records_on_disk"] == 2
+    assert ident2["ok"]
+    assert sp.judge_states("ansrel", runs, out) == {"llama": "complete", "deepseek": "complete", "qwen3-235b": "partial"}
+    assert sp.judge_states("ansrel", runs, out, SUBSET)["qwen3-235b"] == "not run"
+
+
+def test_no_panel_output_unless_all_three_judges_are_complete(tmp_path, monkeypatch, capsys):
+    runs, path, key = _subset_setup(tmp_path, monkeypatch)
+    labels = {1: ["MENJAWAB", "MENJAWAB", "MENJAWAB"], 2: ["MENJAWAB", "TIDAK_MENJAWAB", "MENJAWAB"],
+              3: ["TIDAK_MENJAWAB", "TIDAK_MENJAWAB", "TIDAK_MENJAWAB"], 4: ["MENJAWAB_SEBAGIAN", "MENJAWAB_SEBAGIAN", "MENJAWAB"]}
+    behaviour = lambda j, m, n: _ans(labels[int(m[0]["content"][1:])][IDS.index(j)])  # noqa: E731
+    ns = types.SimpleNamespace(max_cost_usd=5.0, out_dir=str(tmp_path / "out"), workers=1, judges=["llama", "deepseek"])
+    assert sp.run_guarded("ansrel", runs, [path], ns, clients=_clients(behaviour)) == 0
+    text = capsys.readouterr().out
+    assert "[PANEL] incomplete: qwen3-235b not run" in text
+    assert not sp.out_paths("ansrel", ns.out_dir)["panel"].exists()                       # no panel file
+    rep = sp.report(runs, ns.out_dir, results_dir=tmp_path)["ansrel"]
+    assert rep["status"] == "incomplete" and rep["incomplete"] == "qwen3-235b not run" and "not computed" in rep["panel"]
+    blob = json.dumps({k: v for k, v in rep.items() if k not in ("interim_two_judge_agreement", "panel", "incomplete")})
+    assert "all_cells" not in rep and not any(w in blob for w in ("fleiss", "krippendorff", "panel_mean", "pct_all_three", "decided_by"))
+    assert set(rep["per_judge"]) == {"llama", "deepseek"}
+    assert rep["per_judge"]["llama"]["all_answers"]["C"] == {"n": 4, "mean_score": 0.625, "labels": {"TIDAK_MENJAWAB": 1, "MENJAWAB_SEBAGIAN": 1, "MENJAWAB": 2}}
+    ag = rep["interim_two_judge_agreement"]
+    assert "NOT panel agreement" in ag["label"] and ag["llama_vs_deepseek"]["n"] == 4
+    assert ag["llama_vs_deepseek"]["pct_agree"] == 75.0 and ag["llama_vs_deepseek"]["per_cell"]["C"]["n"] == 4
+    # non-ABSTAIN split of the per-judge means, from the hallucination panel's ABSTAIN labels (question 3 abstained)
+    (tmp_path / "panel_official_R5_judge-v2.3_panel.jsonl").write_text(json.dumps({"condition": "C", "question_id": 3, "panel_label": "ABSTAIN"}) + "\n")
+    na = sp.report(runs, ns.out_dir, results_dir=tmp_path)["ansrel"]["per_judge"]["llama"]["non_abstain"]["C"]
+    assert na["n"] == 3 and na["mean_score"] == pytest.approx((1 + 1 + 0.5) / 3, abs=1e-3)
+    # the third judge completes the stage: the panel file and the full report appear
+    ns.judges = None
+    assert sp.run_guarded("ansrel", runs, [path], ns, clients=_clients(behaviour)) == 0
+    assert sp.out_paths("ansrel", ns.out_dir)["panel"].exists()
+    assert sp.report(runs, ns.out_dir, results_dir=tmp_path)["ansrel"]["status"] == "run"
+
+
+def test_judges_option_is_validated_and_a_subset_registers_only_its_judges(tmp_path, capsys):
+    assert sp.main(["--metric", "ansrel", "--judges", "llama,gpt", "--run-files", "A=x"]) == 2 and "unknown judge" in capsys.readouterr().out
+
+    class Args:
+        max_cost_usd, out_dir, workers, judges = 1.0, str(tmp_path / "o"), 1, ["nope"]
+
+    f = _stage_files(tmp_path)["C"][1]
+    assert sp.run_guarded("ansrel", {"C": ("C", f)}, [f], Args) == 2 and "names no panel judge" in capsys.readouterr().out
+    sp.register_stage("official", "ansrel", {"A": ("A", "a.jsonl")}, sp.out_paths("ansrel", tmp_path), 0.1, "2026-10-28T00:00:00+00:00", 5,
+                      lambda *a: None, judges=SUBSET)
+    e = rr.load()["runs"][-1]
+    assert [j["judge_id"] for j in e["judge_config"]["judges"]] == ["llama", "deepseek"] and "judges: ['llama', 'deepseek']" in e["notes"]

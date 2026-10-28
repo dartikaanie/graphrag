@@ -32,6 +32,10 @@ Aggregation (per key; key = (cell, question) for ansrel, (question, answer, text
     python3 llm/evaluation/secondary_panel.py --metric ansrel                      # plan (dry run), nothing is called
     python3 llm/evaluation/secondary_panel.py --metric ansrel --run --max-cost-usd X --run-files A=.. B=.. C=.. D=..
     python3 llm/evaluation/secondary_panel.py --report                             # whatever stages exist
+
+--judges llama,deepseek runs a SUBSET of the panel (default: all three). A judge outside the subset is reported as
+"not run" and a stage whose three judges are not all complete produces NO panel file, panel label, agreement or panel
+mean: only per-judge figures and a labelled 2-judge interim agreement.
 """
 
 from __future__ import annotations
@@ -177,18 +181,19 @@ def done_keys(metric: str, out: Path) -> set:
 # Plan (dry run): counts and a fixed-size cost estimate, nothing is called
 # ---------------------------------------------------------------------------
 
-def plan(metric: str, runs: dict, out: Path | None = None) -> dict:
+def plan(metric: str, runs: dict, out: Path | None = None, judges=None) -> dict:
+    judges = judges or JUDGES
     tin, tout = METRICS[metric]["est_tokens"]
     n_keys = len(expected_keys(metric, runs))
     done = done_keys(metric, out) if out else set()
     per_judge = {}
-    for j in JUDGES:
+    for j in judges:
         pending = n_keys - sum(1 for (_, jid) in done if jid == j.judge_id)
         per_judge[j.judge_id] = {"calls": n_keys, "pending": pending,
                                  "cost_usd": round(n_keys * (tin * j.price_per_m_input + tout * j.price_per_m_output) / 1e6, 4),
                                  "pending_cost_usd": round(pending * (tin * j.price_per_m_input + tout * j.price_per_m_output) / 1e6, 4)}
     total = round(sum(v["cost_usd"] for v in per_judge.values()), 4)
-    return {"metric": metric, "keys": n_keys, "per_judge": per_judge, "total_calls": n_keys * len(JUDGES),
+    return {"metric": metric, "keys": n_keys, "per_judge": per_judge, "total_calls": n_keys * len(judges),
             "projected_usd": total, "with_buffer_usd": round(total * 1.1, 4), "proposed_cap_usd": round(total * 1.1 * 1.25, 4),
             "pending_projected_usd": round(sum(v["pending_cost_usd"] for v in per_judge.values()), 4),
             "note": "fixed-size token estimate (no call was made); earlier judge runs came in 16-25% under their projection"}
@@ -233,7 +238,7 @@ def make_record(metric: str, item: dict, judge, out: dict, spec: RequestSpec) ->
 
 
 def run_stage(metric: str, items: list[dict], clients: dict, out: Path, guard, concurrency: int = 6,
-              sleep=None) -> dict:
+              sleep=None, judges=None) -> dict:
     """Calls every judge for every item that has no usable record yet; every finished call is written at once
     (usable -> out, failed / unparseable -> the failures file). A call the guard refuses is counted, not made."""
     import judge_panel as jp
@@ -241,10 +246,11 @@ def run_stage(metric: str, items: list[dict], clients: dict, out: Path, guard, c
 
     spec = RequestSpec(metric)
     sleep = sleep or time.sleep
+    judges = judges or JUDGES
     done = done_keys(metric, out)
-    tasks = [(it, j) for it in items for j in JUDGES if (key_of(it, metric), j.judge_id) not in done]
+    tasks = [(it, j) for it in items for j in judges if (key_of(it, metric), j.judge_id) not in done]
     out.parent.mkdir(parents=True, exist_ok=True)
-    stats = {"calls": 0, "usable": 0, "failed": 0, "cached": len(items) * len(JUDGES) - len(tasks)}
+    stats = {"calls": 0, "usable": 0, "failed": 0, "cached": len(items) * len(judges) - len(tasks)}
 
     def one(task):
         it, j = task
@@ -444,8 +450,92 @@ def report_ctxrel(runs: dict, recs: list[dict], expected: set | None = None) -> 
     return out
 
 
+def judge_states(metric: str, runs: dict, out: Path, judges=None) -> dict:
+    """{judge_id: "not run" | "partial" | "complete"}. A judge outside `judges` (when a subset is given) or without any
+    record is "not run"; "complete" = every expected key attempted and unusable <= 2%."""
+    exp = expected_keys(metric, runs)
+    recs = sm._read_tolerant(out)
+    fails = sm._read_tolerant(failures_path_of(out))
+    selected = {j.judge_id for j in (judges or JUDGES)}
+    states = {}
+    for j in JUDGES:
+        if j.judge_id not in selected:
+            states[j.judge_id] = "not run"
+            continue
+        usable = {key_of(r, metric) for r in recs if r.get("judge_id") == j.judge_id and r.get("parse_ok") and r.get("label") is not None}
+        tried = usable | {key_of(r, metric) for r in fails if r.get("judge_id") == j.judge_id}
+        if not tried:
+            states[j.judge_id] = "not run"
+        elif tried >= exp and len(exp - usable) <= UNUSABLE_LIMIT * len(exp):
+            states[j.judge_id] = "complete"
+        else:
+            states[j.judge_id] = "partial"
+    return states
+
+
+def _incomplete_text(states: dict) -> str:
+    return "; ".join(f"{j} {s}" for j, s in states.items() if s != "complete")
+
+
+def report_partial(metric: str, runs: dict, recs: list[dict], states: dict, abstain: set | None) -> dict:
+    """Fewer than three complete judges: per-judge figures and a labelled 2-judge interim agreement ONLY. No panel file,
+    panel label, agreement among three, or panel mean."""
+    from judge_binary import cohen_kappa
+
+    done = [j for j, s in states.items() if s == "complete"]
+    cell_of = {str(archive_paths.canonical(p)): c for c, p in runs.values()}
+    order = METRICS[metric]["labels"]
+    cells = sorted(set(cell_of.values())) if metric == "ansrel" else ["all"]
+
+    def cell(r):
+        return cell_of.get(r.get("source_file"), "?") if metric == "ansrel" else "all"
+
+    def abst(r):  # (cell, question) labelled ABSTAIN by the hallucination panel
+        return abstain is not None and metric == "ansrel" and (cell(r), int(r["question_id"])) in abstain
+
+    out = {"status": "incomplete", "incomplete": _incomplete_text(states),
+           "panel": "not computed: no panel label, 3-judge agreement or panel mean unless all three judges are complete",
+           "judge_states": states, "per_judge": {}}
+    usable = [r for r in recs if r.get("parse_ok") and r.get("label") is not None]
+    for jid in done:
+        mine = [r for r in usable if r["judge_id"] == jid]
+        d = {}
+        for version in ("all_answers", "non_abstain"):
+            if version == "non_abstain" and (abstain is None or metric != "ansrel"):
+                continue
+            sel = [r for r in mine if version == "all_answers" or not abst(r)]
+            d[version] = {c: {"n": len([r for r in sel if cell(r) == c]),
+                              "mean_score": _mean([r["score"] for r in sel if cell(r) == c]),
+                              "labels": {lab: sum(1 for r in sel if cell(r) == c and r["label"] == lab) for lab in order}}
+                          for c in cells}
+            d[version]["all"] = {"n": len(sel), "mean_score": _mean([r["score"] for r in sel]),
+                                 "labels": {lab: sum(1 for r in sel if r["label"] == lab) for lab in order}}
+        out["per_judge"][jid] = d
+    if metric == "ansrel" and abstain is None:
+        out["non_abstain_status"] = "not available (no official hallucination-panel files)"
+    out["interim_two_judge_agreement"] = {"label": "2-judge interim figure, NOT panel agreement"}
+    for a, b in combinations(done, 2):
+        by = {}
+        for r in usable:
+            if r["judge_id"] in (a, b):
+                by.setdefault(key_of(r, metric), {})[r["judge_id"]] = r["label"]
+        both = {k: v for k, v in by.items() if len(v) == 2}
+        la, lb = [v[a] for v in both.values()], [v[b] for v in both.values()]
+        entry = {"n": len(both), "pct_agree": round(100 * sum(x == y for x, y in zip(la, lb)) / len(both), 2) if both else None,
+                 "cohen_kappa": cohen_kappa(la, lb, order) if both else None}
+        if metric == "ansrel":
+            entry["per_cell"] = {}
+            for c in cells:
+                kc = {k: v for k, v in both.items() if cell_of.get(k[0]) == c}
+                xs, ys = [v[a] for v in kc.values()], [v[b] for v in kc.values()]
+                entry["per_cell"][c] = {"n": len(kc), "pct_agree": round(100 * sum(x == y for x, y in zip(xs, ys)) / len(kc), 2) if kc else None}
+        out["interim_two_judge_agreement"][f"{a}_vs_{b}"] = entry
+    return out
+
+
 def report(runs: dict | None = None, out_dir=None, results_dir=None) -> dict:
-    """Both stages; a stage with no output yet is reported as {"status": "not run"} (never as zero)."""
+    """Both stages; a stage with no output yet is reported as {"status": "not run"} (never as zero). A stage whose three
+    judges are not all complete is {"status": "incomplete", ...} with per-judge figures only."""
     res = {}
     for metric in METRICS:
         f = out_paths(metric, out_dir)["records"]
@@ -454,8 +544,13 @@ def report(runs: dict | None = None, out_dir=None, results_dir=None) -> dict:
             res[metric] = {"status": "not run"}
             continue
         if runs is None:
-            res[metric] = {"status": "run", "note": "pass the run files for the per-cell report",
-                           "agreement": agreement(label_rows_of(metric, recs), metric)}
+            res[metric] = {"status": "run", "note": "pass the run files: the panel / per-judge report needs the expected keys",
+                           "records_per_judge": dict(Counter(r["judge_id"] for r in recs))}
+            continue
+        mruns = {k: v for k, v in runs.items() if v[0] in METRICS[metric]["conditions"]}
+        states = judge_states(metric, mruns, f)
+        if any(s != "complete" for s in states.values()):
+            res[metric] = report_partial(metric, mruns, recs, states, load_abstain_keys(results_dir))
         elif metric == "ansrel":
             res[metric] = report_ansrel(runs, recs, load_abstain_keys(results_dir))
         else:
@@ -467,8 +562,10 @@ def report(runs: dict | None = None, out_dir=None, results_dir=None) -> dict:
 # Safeguards (same pattern as judge_panel.py / secondary_metrics.py)
 # ---------------------------------------------------------------------------
 
-def identity_report(metric: str, runs: dict, out: Path) -> dict:
-    """What the stage's output file holds, per judge, against the expected keys and the frozen id lists."""
+def identity_report(metric: str, runs: dict, out: Path, judges=None) -> dict:
+    """What the stage's output file holds, per judge, against the expected keys and the frozen id lists. A judge outside
+    `judges` (when a subset is given) or without any record is reported as "not run" (information, not a failure); its
+    stray records, if any, are only counted."""
     from llm.sample_split import load_frozen_ids
 
     test = {int(i) for i in load_frozen_ids("test")["ids"]}
@@ -477,22 +574,30 @@ def identity_report(metric: str, runs: dict, out: Path) -> dict:
     recs = sm._read_tolerant(out)
     fails = sm._read_tolerant(failures_path_of(out))
     qid = (lambda k: int(k[1])) if metric == "ansrel" else (lambda k: int(k[0]))
+    selected = {j.judge_id for j in (judges or JUDGES)}
     per_judge, ok = {}, True
     for j in JUDGES:
         keys = [key_of(r, metric) for r in recs if r.get("judge_id") == j.judge_id]
+        n_fail = sum(1 for r in fails if r.get("judge_id") == j.judge_id)
+        if j.judge_id not in selected or (not keys and not n_fail):
+            per_judge[j.judge_id] = {"status": "not run", "records_on_disk": len(keys), "failures_file_records": n_fail,
+                                     "expected": len(exp)}
+            continue
         unusable = len(exp) - len(set(keys) & exp)
         ids = {qid(k) for k in keys}
-        d = {"records": len(keys), "unique_keys": len(set(keys)), "expected": len(exp),
+        d = {"status": "run", "records": len(keys), "unique_keys": len(set(keys)), "expected": len(exp),
              "keys_inside_expected": set(keys) <= exp, "keys_equal_expected": set(keys) == exp,
              "unusable": unusable, "unusable_pct": round(100 * unusable / len(exp), 3) if exp else None,
              "dev_ids": len(ids & dev), "ids_outside_test_list": len(ids - test),
-             "failures_file_records": sum(1 for r in fails if r.get("judge_id") == j.judge_id),
+             "failures_file_records": n_fail,
              "served_model_mismatch": sum(1 for r in recs if r.get("judge_id") == j.judge_id and r.get("served_model_mismatch"))}
         d["ok"] = (d["records"] == d["unique_keys"] and d["keys_inside_expected"] and d["dev_ids"] == 0
                    and d["ids_outside_test_list"] == 0 and unusable <= UNUSABLE_LIMIT * len(exp))
         ok &= d["ok"]
         per_judge[j.judge_id] = d
-    return {"metric": metric, "per_judge": per_judge, "ok": bool(ok)}
+    ran = [d for d in per_judge.values() if d["status"] == "run"]
+    return {"metric": metric, "per_judge": per_judge, "ok": bool(ok and ran),
+            "panel_complete": len(ran) == len(JUDGES) and all(d["ok"] for d in ran)}
 
 
 def assert_no_foreign_records(metric: str, runs: dict, out: Path) -> None:
@@ -502,7 +607,8 @@ def assert_no_foreign_records(metric: str, runs: dict, out: Path) -> None:
         raise sm.SecondaryGuardError(f"--run refused: {Path(out).name}: {len(foreign)} key(s) not among the current inputs")
 
 
-def register_stage(status: str, metric: str, runs: dict, paths: dict, cost: float, started: str, n_calls: int, log=print) -> None:
+def register_stage(status: str, metric: str, runs: dict, paths: dict, cost: float, started: str, n_calls: int, log=print,
+                   judges=None) -> None:
     import subprocess
     from llm import run_registry as rr
 
@@ -513,11 +619,11 @@ def register_stage(status: str, metric: str, runs: dict, paths: dict, cost: floa
                      "alpha": None, "n": n_calls, "seed": None, "generator": None,
                      "judge_config": {"panel_id": "panel-v2", "metric": metric, "prompt_version": METRICS[metric]["prompt"],
                                       "temperature": 0.0, "max_retries": MAX_RETRIES,
-                                      "judges": [{"judge_id": j.judge_id, "model": j.model, "extra_body": j.extra_body} for j in JUDGES]},
+                                      "judges": [{"judge_id": j.judge_id, "model": j.model, "extra_body": j.extra_body} for j in (judges or JUDGES)]},
                      "commit": head or None, "created_at": started,
                      "files": {"records": rr._rel(paths["records"]), "panel": rr._rel(paths["panel"])},
                      "cost_usd": cost, "cost_source": "sum of estimated_cost_usd of this run's records",
-                     "notes": f"inputs: {sorted(runs)}", "frozen_params_hash": rr.frozen_params_hash()})
+                     "notes": f"inputs: {sorted(runs)}; judges: {[j.judge_id for j in (judges or JUDGES)]}", "frozen_params_hash": rr.frozen_params_hash()})
         log(f"[registry] secondary panel run {run_id} registered ({status}); spend ${cost:.4f} recorded")
     except rr.RegistryError as e:
         log(f"[WARN] secondary panel run not registered: {e}")
@@ -537,6 +643,11 @@ def run_guarded(metric: str, runs: dict, files: list[str], args, clients=None) -
         return 2
     paths = out_paths(metric, args.out_dir)
     out = paths["records"]
+    ids = getattr(args, "judges", None)
+    judges = tuple(j for j in JUDGES if ids is None or j.judge_id in ids)
+    if not judges:
+        print(f"[ERROR] --judges names no panel judge ({[j.judge_id for j in JUDGES]})")
+        return 2
     bad = [c for c, _ in runs.values() if c not in METRICS[metric]["conditions"]]
     if bad:
         print(f"[ERROR] stage {metric} covers conditions {METRICS[metric]['conditions']}; got {bad}")
@@ -558,7 +669,7 @@ def run_guarded(metric: str, runs: dict, files: list[str], args, clients=None) -
         repair_torn_tail(f)
     if official:
         jp.reconcile_ledger(out, status, log)
-    p = plan(metric, runs, out)
+    p = plan(metric, runs, out, judges)
     print(plan_text(p))
     projected = p["pending_projected_usd"]
     print(f"[plan] pending projected ${projected:.4f}; limit ${args.max_cost_usd:.4f}")
@@ -574,20 +685,24 @@ def run_guarded(metric: str, runs: dict, files: list[str], args, clients=None) -
                            lambda msgs: sum(len(m["content"]) for m in msgs) / jp.CHARS_PER_TOKEN_EST)
     items = build_items(metric, runs)
     before = _stored_cost(out)
-    stats = run_stage(metric, items, clients or jp.make_clients(JUDGES), out, guard, args.workers)
+    stats = run_stage(metric, items, clients or jp.make_clients(judges), out, guard, args.workers, judges=judges)
     cost = round(_stored_cost(out) - before, 6)
     print(json.dumps(stats))
     if guard.n_skipped:
         print(f"[BUDGET] {guard.n_skipped} call(s) not made: they could have pushed the spend over --max-cost-usd {args.max_cost_usd}")
     print(f"[cost] this run ${cost:.4f} (cap ${args.max_cost_usd:.4f})")
     recs = sm._read_tolerant(out)
-    with open(paths["panel"], "w", encoding="utf-8") as f:
-        for r in build_panel_records(metric, recs, expected_keys(metric, runs)):
-            f.write(json.dumps(r) + "\n")
+    states = judge_states(metric, runs, out)
+    if all(s == "complete" for s in states.values()):
+        with open(paths["panel"], "w", encoding="utf-8") as f:
+            for r in build_panel_records(metric, recs, expected_keys(metric, runs)):
+                f.write(json.dumps(r) + "\n")
+    else:
+        print(f"[PANEL] incomplete: {_incomplete_text(states)}; no panel file, panel label, agreement or panel mean computed")
     if official:
         jp.reconcile_ledger(out, status, log)
-        register_stage(status, metric, runs, paths, cost, started, stats["calls"])
-        ident = identity_report(metric, runs, out)
+        register_stage(status, metric, runs, paths, cost, started, stats["calls"], judges=judges)
+        ident = identity_report(metric, runs, out, judges)
         print(f"[identity] {json.dumps(ident)}")
         print("[identity] OK" if ident["ok"] else "[identity] MISMATCH: do not use this file before it is explained")
     return 0
@@ -621,7 +736,14 @@ def main(argv=None) -> int:
     ap.add_argument("--max-cost-usd", type=float, default=None)
     ap.add_argument("--out-dir", default=None, help="tests / smoke only; refused for official run files")
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--judges", default=None, help="comma-separated subset of the panel to call (default: all three), e.g. llama,deepseek")
     args = ap.parse_args(argv)
+    if args.judges is not None:
+        args.judges = [x.strip() for x in args.judges.split(",") if x.strip()]
+        unknown = [x for x in args.judges if x not in {j.judge_id for j in JUDGES}]
+        if unknown:
+            print(f"[ERROR] unknown judge(s) {unknown}; panel: {[j.judge_id for j in JUDGES]}")
+            return 2
     runs = _runs_from_args(args)
     if args.report:
         print(json.dumps(report(runs or None, args.out_dir), indent=1, default=str))
@@ -634,7 +756,8 @@ def main(argv=None) -> int:
         return 2
     runs = {k: v for k, v in runs.items() if v[0] in METRICS[args.metric]["conditions"]}
     if not args.run:
-        print(plan_text(plan(args.metric, runs)))
+        print(plan_text(plan(args.metric, runs, out_paths(args.metric, args.out_dir)["records"],
+                             tuple(j for j in JUDGES if args.judges is None or j.judge_id in args.judges))))
         return 0
     files = [p for _, p in runs.values()]
     sm._gate(files)
