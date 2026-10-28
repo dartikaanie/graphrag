@@ -369,3 +369,15 @@ Status: run juri resmi R9 (Kondisi D-grounded, retrieval v5) selesai dan pemerik
   3. Kesepakatan tiga juri dikembungkan oleh ABSTAIN (71 dari 229 jawaban yang disepakati).
 - **Biaya:** aktual **$1,3123** vs proyeksi $1,7439 (25% di bawah), vs batas $2,1799. Ledger dibukukan sekali, ditandai `panel_official_R9_judge-v2.3.jsonl`. Total ledger **$6,4895**, sisa **$2,5105** dari $9,00.
 - **Langkah tersisa:** metrik sekunder (dry run dulu), lalu `official_report.py`.
+
+### 12i. Catatan amandemen operasional: pengaman `--run` pada `secondary_metrics.py` (2026-10-28)
+
+**Apa yang berubah** (commit `cf59e43`, hanya `llm/evaluation/secondary_metrics.py` dan tesnya). `--run` kini meniru pengaman penel juri: `--max-cost-usd` wajib dengan penjaga pengeluaran saat berjalan (batch yang berpotensi melewati batas tidak dimulai; panggilan yang dilewati dilaporkan); pembukuan ledger dari rekaman tersimpan (di awal untuk rekaman cache pada resume dan di akhir, ditandai nama berkas keluaran, idempoten); perbaikan baris terakhir yang terpotong; penjaga rekaman asing; registrasi run sebagai `official` (kind `judge`); pemeriksaan `[identity]` untuk ctxrel (4063 triple unik) dan ansrel (1536). Opsi `--out-dir` ditambahkan untuk uji (ditolak untuk berkas resmi). Panggilan gagal ansrel kini ditulis ke `ansrel_official_failures.jsonl` (sebelumnya masuk berkas utama dengan label kosong sehingga tidak pernah diulang saat resume); ctxrel memakai pola yang sudah ada (gagal ke berkas failures, parse error tetap di berkas utama).
+
+**Mengapa.** Sebelum perubahan, `--run` tidak punya batas biaya, tidak membukukan ledger, tidak memeriksa identitas, dan tidak mendaftarkan run; batas $1,2528 tidak dapat ditegakkan oleh skrip.
+
+**Yang TIDAK berubah.** Prompt (`ctxrel-v2`, `ansrel-v1`), model dan juri (`primary`, Llama-3.3-70B-Instruct), temperature 0,0, pemburaman (`blind_candidate_v3`), skor (`ANSREL_LABEL_SCORE`) dan semua parameter beku. Konstanta `JUDGE_ID`, `CTXREL_PROMPT`, `ANSREL_PROMPT` tetap di baris 49-51; hash tabel parameter beku tetap `fcbee86cbb25` dan `llm/frozen_parameters.py --check` berstatus up to date. Panggilan ctxrel tetap lewat `run_batch` yang sama (dalam batch 200 saat dijaga). Biaya per rekaman dihitung dari jumlah token × harga registri (pada ctxrel/ansrel tidak ada `estimated_cost_usd` dari penyedia).
+
+**Hash kode baru** `llm/evaluation/secondary_metrics.py`: git blob `671a211bb9f0416fdb0c25e61efdd962fb0b912d`, sha256 `4953d66f73a0faf2…` (16 karakter pertama). Setelah tag `official-judging-start`, berkas `.py` yang berubah hanya `secondary_metrics.py` dan `test_secondary_metrics.py`; `judge_panel.py` dan semua kode penilaian panel tidak berubah, jadi run R1/R3/R5/R9 tidak terpengaruh.
+
+**Pengujian.** Tes offline baru (penjaga biaya berhenti sebelum batas, gagal → berkas failures → diulang saat resume, ctxrel per batch, ledger idempoten, baris terpotong, identity ok/mismatch, penolakan tanpa batas biaya, registrasi). Seluruh suite: 1605 lulus, 30 dilewati, 0 gagal; sha registri tidak berubah oleh suite. Tidak ada panggilan API.
