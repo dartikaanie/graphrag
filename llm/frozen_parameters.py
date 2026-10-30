@@ -230,8 +230,10 @@ def build() -> list[dict]:
         _line_of("llm/evaluation/judge_panel_aggregate.py", "def aggregate_labels"), "frozen (Amendment 14)")
     # --- secondary metrics (Amendment 16) ---
     sm = "llm/evaluation/secondary_metrics.py"
-    add("Secondary metrics", "judge (one, not the panel)", "primary = meta-llama/Llama-3.3-70B-Instruct, temperature 0.0",
-        _line_of(sm, "JUDGE_ID ="), "frozen (Amendment 16)", "context relevance B/C/D, answer relevance A-D; secondary only")
+    add("Secondary metrics", "judge (the panel, as for hallucination)",
+        "panel-v2 (llama + deepseek + qwen3-235b, see the panel members above), temperature 0.0, 2-of-3 on the ordinal labels",
+        _line_of("llm/evaluation/judge_panel_config.py", "PANEL_V2_JUDGES:"), "frozen (Amendment 18)",
+        "context relevance B/C/D, answer relevance A-D; secondary only; supersedes the single judge of Amendments 14 (i) and 16")
     for label, name in (("context-relevance prompt", "CTXREL_PROMPT"), ("answer-relevance prompt", "ANSREL_PROMPT")):
         v, s = const(sm, name)
         add("Secondary metrics", label, v, s, "frozen (Amendment 16)")

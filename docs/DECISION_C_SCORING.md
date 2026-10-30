@@ -1110,3 +1110,56 @@ Schema (Amendment 10, 2026-10-18; values unchanged, still pending): `alpha` is r
   "accepted_only": false
 }
 ```
+
+## Amendment 18 (2026-10-30): secondary metrics are judged by the panel
+
+**Status: confirmed by the author on 2026-10-30.** Earlier amendments are not edited. This amendment records, in the amendment
+series, a change that was first written down operationally in `IMPLEMENTATION_STATUS.md` section 12j (2026-10-28), before any
+panel call for the secondary metrics.
+
+### Change
+Amendment 14 (i) specified **one judge** (`meta-llama/Llama-3.3-70B-Instruct`, temperature 0) for context relevance (B, C, D;
+prompt ctxrel-v2) and answer relevance (A-D; prompt ansrel-v1). Both are now judged by the **same frozen panel-v2**
+(`meta-llama/Llama-3.3-70B-Instruct-Turbo`, `deepseek-ai/DeepSeek-V3.2` with `reasoning_effort: "none"`,
+`Qwen/Qwen3-235B-A22B-Instruct-2507`), with the 2-of-3 aggregation of Amendment 14 (b) applied to the ordinal labels of these
+metrics: the majority label; the median label if all three differ; fewer than two usable judge records = incomplete, left out
+and counted; exactly two usable records that disagree = unresolved, left out and counted. The last two cases are not
+covered by the text of Amendment 14 (b); they follow the treatment of an unresolved or incomplete panel in Amendment 14 (i)
+(counted and reported, never imputed) and were fixed in 12j before the run. The single-judge official run of
+`secondary_metrics.py` was never executed and must not be.
+
+### Reason
+Llama flagged very few answers in the official hallucination judging (rate excluding ABSTAIN 3.5-6.0% in the four runs, against
+29.8-38.6% for DeepSeek and 31.2-37.2% for Qwen), and in stage 2 (alpha selection, dev set) Llama flagged 1, 1 and 4 of about
+92 answers for alpha 0.5, 0.25 and 0 (`docs/STAGE2_RESULT_AND_RUNTIME_NOTE.md`), so a single Llama rater is a weak instrument. A panel is consistent with the
+primary metric and makes judge disagreement visible (inter-judge agreement is reported for the secondary metrics).
+
+### Timing (stated as it happened)
+* The design change was recorded in `IMPLEMENTATION_STATUS.md` 12j on 2026-10-28, **before** any panel call for the secondary
+  metrics. This amendment is written **after** the answer-relevance panel run and **before any context-relevance judging**.
+  Answer relevance was therefore judged first. **No context-relevance result exists.**
+* Answer relevance (stage 1, `secondary_panel.py --metric ansrel`): Llama and DeepSeek on 2026-10-28 (a first Qwen attempt was
+  stopped by the stop rule), Qwen on 2026-10-30. Qwen had 46 unusable records (2.995%, over the 2% limit, completion rule not
+  met); one retry of those 46 items with the same code, parser, request and prompt brought it to **13 of 1,536 = 0.85%**
+  (completion rule met). Llama and DeepSeek: 0 unusable.
+* Not imputed, reported: the **13 Qwen keys that stay missing** (A 1, B 4, C 4, D 4) and the **4 UNRESOLVED answer-relevance
+  labels** (Cell B question 62832082, Cell C question 12167581, Cell D questions 12170271 and 8448866: Llama and DeepSeek
+  differ and Qwen is missing). Sensitivity figures (items with all three judges; Llama + DeepSeek only) are labelled as such
+  in 12k and are not primary.
+
+### Unchanged
+Prompts ctxrel-v2 and ansrel-v1, labels and label-to-score maps (1.0 / 0.5 / 0.0), blinding (`blind_candidate_v3`; question + one
+item for context relevance), temperature 0, the request settings of the hallucination panel (JSON mode, at most 2 retries), the
+aggregation of the primary metric, the completion rule (unusable at most 2% of the keys per judge, otherwise the judge is
+"partial" and no panel is computed), thread leakage, the four official runs, the pre-registered comparisons (C vs A, C vs B,
+C vs D) and the primary metric (panel-detected hallucination rate). The frozen-parameter rows that still describe the single
+judge (`docs/FROZEN_PARAMETERS.md`, "judge (one, not the panel)") are updated in the commit that confirms this amendment, which
+changes the parameter-table hash.
+
+### Cost
+The projected cost of the panel for stage 2 (context relevance, 4,063 unique triples x 3 judges = 12,189 calls) is **$3.0473**
+by the fixed-size token estimate ($3.3520 with a 10% buffer), which **exceeds the single-judge plan of Amendment 14 (i)**
+(proposed cap $1.2528 for both secondary metrics with one judge). Stage 2 needs its own cap, ledger booking and explicit "go".
+
+### Record
+Confirmation by the author: confirmed  Commit: [ ]
