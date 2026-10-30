@@ -63,6 +63,9 @@ COMPARISONS = (("R5", "R1", "C vs A"), ("R5", "R3", "C vs B"), ("R5", "R9", "C v
 LEGACY_COMPARISONS = (("R5", "R7", "C vs C-ablation (legacy)"), ("R4", "R2", "legacy"), ("R4", "R8", "legacy"),
                       ("R4", "R6", "legacy"))
 OUT = REPO_ROOT / "results" / "official_report"
+# Answer relevance (ansrel-v1) judged by the 3-judge panel (secondary_panel.py); the panel file exists only when all three
+# judges are complete (secondary_panel.py panel guard).
+ANSREL_PANEL_FILE = REPO_ROOT / "results" / "official_secondary_panel" / "ansrel_panel_official_panel.jsonl"
 ARCHIVE_EVIDENCE = {
     "agreement_report": "llm/evaluation/results/panel_agreement_calibration_judge-v2.3.md",
     "interjudge_summary": "llm/evaluation/results/interjudge_summary_calibration.md",
@@ -217,11 +220,17 @@ class RegistryStore:
         m = run["files"].get("manifest")
         return json.loads(archive_paths.resolve(m).read_text()) if m and archive_paths.resolve(m).exists() else {}
 
+    @staticmethod
+    def _is_hallucination_judge(e: dict) -> bool:
+        """A hallucination-panel judge entry has files["output"]. The secondary_panel.py entries (answer / context
+        relevance) store files["records"] / files["panel"] instead and are not hallucination judgments."""
+        return e["kind"] == "judge" and "output" in (e.get("files") or {})
+
     def judge_records(self, run: dict) -> list[dict]:
         target = str(archive_paths.canonical(run["files"]["output"]))
         out = []
         for e in self.entries:
-            if e["kind"] != "judge":
+            if not self._is_hallucination_judge(e):
                 continue
             for r in _read(e["files"]["output"]):
                 if (r.get("panel_id") == PANEL_ID and r.get("prompt_version") == PROMPT_VERSION
@@ -233,7 +242,7 @@ class RegistryStore:
         target = str(archive_paths.canonical(run["files"]["output"]))
         n = 0
         for e in self.entries:
-            if e["kind"] == "judge":
+            if self._is_hallucination_judge(e):
                 f = archive_paths.resolve(e["files"]["output"])
                 f = f.with_name(f.stem + "_failures.jsonl")
                 if f.exists():
@@ -245,7 +254,13 @@ class RegistryStore:
                 "remaining_usd": self.rr.deepinfra_remaining(self.reg), "ledger": self.reg.get("deepinfra_spend", [])}
 
     def judge_cost(self) -> float:
-        return round(sum(e.get("cost_usd") or 0 for e in self.entries if e["kind"] == "judge"), 6)
+        """Hallucination-panel judging only (R1/R3/R5/R9). Secondary-metric judging is secondary_cost()."""
+        return round(sum(e.get("cost_usd") or 0 for e in self.entries if self._is_hallucination_judge(e)), 6)
+
+    def secondary_cost(self) -> float:
+        """Sum of the registered secondary_panel.py runs (judge entries without files["output"])."""
+        return round(sum(e.get("cost_usd") or 0 for e in self.entries
+                         if e["kind"] == "judge" and not self._is_hallucination_judge(e)), 6)
 
 
 def _read(rel) -> list[dict]:
@@ -335,6 +350,9 @@ class MockStore:
 
     def judge_cost(self):
         return round(sum(r["estimated_cost_usd"] for v in self._judged.values() for r in v), 4)
+
+    def secondary_cost(self):
+        return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +544,39 @@ def paired_rate_difference(cats_a: dict, cats_b: dict) -> dict:
             "n_pairs": n}
 
 
+def mcnemar_exact(b: int, c: int) -> dict:
+    """POST-HOC (not in the frozen plan). Exact two-sided McNemar test on the discordant pairs of a paired 2x2 table:
+    b = only the first run hallucinated, c = only the other. p = min(1, 2 * P(Binomial(b + c, 1/2) <= min(b, c))).
+    No multiplicity adjustment is made or claimed."""
+    from math import comb
+
+    n = b + c
+    if n == 0:
+        return {"b_only_first": b, "c_only_other": c, "n_discordant": 0, "p_exact": 1.0}
+    k = min(b, c)
+    p = min(1.0, 2 * sum(comb(n, i) for i in range(k + 1)) / 2 ** n)
+    return {"b_only_first": b, "c_only_other": c, "n_discordant": n, "p_exact": round(p, 6)}
+
+
+def ansrel_panel_section(output_file, panel_file=None) -> dict | None:
+    """Answer relevance (ansrel-v1) of one run from the 3-judge panel file; None if the file is missing. A key whose
+    panel label is UNRESOLVED / INCOMPLETE is counted but left out of the mean (never imputed)."""
+    panel_file = Path(panel_file) if panel_file else ANSREL_PANEL_FILE
+    if not panel_file.exists():
+        return None
+    target = str(archive_paths.canonical(output_file))
+    recs = [r for r in _read(panel_file) if str(archive_paths.canonical(r["key"][0])) == target]
+    if not recs:
+        return None
+    decided = [r for r in recs if r.get("panel_score") is not None]
+    return {"judge": "panel (Llama-3.3-70B, DeepSeek-V3.2, Qwen3-235B; 2-of-3 majority, median if all differ)",
+            "n_keys": len(recs), "n_judged": len(decided), "n_unresolved": sum(r["panel_label"] == "UNRESOLVED" for r in recs),
+            "n_incomplete": sum(r["panel_label"] == "INCOMPLETE" for r in recs),
+            "mean_score": round(sum(r["panel_score"] for r in decided) / len(decided), 4) if decided else None,
+            "label_share": {k: round(sum(1 for r in decided if r["panel_label"] == k) / len(decided), 4)
+                            for k in ("MENJAWAB", "MENJAWAB_SEBAGIAN", "TIDAK_MENJAWAB")} if decided else None}
+
+
 def comparisons(runs: list[dict]) -> list[dict]:
     """The pre-registered comparisons C vs A, C vs B, C vs D (always listed; available=false if a run is missing).
     Legacy comparisons (needing legacy cells) appear only when both runs exist."""
@@ -554,6 +605,9 @@ def comparisons(runs: list[dict]) -> list[dict]:
                     "difference_by_judge": d_j, "flag": "consistent" if consistent else "inconclusive",
                     "paired": {"primary_excl_abstain": paired_counts(pq_a, pq_b),
                                "abstain_as_failed": paired_counts(pq_a, pq_b, abstain_as_failed=True)}})
+        out[-1]["post_hoc_mcnemar_exact"] = {
+            v: mcnemar_exact(out[-1]["paired"][v]["cells"]["only_c"], out[-1]["paired"][v]["cells"]["only_other"])
+            for v in ("primary_excl_abstain", "abstain_as_failed")}
     return out
 
 
@@ -639,6 +693,8 @@ def build(store=None, include_dev_stage2: bool = False) -> dict:
     runs = [run_section(store, r, official) for r in gen]
     for sec, r in zip(runs, gen):  # secondary metrics (context / answer relevance), if judged; never mocked
         sec["secondary"] = None if store.mock else secondary_metrics.report_section(r["files"]["output"], r["condition"])
+        if sec["secondary"] is not None:  # answer relevance is judged by the 3-judge panel, not the old single judge
+            sec["secondary"]["answer_relevance"] = ansrel_panel_section(r["files"]["output"])
     runs.sort(key=lambda r: r["label"])
     return {
         "meta": {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "mock": store.mock,
@@ -646,7 +702,8 @@ def build(store=None, include_dev_stage2: bool = False) -> dict:
                  "wording": "panel-detected hallucination rates"},
         "configuration": configuration(), "data": data_and_sampling(), "alpha_selection": alpha_selection(),
         "runs": runs, "comparisons": comparisons(runs),
-        "budget": {**store.budget(), "judging_cost_usd": store.judge_cost()},
+        "budget": {**store.budget(), "judging_cost_usd": store.judge_cost(),
+                   "secondary_cost_usd": store.secondary_cost()},
         "limitations": limitations(),
     }
 
@@ -729,16 +786,17 @@ def markdown(rep: dict) -> str:
                      f"{pj['citation_support']['micro']} | {pj['citation_support']['n_claims_cited']} | "
                      f"{jj['llama']['faithfulness']['micro']} / {jj['deepseek']['faithfulness']['micro']} / "
                      f"{jj['qwen3-235b']['faithfulness']['micro']} |")
-    lines += ["", "## Secondary metrics (one judge: Llama-3.3-70B-Instruct, temperature 0; context relevance B/C/D, "
-              "answer relevance A-D)", "",
+    lines += ["", "## Secondary metrics (answer relevance A-D: 3-judge panel, ansrel-v1; context relevance B/C/D: "
+              "stage 2, not run unless listed)", "",
               "| Run | Context: % questions with >=1 RELEVANT | mean item score | items judged | "
-              "Answer relevance mean | answers judged |", "|---|---|---|---|---|---|"]
+              "Answer relevance mean (panel) | answers judged | unresolved |", "|---|---|---|---|---|---|---|"]
     for r in rep["runs"]:
         sec = r.get("secondary") or {}
         cx, ar = sec.get("context_relevance") or {}, sec.get("answer_relevance") or {}
         lines.append(f"| {r['label']} | {cx.get('pct_questions_with_relevant', 'not judged')} | "
                      f"{cx.get('mean_relevance_score', '--')} | {cx.get('n_items_judged', '--')} | "
-                     f"{ar.get('mean_score', 'not judged')} | {ar.get('n_judged', '--')} |")
+                     f"{ar.get('mean_score', 'not judged')} | {ar.get('n_judged', '--')} | "
+                     f"{ar.get('n_unresolved', '--')} |")
     lines += ["", "## Pre-registered comparisons (C vs A, C vs B, C vs D)", "",
               "Rule (e): consistent only if the panel and DeepSeek-only differences (excl. ABSTAIN) share a sign. "
               "Paired counts are per question on the binary hallucination label of the panel: "
@@ -754,6 +812,21 @@ def markdown(rep: dict) -> str:
                          f"{c['difference_panel_abstain_as_failed']} | {d['deepseek']} | **{c['flag']}** | "
                          f"{pa['c_better']} / {pa['equal']} / {pa['c_worse']} | {pa['n_excluded']} | "
                          f"{pb['c_better']} / {pb['equal']} / {pb['c_worse']} |")
+    pm = [c for c in rep["comparisons"] if c.get("available") and c.get("post_hoc_mcnemar_exact")]
+    if pm:
+        lines += ["", "## Paired 2x2 tables with exact McNemar p (POST-HOC, not in the frozen analysis plan; no "
+                  "multiplicity adjustment is made or claimed)", "",
+                  "Cells: only C hallucinated / only the other / both / neither. McNemar uses the two discordant cells "
+                  "(b = only C, c = only the other). (a) = pairs where both answers are non-ABSTAIN; (b) = ABSTAIN "
+                  "counted as failed.", "",
+                  "| Comparison | Version | only C | only other | both | neither | pairs left out | McNemar exact p |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for c in pm:
+            for key, tag in (("primary_excl_abstain", "(a)"), ("abstain_as_failed", "(b)")):
+                pc, mc = c["paired"][key], c["post_hoc_mcnemar_exact"][key]
+                cl = pc["cells"]
+                lines.append(f"| {c['name']} ({c['comparison']}) | {tag} | {cl['only_c']} | {cl['only_other']} | "
+                             f"{cl['both']} | {cl['neither']} | {pc['n_excluded']} | {mc['p_exact']} |")
     lines += ["", "## Judge reliability", "",
               "| Run | Fleiss' kappa (3 cat., complete) | n complete | Krippendorff's alpha | all 3 judges same label | "
               "all 3 same (3 categories) |", "|---|---|---|---|---|---|"]
@@ -766,7 +839,10 @@ def markdown(rep: dict) -> str:
               f"- stage 2: {('alpha* = ' + str(a['stage2']['alpha_star']) + ' (the second candidate, alpha_abl = ' + str(a['stage2']['alpha_abl']) + ', is used by no official run)') if a['stage2'] else 'not run yet'}",
               f"- official_params.json: {a['official_params_status']}", "",
               f"## Budget", "", f"- DeepInfra budget {rep['budget']['budget']}, spent ${rep['budget']['spent_usd']}, "
-              f"remaining {rep['budget']['remaining_usd']}", ""]
+              f"remaining {rep['budget']['remaining_usd']}",
+              f"- hallucination judging (R1/R3/R5/R9, registered): ${rep['budget'].get('judging_cost_usd')}",
+              f"- secondary-metric judging (secondary_panel.py runs, registered): ${rep['budget'].get('secondary_cost_usd')}"
+              " (a run stopped before registration is in the ledger spend but in no registry entry)", ""]
     return "\n".join(lines)
 
 
