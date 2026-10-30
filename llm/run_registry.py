@@ -42,7 +42,7 @@ class RegistryError(RuntimeError):
 def empty_registry() -> dict:
     return {"schema_version": 1, "statuses": list(STATUSES),
             "budget": {"deepinfra_budget_usd": None, "set_by": None, "set_at": None},
-            "deepinfra_spend": [], "runs": []}
+            "deepinfra_spend": [], "deepinfra_deposits": [], "runs": []}
 
 
 def load(path: Path | None = None) -> dict:
@@ -147,10 +147,23 @@ def deepinfra_spent(reg: dict | None = None) -> float:
     return round(sum(float(e.get("cost_usd") or 0) for e in reg.get("deepinfra_spend") or []), 6)
 
 
-def deepinfra_remaining(reg: dict | None = None) -> float | None:
+def deepinfra_deposited(reg: dict | None = None) -> float:
+    """Sum of the top-ups ("deepinfra_deposits", append-only). A deposit raises the budget; it is not negative spend."""
+    reg = reg if reg is not None else load()
+    return round(sum(float(e.get("amount_usd") or 0) for e in reg.get("deepinfra_deposits") or []), 6)
+
+
+def deepinfra_budget_total(reg: dict | None = None) -> float | None:
+    """The budget set with set_budget() plus all deposits; None while no budget is set."""
     reg = reg if reg is not None else load()
     budget = (reg.get("budget") or {}).get("deepinfra_budget_usd")
-    return None if budget is None else round(float(budget) - deepinfra_spent(reg), 6)
+    return None if budget is None else round(float(budget) + deepinfra_deposited(reg), 6)
+
+
+def deepinfra_remaining(reg: dict | None = None) -> float | None:
+    reg = reg if reg is not None else load()
+    total = deepinfra_budget_total(reg)
+    return None if total is None else round(total - deepinfra_spent(reg), 6)
 
 
 def record_deepinfra_spend(label: str, cost_usd: float, run_id: str | None = None, path: Path | None = None,
@@ -163,6 +176,18 @@ def record_deepinfra_spend(label: str, cost_usd: float, run_id: str | None = Non
     if file is not None:
         entry["file"] = file
     reg.setdefault("deepinfra_spend", []).append(entry)
+    save(reg, path)
+    return reg
+
+
+def record_deepinfra_deposit(amount_usd: float, label: str, path: Path | None = None, **details) -> dict:
+    """Append a top-up (a budget increase, never a negative spend entry) to "deepinfra_deposits"."""
+    if float(amount_usd) <= 0:
+        raise RegistryError("a deposit must be positive")
+    reg = load(path)
+    entry = {"label": label, "amount_usd": round(float(amount_usd), 6),
+             "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **details}
+    reg.setdefault("deepinfra_deposits", []).append(entry)
     save(reg, path)
     return reg
 

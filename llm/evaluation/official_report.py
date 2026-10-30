@@ -250,7 +250,9 @@ class RegistryStore:
         return n
 
     def budget(self) -> dict:
-        return {"budget": self.reg.get("budget"), "spent_usd": self.rr.deepinfra_spent(self.reg),
+        return {"budget": self.reg.get("budget"), "deposits_usd": self.rr.deepinfra_deposited(self.reg),
+                "budget_total_usd": self.rr.deepinfra_budget_total(self.reg),
+                "spent_usd": self.rr.deepinfra_spent(self.reg),
                 "remaining_usd": self.rr.deepinfra_remaining(self.reg), "ledger": self.reg.get("deepinfra_spend", [])}
 
     def judge_cost(self) -> float:
@@ -838,7 +840,9 @@ def markdown(rep: dict) -> str:
     lines += ["", "## Alpha selection", "", f"- stage 1 (from the archive): top_two {a['stage1']['top_two']}",
               f"- stage 2: {('alpha* = ' + str(a['stage2']['alpha_star']) + ' (the second candidate, alpha_abl = ' + str(a['stage2']['alpha_abl']) + ', is used by no official run)') if a['stage2'] else 'not run yet'}",
               f"- official_params.json: {a['official_params_status']}", "",
-              f"## Budget", "", f"- DeepInfra budget {rep['budget']['budget']}, spent ${rep['budget']['spent_usd']}, "
+              f"## Budget", "", f"- DeepInfra budget {rep['budget']['budget']}"
+              + (f" + deposits ${rep['budget']['deposits_usd']} = ${rep['budget'].get('budget_total_usd')}"
+                 if rep['budget'].get('deposits_usd') else "") + f", spent ${rep['budget']['spent_usd']}, "
               f"remaining {rep['budget']['remaining_usd']}",
               f"- hallucination judging (R1/R3/R5/R9, registered): ${rep['budget'].get('judging_cost_usd')}",
               f"- secondary-metric judging (secondary_panel.py runs, registered): ${rep['budget'].get('secondary_cost_usd')}"
