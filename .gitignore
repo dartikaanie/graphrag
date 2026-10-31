@@ -73,3 +73,9 @@ results/_archive/*/backend/.runs/
 logs/_archive/*/llm/a_pure_llm/logs/
 logs/_archive/*/llm/b_rag/logs/
 logs/_archive/*/llm/*/logs/dashboard_*.log
+claude_judge/
+results/
+llm/b_rag/results/
+claude_judge/
+results/
+llm/b_rag/results/
