@@ -78,5 +78,42 @@ def select_answerable_anchors(query_emb, index, ids_arr, n: int, exclude_questio
 def anchor_record_fields(stats: dict) -> dict:
     """The answerable-anchor facts a record stores (empty when the stats hold none, i.e. the earlier versions)."""
     keys = ("anchors_requested", "anchors_found", "anchor_scan_depth", "anchor_candidates_scanned",
-            "anchors_skipped_unanswered")
-    return {k: stats[k] for k in keys} if "anchors_found" in stats else {}
+            "anchors_skipped_unanswered", "answers_scanned")  # last: v5 answer-level anchoring only
+    return {k: stats[k] for k in keys if k in stats} if "anchors_found" in stats else {}
+
+
+# ---------------------------------------------------------------------
+# C-v2 (c_retrieval_version "v5", Amendment 19): answer-level anchoring
+# ---------------------------------------------------------------------
+N_B_ANSWERS = 10          # top answers of B's answer search (after the leakage exclusion)
+ANSWER_SCAN_MAX = 50      # deepest answer scan when fewer than n distinct questions result
+
+
+def _questions_by_best_answer(hits, question_ids) -> list:
+    """[(question_id, best cosine)] from (row, score) hits: a question scores by its best answer; sorted by score
+    desc, ties by question id."""
+    best: dict = {}
+    for row, score in hits:
+        q = int(question_ids[row])
+        if q not in best or score > best[q]:
+            best[q] = float(score)
+    return sorted(best.items(), key=lambda t: (-t[1], t[0]))
+
+
+def select_answer_level_anchors(kg, query_emb, n: int, exclusion, stats: dict | None = None,
+                                n_answers: int = N_B_ANSWERS, max_scan: int = ANSWER_SCAN_MAX):
+    """B's answer search (kg.search: leakage exclusion applied before the cut) -> the n best DISTINCT parent
+    questions by their best answer. Returns (anchors [(question_id, cosine)], b_hits [(row, score)]): b_hits are the
+    top `n_answers` answers of the search, the anchor-independent part of the C-v2 candidate pool. If fewer than n
+    distinct questions come out of the top `n_answers`, the scan goes down to `max_scan` answers (anchors only; b_hits
+    stays the top `n_answers`). `stats` receives anchors_requested / anchors_found / answers_scanned."""
+    b_hits = kg.search(query_emb, n_answers, exclusion, stats=stats)
+    scored = _questions_by_best_answer(b_hits, kg.question_ids)
+    scanned = len(b_hits)
+    if len(scored) < n and max_scan > n_answers:
+        deep = kg.search(query_emb, max_scan, exclusion)
+        scored, scanned = _questions_by_best_answer(deep, kg.question_ids), len(deep)
+    anchors = scored[:n]
+    if stats is not None:
+        stats.update(anchors_requested=n, anchors_found=len(anchors), answers_scanned=scanned)
+    return anchors, b_hits

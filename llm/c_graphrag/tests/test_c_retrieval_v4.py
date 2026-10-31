@@ -11,7 +11,7 @@ ARGS = ("openai", "gpt-4o-mini", 384, 42, 1536, 5, 3, 3, "trust_weighted", 0.7, 
 def test_v4_is_the_default_official_version_and_ranks_like_v3():
     assert cg.C_RETRIEVAL_VERSION == orm.C_RETRIEVAL_VERSION == op.OFFICIAL_C_RETRIEVAL_VERSION == "v4"
     assert cg.alpha_ranking("v3") and cg.alpha_ranking("v4") and not cg.alpha_ranking("v2")
-    assert cg.C_RETRIEVAL_VERSIONS == ("v2", "v3", "v4")
+    assert cg.C_RETRIEVAL_VERSIONS == ("v2", "v3", "v4", "v5")  # v5 = C-v2 (Amendment 19), never the default
 
 
 def test_config_hash_changes_with_the_version_and_carries_alpha():

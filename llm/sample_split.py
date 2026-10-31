@@ -16,7 +16,9 @@ import pandas as pd
 
 DEFAULT_SAMPLE_SPLIT = "test"
 DEFAULT_DEV_OFFSET = 385  # 1-based position of the first dev question
-SAMPLE_SPLITS = ("test", "dev")
+DEVLARGE_OFFSET = 435  # 1-based first position of dev-large (Amendment 19): 150 questions after the dev list
+DEVLARGE_N = 150
+SAMPLE_SPLITS = ("test", "dev", "devlarge")
 
 
 def sample_questions_split(df: pd.DataFrame, n: int, seed: int, split: str = DEFAULT_SAMPLE_SPLIT,
@@ -24,7 +26,7 @@ def sample_questions_split(df: pd.DataFrame, n: int, seed: int, split: str = DEF
     if split not in SAMPLE_SPLITS:
         raise ValueError(f"Unknown sample_split '{split}' -- must be one of {SAMPLE_SPLITS}")
     df_permuted = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
-    start = 0 if split == "test" else dev_offset - 1
+    start = 0 if split == "test" else (DEVLARGE_OFFSET - 1 if split == "devlarge" else dev_offset - 1)
     return df_permuted.iloc[start:start + n].reset_index(drop=True)
 
 
@@ -61,7 +63,8 @@ from pathlib import Path
 
 MAX_TEST_N = 384  # the official test sample; positions 1..384
 FROZEN_DIR = Path(__file__).resolve().parent / "sample_ids"
-FROZEN_FILES = {"test": FROZEN_DIR / "test_ids_v1.json", "dev": FROZEN_DIR / "dev_ids_v1.json"}
+FROZEN_FILES = {"test": FROZEN_DIR / "test_ids_v1.json", "dev": FROZEN_DIR / "dev_ids_v1.json",
+                "devlarge": FROZEN_DIR / "devlarge_ids_v1.json"}
 
 
 class SampleMismatchError(RuntimeError):
@@ -100,7 +103,9 @@ def assert_frozen_sample(sample_ids, split: str, dev_offset: int = DEFAULT_DEV_O
     Returns what a manifest records about the check."""
     ids = [int(i) for i in sample_ids]
     frozen = load_frozen_ids(split, path)
-    if split == "dev" and dev_offset != frozen["dev_offset"]:
+    if split == "devlarge":
+        dev_offset = DEVLARGE_OFFSET  # fixed position, --dev-offset does not apply
+    if split in ("dev", "devlarge") and dev_offset != frozen["dev_offset"]:
         raise SampleMismatchError(f"dev_offset={dev_offset}, but the frozen dev list starts at position "
                                   f"{frozen['dev_offset']}.")
     if len(ids) > len(frozen["ids"]):

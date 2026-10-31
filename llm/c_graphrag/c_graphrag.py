@@ -157,7 +157,8 @@ from llm.common.text import truncate_doc_text as _truncate_doc_text  # noqa: F40
 from llm.manifest import read_already_done, sum_usage_tokens, write_manifest
 from llm.prompts import PROMPT_VERSION, build_graphrag_messages
 from llm.record_schema import answer_timing, latency_fields, new_run_id, record_header
-from llm.common.anchors import anchor_record_fields, select_answerable_anchors  # noqa: E402
+from llm.common.anchors import (anchor_record_fields, select_answer_level_anchors,  # noqa: E402
+                                select_answerable_anchors)
 from llm.common.provenance import fetch_trust_score_version, run_provenance  # noqa: E402
 from llm.common import item_provenance as iprov  # per-item retrieval provenance (provenance_version v2)
 from llm.sample_split import SampleMismatchError, verify_sample
@@ -204,13 +205,26 @@ DEFAULT_FUSION_W_ANSWER_INTRINSIC_TRUST = 0.3
 #        >= 1 non-excluded answer to be an anchor; the scan continues down the same FAISS list (llm/common/anchors.py,
 #        depth 400) until n_anchor seeds are found. D retrieval v5 uses the very same function. Reason: only 28% of the
 #        dev anchors had an answer, so 22 of 50 questions got nothing from the 1-hop step.
+# "v5" (Amendment 19, C-v2, post-hoc follow-up; NOT the default) = relevance-first: anchors from B's answer search (best
+#        answer per question), pool = B's top-10 answers + traversal + expansion, answer weight = 1.0 if accepted else
+#        trustScore (read at query time, graph untouched), non-accepted answers with net score < 0 filtered (refilled by
+#        similarity), score = (1-alpha)*sim_norm + alpha*w_path with fusion pins 1.0 / 0.0 / 0.4.
 C_RETRIEVAL_VERSION = "v4"
-C_RETRIEVAL_VERSIONS = ("v2", "v3", "v4")
+C_RETRIEVAL_VERSIONS = ("v2", "v3", "v4", "v5")
+V5_FUSION_PINS = {"w_path_trust": 1.0, "w_intrinsic": 0.0, "expansion_trust_cap": 0.4}
 
 
 def alpha_ranking(c_retrieval_version: str) -> bool:
-    """v3 and v4 rank by (1 - alpha) * sim_norm + alpha * trust; v2 is the older trust-only ranking."""
-    return c_retrieval_version in ("v3", "v4")
+    """v3, v4 and v5 rank by (1 - alpha) * sim_norm + alpha * trust; v2 is the older trust-only ranking."""
+    return c_retrieval_version in ("v3", "v4", "v5")
+
+
+# v5 answer weight (question -> answer), read at query time: accepted -> 1.0, else the stored trustScore.
+def _qa_weight_cypher(rel_var: str) -> str:
+    return f"CASE WHEN type({rel_var}) = 'HAS_ACCEPTED_ANSWER' THEN 1.0 ELSE coalesce(a.trustScore, 0.0) END"
+
+
+V5_SCORE_COL = ", a.score AS answer_score"
 # Proxy trust utk kandidat yang HANYA ditemukan lewat semantic expansion
 # (tidak lewat edge graf eksplisit) -- disamakan dgn tier EMBED_SIM
 # (trust "terendah" di antara 3 sumber densifikasi, lihat
@@ -380,8 +394,10 @@ def sample_questions_split(df: pd.DataFrame, n: int, seed: int, split: str = "te
         start = 0
     elif split == "dev":
         start = dev_offset - 1  # 1-indexed position -> 0-indexed start
+    elif split == "devlarge":
+        start = 434  # Amendment 19: positions 435-584, fixed (dev_offset does not apply)
     else:
-        raise ValueError(f"Unknown sample_split '{split}' -- must be 'test' or 'dev'")
+        raise ValueError(f"Unknown sample_split '{split}' -- must be 'test', 'dev' or 'devlarge'")
 
     end = start + n
     if end > len(df_permuted):
@@ -515,8 +531,12 @@ def anchor_via_vector_search(query_emb: np.ndarray, index, ids_arr: np.ndarray,
 
 def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set,
                     exclude_answer_ids: set, max_hops: int = DEFAULT_MAX_HOPS,
-                    edge_types: tuple | None = None) -> list:
-    """CATATAN: traversal saat ini FIXED di 1-hop (jawaban langsung anchor)
+                    edge_types: tuple | None = None, trust_weights: bool = False) -> list:
+    """`trust_weights` (v5 only; default False = the stored edge weights, the query text of v4 unchanged): the
+    answer weight is 1.0 for HAS_ACCEPTED_ANSWER and a.trustScore otherwise (also in the 2-hop product and its
+    LIMIT 50 ordering), and a.score is returned as answer_score for the net-score filter.
+
+    CATATAN: traversal saat ini FIXED di 1-hop (jawaban langsung anchor)
     + 2-hop (anchor -> Question terkait -> jawabannya). Tidak digeneralisasi
     ke N-hop sembarang -- kalau nanti butuh >2 hop, tulis query tambahan
     dgn pola yang sama (JANGAN pakai variable-length path [*1..N] tanpa
@@ -546,6 +566,8 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
         return candidates
 
     fetch_pattern = "|".join(fetch_types)
+    w1, w3, sc = (_qa_weight_cypher("r"), _qa_weight_cypher("r3"), V5_SCORE_COL) if trust_weights \
+        else ("r.weight", "r3.weight", "")
     with driver.session(database=database) as session:
         # 1-hop: jawaban langsung milik anchor
         result = session.run(
@@ -555,7 +577,7 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
             WHERE NOT a.id IN $exclude_a
             RETURN anchor_id AS via_question_id, anchor.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
-                   a.isAccepted AS is_accepted, r.weight AS edge_weight, 1 AS hop,
+                   a.isAccepted AS is_accepted{sc}, {w1} AS edge_weight, 1 AS hop,
                    type(r) AS rel_type
             ORDER BY a.id ASC
             """,
@@ -578,12 +600,12 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
                 WHERE NOT q2.id IN $exclude_q
                 MATCH (q2)-[r3:{fetch_pattern}]->(a:Answer)
                 WHERE NOT a.id IN $exclude_a
-                WITH anchor_id, q2, a, r2, r3, (r2.weight * r3.weight) AS edge_weight
+                WITH anchor_id, q2, a, r2, r3, (r2.weight * {w3}) AS edge_weight
                 ORDER BY edge_weight DESC, a.id ASC
                 LIMIT 50
                 RETURN q2.id AS via_question_id, q2.title AS via_question_title,
                        a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
-                       a.isAccepted AS is_accepted, edge_weight, 2 AS hop,
+                       a.isAccepted AS is_accepted{sc}, edge_weight, 2 AS hop,
                        (type(r2) + '->' + type(r3)) AS rel_type,
                        anchor_id
                 """,
@@ -592,6 +614,34 @@ def traverse_graph(driver, database, anchor_ids: list, exclude_question_ids: set
             candidates.extend(dict(record) for record in result)
 
     return candidates
+
+
+def fetch_answer_pool(driver, database, answer_ids: list, exclude_question_ids: set, exclude_answer_ids: set) -> list:
+    """v5: the candidates for B's top answers, shaped like traverse_graph()'s 1-hop rows (the answer's own question
+    is its via question and anchor; w_qq' = 1, so edge_weight is the answer weight alone). The exclusion is applied
+    again in the query, on top of the one the answer search already applied."""
+    if not answer_ids:
+        return []
+    with driver.session(database=database) as session:
+        result = session.run(
+            f"""
+            MATCH (q:Question)-[r:HAS_ACCEPTED_ANSWER|HAS_ANSWER]->(a:Answer)
+            WHERE a.id IN $answer_ids AND NOT a.id IN $exclude_a AND NOT q.id IN $exclude_q
+            RETURN q.id AS via_question_id, q.title AS via_question_title,
+                   a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
+                   a.isAccepted AS is_accepted{V5_SCORE_COL}, {_qa_weight_cypher("r")} AS edge_weight, 1 AS hop,
+                   type(r) AS rel_type
+            ORDER BY a.id ASC
+            """,
+            answer_ids=[int(a) for a in answer_ids], exclude_a=list(exclude_answer_ids) or [-1],
+            exclude_q=list(exclude_question_ids) or [-1],
+        )
+        out = []
+        for record in result:
+            c = dict(record)
+            c["anchor_id"] = c["via_question_id"]
+            out.append(c)
+    return out
 
 
 def fetch_author_trust(driver, database, answer_ids: list[int]) -> dict[int, float]:
@@ -687,8 +737,11 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
                         sbert_model, n_expansion: int, already_seen_qids: set,
                         exclude_question_ids: set, exclude_answer_ids: set,
                         edge_types: tuple | None = None, stats: dict | None = None,
-                        require_answer: bool = False, overfetch: int = EXPANSION_OVERFETCH) -> list:
-    """Ambil s.d. 3 via_question unik dari hasil traversal sbg query baru
+                        require_answer: bool = False, overfetch: int = EXPANSION_OVERFETCH,
+                        trust_weights: bool = False) -> list:
+    """`trust_weights` (v5 only): same answer weight as traverse_graph(trust_weights=True).
+
+    Ambil s.d. 3 via_question unik dari hasil traversal sbg query baru
     (F4: "simpul hasil Graph Traversal sebagai anchor pencarian vektor").
     Utk tiap query baru, cari n_expansion Question tetangga (vector search)
     yang BELUM pernah muncul, lalu ambil jawaban 1-hop-nya saja (TIDAK
@@ -744,6 +797,7 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
 
     exclude_a = list(exclude_answer_ids) or [-1]
     fetch_pattern = "|".join(fetch_types)
+    w1, sc = (_qa_weight_cypher("r"), V5_SCORE_COL) if trust_weights else ("r.weight", "")
     candidates = []
     with driver.session(database=database) as session:
         result = session.run(
@@ -753,7 +807,7 @@ def semantic_expansion(driver, database, traversal_candidates: list, index, ids_
             WHERE NOT a.id IN $exclude_a
             RETURN qid AS via_question_id, q.title AS via_question_title,
                    a.id AS answer_id, a.body AS answer_body, a.trustScore AS answer_trust_score,
-                   a.isAccepted AS is_accepted, r.weight AS edge_weight, 'semantic' AS hop,
+                   a.isAccepted AS is_accepted{sc}, {w1} AS edge_weight, 'semantic' AS hop,
                    type(r) AS rel_type
             ORDER BY a.id ASC
             """,
@@ -867,6 +921,12 @@ def _provenance(c: dict, rank: int, all_candidates: list) -> dict:
         source_stage=c["source_stage"], hop=c["hop"], path=c["_path"], rank=rank,
         via_question_id=c["via_question_id"], alt_paths=iprov.alt_paths_for(c, all_candidates, "combined_score"),
         seed_similarity=c.get("seed_similarity") if c["source_stage"] == "semantic_expansion" else None)
+
+
+def _is_negative_unaccepted(c: dict) -> bool:
+    """v5 filter predicate: not accepted and net score (a.score) below 0; a missing score is not filtered."""
+    score = c.get("answer_score")
+    return (not c.get("is_accepted")) and score is not None and score < 0
 
 
 def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int,
@@ -1040,7 +1100,20 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
         scored.append((c, doc_text, sim, sim_norm, trust, final_score))
 
     scored.sort(key=lambda t: (-t[5], t[0]["answer_id"]))
-    top, rest = scored[:top_k], scored[top_k:]
+    v5_meta = {}
+    if c_retrieval_version == "v5":
+        # Amendment 19 filter: drop non-accepted answers with net score < 0; refill from the dropped by similarity
+        # (sim desc, answer id asc) when fewer than top_k remain. No parameter.
+        kept = [t for t in scored if not _is_negative_unaccepted(t[0])]
+        dropped = [t for t in scored if _is_negative_unaccepted(t[0])]
+        refill = sorted(dropped, key=lambda t: (-t[2], t[0]["answer_id"]))[:max(0, top_k - len(kept))]
+        top = kept[:top_k] + refill
+        taken = {t[0]["answer_id"] for t in top}
+        rest = [t for t in kept[top_k:] if t[0]["answer_id"] not in taken] + \
+               [t for t in dropped if t[0]["answer_id"] not in taken]
+        v5_meta = {"n_filtered": len(dropped), "n_refilled": len(refill)}
+    else:
+        top, rest = scored[:top_k], scored[top_k:]
 
     final = []
     for rank, (c, doc_text, sim, sim_norm, trust, final_score) in enumerate(top, start=1):
@@ -1065,7 +1138,7 @@ def fuse_and_rank(graph_candidates: list, expansion_candidates: list, top_k: int
     if trace is not None:
         trace.update(iprov.build_trace(all_candidates, final, [
             [t[0]["answer_id"], top_k + 1 + i, t[5]] for i, t in enumerate(rest[:iprov.TRACE_CAP_BELOW_CUTOFF])]))
-    return final, {"candidate_pool_size": candidate_pool_size}
+    return final, {"candidate_pool_size": candidate_pool_size, **v5_meta}
 
 
 # ---------------------------------------------------------------------
@@ -1114,8 +1187,10 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     accepted_only: bool = DEFAULT_ACCEPTED_ONLY,
                     embedding_cache=None, retrieval_only: bool = False,
                     leakage: LeakageContext | None = None, expansion_require_answer: bool = False,
-                    run_id: str | None = None) -> tuple[list[dict], dict]:
-    """Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
+                    run_id: str | None = None, kg_index=None) -> tuple[list[dict], dict]:
+    """`kg_index` (llm.b_rag.kg_corpus.KGAnswerIndex): required for c_retrieval_version="v5" (B's answer search).
+
+    Proses satu-per-satu sample_df: hybrid retrieval (anchor -> traversal ->
     semantic expansion -> fusion) + prompt grounded + hitung cosine similarity
     + validasi sitasi, tulis ke output_path (append, resumable). Diekstrak
     dari main() dengan pola SAMA dengan process_sample() Kondisi A/B supaya
@@ -1144,6 +1219,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
     """
     already_done = already_done or set()
     run_id = run_id or new_run_id()
+    v5 = c_retrieval_version == "v5"
+    if v5:
+        if kg_index is None:
+            raise ValueError("c_retrieval_version='v5' needs kg_index (B's answer index)")
+        fusion_w_path_trust, fusion_w_intrinsic = V5_FUSION_PINS["w_path_trust"], V5_FUSION_PINS["w_intrinsic"]
+        semantic_expansion_trust_cap = V5_FUSION_PINS["expansion_trust_cap"]
+    v5_totals = {"n_filtered": 0, "n_refilled": 0, "n_queries": 0, "n_anchors_short": 0}
     # `leakage` (llm/common/leakage.py): mode + precomputed exclusion table.
     # None = MODE_THREAD, the exclusion every run before Amendment 8 used.
     leakage = leakage or LEGACY_CONTEXT
@@ -1189,7 +1271,13 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     query_emb = embed_query(query_text, embed_model)
 
                 # --- a. Entity Anchoring ---
-                if c_retrieval_version == "v4":  # answerable-only seeds, shared with D v5 (llm/common/anchors.py)
+                b_candidates = []
+                if v5:  # answer-level anchoring on B's answer search (llm/common/anchors.py)
+                    anchors, b_hits = select_answer_level_anchors(kg_index, query_emb, n_anchor, exclusion,
+                                                                  stats=leak_stats)
+                    b_candidates = fetch_answer_pool(driver, database, [int(kg_index.answer_ids[r]) for r, _ in b_hits],
+                                                     exclude_question_ids, exclude_answer_ids)
+                elif c_retrieval_version == "v4":  # answerable-only seeds, shared with D v5 (llm/common/anchors.py)
                     anchors = select_answerable_anchors(
                         query_emb, faiss_index, faiss_ids, n_anchor, exclude_question_ids, exclude_answer_ids,
                         driver, database, stats=leak_stats,
@@ -1205,7 +1293,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 if anchor_ids:
                     graph_candidates = traverse_graph(
                         driver, database, anchor_ids, exclude_question_ids, exclude_answer_ids,
-                        max_hops=max_hops, edge_types=edge_types,
+                        max_hops=max_hops, edge_types=edge_types, trust_weights=v5,
                     )
 
                 # --- c. Semantic Expansion (ablation: skippable via enable_semantic_expansion) ---
@@ -1215,6 +1303,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         driver, database, graph_candidates, faiss_index, faiss_ids, embed_model,
                         n_semantic_expansion, seen_qids, exclude_question_ids, exclude_answer_ids,
                         edge_types=edge_types, stats=leak_stats, require_answer=expansion_require_answer,
+                        trust_weights=v5,
                     )
                 else:
                     expansion_candidates = []
@@ -1233,7 +1322,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                 # --- Fusi + rerank + chunking + cap top-K ---
                 trace: dict = {}
                 retrieved, fuse_meta = fuse_and_rank(
-                    graph_candidates, expansion_candidates,
+                    b_candidates + graph_candidates, expansion_candidates,
                     top_k, token_chunk_limit, fusion_mode=fusion_mode,
                     w_path_trust=fusion_w_path_trust, w_intrinsic=fusion_w_intrinsic,
                     expansion_trust_cap=semantic_expansion_trust_cap,
@@ -1242,6 +1331,14 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                     accepted_only=accepted_only, use_author_trust=use_author_trust, trace=trace,
                 )
                 candidate_pool_size = fuse_meta.get("candidate_pool_size")
+                v5_log = {}
+                if v5:
+                    v5_log = {"v5_n_filtered": fuse_meta.get("n_filtered", 0),
+                              "v5_n_refilled": fuse_meta.get("n_refilled", 0), "n_b_answers": len(b_candidates)}
+                    v5_totals["n_filtered"] += v5_log["v5_n_filtered"]
+                    v5_totals["n_refilled"] += v5_log["v5_n_refilled"]
+                    v5_totals["n_queries"] += 1
+                    v5_totals["n_anchors_short"] += int(leak_stats.get("anchors_found", 0) < n_anchor)
                 retrieval_latency = time.time() - t_query_start
                 if not retrieved:
                     n_no_context += 1
@@ -1274,7 +1371,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         "n_graph_candidates": len(graph_candidates),
                         "n_expansion_candidates": len(expansion_candidates),
                         **latency_fields(retrieval_latency, None, time.time() - t_query_start),
-                        "leakage": leakage_log,
+                        "leakage": leakage_log, **v5_log,
                         "expansion_qids": leak_stats.get("expansion_qids", []),
                         "expansion_qids_empty": leak_stats.get("expansion_qids_empty", []),
                         **expansion_log,
@@ -1347,7 +1444,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
                         {"question_id": int(aid), "similarity": round(float(score), 4)} for aid, score in anchors
                     ],
                     "prompt_messages": messages,
-                    "leakage": leakage_log,
+                    "leakage": leakage_log, **v5_log,
                     **expansion_log,
                     "n_anchors": len(anchor_ids), **anchor_record_fields(leak_stats),
                     "n_graph_candidates": len(graph_candidates),
@@ -1433,6 +1530,7 @@ def process_sample(sample_df: pd.DataFrame, llm_client, call_llm_fn, embed_model
         "n_no_citation": n_no_citation,
         "n_no_valid_citation": n_no_valid_citation,
         "interrupted": interrupted,
+        **({"c_v2": {"c_retrieval_version": "v5", **v5_totals}} if v5 else {}),
     }
     return results, stats
 
@@ -1479,6 +1577,9 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
     None to get the config (and hash) of a run made before provenance existed.
     """
     edge_types = tuple(edge_types) if edge_types is not None else DEFAULT_EDGE_TYPES
+    if c_retrieval_version == "v5":  # the v5 cell has its own fusion pins whatever the CLI says
+        fusion_w_path_trust, fusion_w_intrinsic = V5_FUSION_PINS["w_path_trust"], V5_FUSION_PINS["w_intrinsic"]
+        semantic_expansion_trust_cap = V5_FUSION_PINS["expansion_trust_cap"]
     config = {
         "condition": "C", "provider": provider, "model": model, "n_sample": n_sample, "seed": seed,
         "oversample_pool": oversample_pool, "top_k": top_k, "n_anchor": n_anchor,
@@ -1490,6 +1591,11 @@ def build_config(provider: str, model: str, n_sample: int, seed: int, oversample
     }
     if alpha_ranking(c_retrieval_version) or alpha is not None:
         config["alpha"] = alpha
+    if c_retrieval_version == "v5":  # v5 only, so the hash of every other version is unchanged
+        from llm.common.anchors import ANSWER_SCAN_MAX, N_B_ANSWERS
+        config["v5"] = {"n_b_answers": N_B_ANSWERS, "answer_scan_max": ANSWER_SCAN_MAX,
+                        "answer_weight": "accepted=1.0 else trustScore", "filter": "unaccepted_net_score<0+refill_by_sim",
+                        "b_only_w_qq": 1.0}
     if sample_split != DEFAULT_SAMPLE_SPLIT:
         config["sample_split"] = sample_split
     if max_hops != DEFAULT_MAX_HOPS:
@@ -1601,6 +1707,9 @@ def main():
     parser.add_argument("--n-semantic-expansion", type=int, default=int(os.getenv("N_SEMANTIC_EXPANSION", 3)),
                          help="Jumlah tetangga baru per seed-question di tahap semantic expansion")
     parser.add_argument("--embed-model", default=os.getenv("EMBED_MODEL", "all-MiniLM-L6-v2"))
+    parser.add_argument("--index-cache-dir",
+                         default=os.getenv("INDEX_CACHE_DIR", str(Path(__file__).resolve().parents[1] / "b_rag" / "index_cache")),
+                         help="v5 only: cache directory of B's KG answer index (same default as Condition B).")
     parser.add_argument("--kg-workspace-dir", default=os.getenv("KG_WORKSPACE_DIR",
                          "../../01_data_cleaning/_kg_workspace"))
     parser.add_argument("--fusion-mode", choices=["trust_weighted", "uniform"],
@@ -1658,7 +1767,7 @@ def main():
                          help="v3 only: final_score = (1-alpha)*sim_norm + alpha*trust, alpha in [0,1]. "
                               "alpha=1 matches v2 trust_weighted's own ranking; alpha=0 ranks purely by "
                               "similarity. Required for --c-retrieval-version v3 (defaults to 1 if omitted; always pass it).")
-    parser.add_argument("--sample-split", choices=["test", "dev"], default="test",
+    parser.add_argument("--sample-split", choices=["test", "dev", "devlarge"], default="test",
                          help="'test' (default): positions 1..n, unchanged. 'dev': positions "
                               "385..385+n-1 (see --dev-offset) -- a separate, disjoint development "
                               "set for tuning alpha/judge-v2/prompt wording, never used for official results.")
@@ -1704,8 +1813,13 @@ def main():
 
     if alpha_ranking(args.c_retrieval_version) and args.alpha is None:
         args.alpha = 1.0
-        log("[config] --c-retrieval-version v3/v4 without --alpha -- defaulting to alpha=1.0 "
+        log("[config] --c-retrieval-version v3/v4/v5 without --alpha -- defaulting to alpha=1.0 "
             "(matches v2 trust_weighted's own ranking).")
+
+    if args.c_retrieval_version == "v5":  # the C-v2 cell has its own pins (Amendment 19), whatever the flags say
+        args.fusion_w_path_trust = V5_FUSION_PINS["w_path_trust"]
+        args.fusion_w_intrinsic = V5_FUSION_PINS["w_intrinsic"]
+        args.semantic_expansion_trust_cap = V5_FUSION_PINS["expansion_trust_cap"]
 
     # Amendment 10: a test-sample run must be one of the two official C runs
     # (llm/c_graphrag/official_params.py); dev runs are not checked.
@@ -1818,6 +1932,11 @@ def main():
     # (embed_query, compute_similarity).
     embed_model = SentenceTransformer(args.embed_model, device="cpu")
 
+    kg_index = None
+    if args.c_retrieval_version == "v5":
+        from llm.b_rag.kg_corpus import load_kg_answer_index
+        kg_index = load_kg_answer_index(args.index_cache_dir, args.token_chunk_limit, args.embed_model, log)
+
     embedding_cache = None
     if alpha_ranking(args.c_retrieval_version):
         from embedding_cache import EmbeddingCache
@@ -1853,7 +1972,7 @@ def main():
         f"untuk {len(sample_df)} pertanyaan...")
 
     provenance = run_provenance(sample_check=sample_check, leakage_mode=leakage_mode,
-                                kg_workspace_dir=kg_workspace_dir)  # manifest (llm/common/provenance.py)
+                                kg_workspace_dir=kg_workspace_dir, b_index=kg_index)  # manifest (llm/common/provenance.py)
     results, stats = process_sample(
         sample_df, llm_client, call_llm_fn, embed_model, driver, database,
         faiss_index, faiss_ids, faiss_embeddings, id_to_row, all_answer_ids_map,
@@ -1871,9 +1990,11 @@ def main():
         use_author_trust=args.use_author_trust, accepted_only=args.accepted_only,
         run_id=run_id,
         embedding_cache=embedding_cache, retrieval_only=args.retrieval_only, leakage=leakage,
-        expansion_require_answer=args.expansion_require_answer,
+        expansion_require_answer=args.expansion_require_answer, kg_index=kg_index,
     )
     interrupted = stats["interrupted"]
+    if "c_v2" in stats:  # filter counts + version into the manifest (provenance is written with it)
+        provenance["c_v2"] = stats["c_v2"]
     if embedding_cache is not None:
         embedding_cache.close()
 

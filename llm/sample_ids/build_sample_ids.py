@@ -34,7 +34,7 @@ for p in (REPO_ROOT, REPO_ROOT / "llm" / "c_graphrag"):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-from llm.sample_split import (DEFAULT_DEV_OFFSET, FROZEN_FILES, MAX_TEST_N, ids_sha256,  # noqa: E402
+from llm.sample_split import (DEFAULT_DEV_OFFSET, DEVLARGE_N, DEVLARGE_OFFSET, FROZEN_FILES, MAX_TEST_N, ids_sha256,  # noqa: E402
                               sample_questions_split)
 
 SEED = 42
@@ -86,6 +86,11 @@ def build(questions_parquet: str, answers_parquet: str) -> dict:
             raise SystemExit(f"[STOP] condition {cond}'s own sampler gives a different test sample")
     if [int(i) for i in cg.sample_questions_split(pool_t2, N_DEV, SEED, split="dev")["Id"]] != dev:
         raise SystemExit("[STOP] Condition C's own dev sampler gives a different dev set")
+    devlarge = [int(i) for i in sample_questions_split(pool_default, DEVLARGE_N, SEED, "devlarge")["Id"]]
+    if [int(i) for i in cg.sample_questions_split(pool_t2, DEVLARGE_N, SEED, split="devlarge")["Id"]] != devlarge:
+        raise SystemExit("[STOP] Condition C's own devlarge sampler gives a different dev-large set")
+    if set(devlarge) & (set(test) | set(dev)) or len(set(devlarge)) != DEVLARGE_N:
+        raise SystemExit("[STOP] devlarge overlaps test/dev or is not unique")
     if set(test) & set(dev) or len(set(test)) != MAX_TEST_N or len(set(dev)) != N_DEV:
         raise SystemExit("[STOP] test/dev not disjoint or not unique")
 
@@ -107,6 +112,9 @@ def build(questions_parquet: str, answers_parquet: str) -> dict:
                  "ids": test, "ids_sha256": ids_sha256(test), **common},
         "dev": {"split": "dev", "positions": f"{DEFAULT_DEV_OFFSET}..{DEFAULT_DEV_OFFSET + N_DEV - 1}",
                 "dev_offset": DEFAULT_DEV_OFFSET, "n": len(dev), "ids": dev, "ids_sha256": ids_sha256(dev), **common},
+        "devlarge": {"split": "devlarge", "positions": f"{DEVLARGE_OFFSET}..{DEVLARGE_OFFSET + DEVLARGE_N - 1}",
+                     "dev_offset": DEVLARGE_OFFSET, "n": len(devlarge), "ids": devlarge,
+                     "ids_sha256": ids_sha256(devlarge), **common},
     }
 
 
@@ -116,10 +124,17 @@ def main():
     load_dotenv(REPO_ROOT / ".env")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true", help="compare with the existing files; write nothing")
+    parser.add_argument("--only", choices=["test", "dev", "devlarge"], default=None,
+                        help="handle only this split (existing frozen files are never touched either way)")
     args = parser.parse_args()
     built = build(os.environ["QUESTIONS_PARQUET"], os.environ["ANSWERS_PARQUET"])
     for split, data in built.items():
         path = FROZEN_FILES[split]
+        if args.check and not path.exists():
+            print(f"[{split}] {path.name}: not written yet")
+            continue
+        if args.only and split != args.only:
+            continue
         if args.check:
             old = json.loads(path.read_text())
             same = old["ids"] == data["ids"] and old["ids_sha256"] == data["ids_sha256"]
