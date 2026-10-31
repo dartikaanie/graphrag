@@ -1,0 +1,337 @@
+items 70 input tok/call min/mean/max 1219 2310 3880 claims mean 4.071428571428571
+llama meta-llama/Llama-3.3-70B-Instruct-Turbo calls=70 in=161752 out~18200 cost=$0.0220
+deepseek deepseek-ai/DeepSeek-V3.2 calls=70 in=161752 out~18200 cost=$0.0490
+qwen3-235b Qwen/Qwen3-235B-A22B-Instruct-2507 calls=70 in=161752 out~18200 cost=$0.0246
+TOTAL calls=210 in=485256 out~54600 cost=$0.0955 (x1.5 safety $0.1433; retries up to 2 -> worst case $0.2866)
+
+============================== EXAMPLE question_id 812945
+[SYSTEM] You audit a retrieval context. You are given a programming question, the retrieved context a system was shown, and one or more claims that were found to be incorrect. Use ONLY the context text; do not use your own knowledge to decide what the context contains. Return JSON only.
+[USER] QUESTION:
+Please, explain how to fix the problem below. ASP.NET PageMethods and JQuery AJAX Post – How secure really is it?. Below, you can find more details. <p>I have a following scenario – and what I am really looking is real help from real people. Suggestions  / Solutions  ? Please.</p>
+
+<p>I have an extranet web site for ex. www.foo.com (asp.net 3.5)
+I am using JQuery 1.3.2 to call ValidateLogin PageMethods in default.aspx page ( www.foo.com/default.aspx)</p>
+
+<p>The code will look like this</p>
+
+<pre><code>$.ajax({
+    type: "POST",
+    contentType: "application/json; charset=utf-8",
+    dataType: "json",
+    url: "Default.aspx/ValidateLogin",
+    data: '{' + arg + '}',
+    success: function (data) {
+        if (data.d != 0) {
+            window.location = "http://www.google.com";
+        } else {
+            alert("Invalid UserName/Password.");
+            ResetLoginForm();
+        }
+    },
+    error: function (xhr, status, error) {
+        var strerror = xhr.status + error;
+        alert("Error Communicating with Server:" + strerror);
+        ResetLoginForm();
+    }
+});
+</code></pre>
+
+<p>The code is stored in external js file. For ex default.js.</p>
+
+<p>Since this website is public, anyone can download the default.js and thus can take a look at code given above. </p>
+
+<p>My question is once the person gets this url: "Default.aspx/ValidateLogin", he can make a request to server and server will proudly respond to the request.</p>
+
+<p>What are my options here ? how do I validate request ? How do I prevent these kind of unauthorized requests ?</p>
+.
+
+RETRIEVED CONTEXT (exactly as shown to the system):
+[SO-7975311] Q: Authorize attribute on Ajax Action methods in controller
+A: <p>Here's a <a href="http://haacked.com/archive/2011/10/04/prevent-forms-authentication-login-page-redirect-when-you-donrsquot-want.aspx" rel="nofollow">blog post</a> which I would strongly recommend you reading. It illustrates a better approach for handling this.</p>
+
+
+[SO-14140037] Q: Security with Ajax login system
+A: <p>The best way to ensure security on your website is to encrypt your passwords with SHA-512.</p>
+
+<pre><code>$rounds = 5000
+$cryptedPwd = crypt($password, '$6$rounds=' . $rounds . '$SOMeSILLySTrInG$');
+</code></pre>
+
+<p>To decrypt :</p>
+
+<pre><code>$pwdEntered = trim($_POST['password']);
+if (crypt($pwdEntered, $pwdHashed) == $pwdHashed){
+// do something
+}
+</code></pre>
+
+<p>You can also add a bruteforce protection, maybe with a logfile ...</p>
+
+<p>I advise you to use PDO instead of normal mysql connect.</p>
+
+
+[SO-14140037] Q: Security with Ajax login system
+A: <p>To answer question #3: Escape and sanitize untrusted data when inserting it into HTML, just as you would for a "conventional" PHP site. If the server returns unescaped text, use jQuery's <a href="http://api.jquery.com/text/" rel="nofollow">.text()</a> method to insert the text into an element; <strong>do not insert the text as HTML</strong> (e.g. <code>$(...)</code>).</p>
+
+<p>I think the answer to question #1 is already clear; there is a small percentage of users (including search engines) who cannot, or for privacy or security reasons, choose not to, run JavaScript. You might not want to deny service to them.</p>
+
+<p>My comments pertaining to questions #2 and #4 are below.</p>
+
+<hr>
+
+<pre><code>var dataString = 'username=' + username + '&amp;password=' + password + '&amp;remember=' + remember;
+</code></pre>
+
+<p>jQuery can do this for you (including the query string escaping you are missing). Just store them in an object, which you can pass to jQuery instead of a string:</p>
+
+<pre><code>var dataObject = {
+    username: username,
+    password: password,
+    remember: remember
+};
+</code></pre>
+
+<p>Also note jerome.s's suggestions to return AJAX responses as JSON and to avoid deprecated jQuery features. For JSON responses, ensure the outermost object is an object, not an array.</p>
+
+<hr>
+
+<pre><code>$_POST['username'] = mysql_real_escape_string($_POST['username']);
+$_POST['password'] = mysql_real_escape_string($_POST['password']);
+$_POST['remember'] = (int)$_POST['remember'];
+// Escaping all input data
+$row = mysql_fetch_assoc(mysql_query("SELECT ID,REFERENCE FROM USER WHERE USERNAME
+
+[SO-6938969] Q: Is it safe to use ajax for login?
+A: <h1>Security</h1>
+
+<p>AJAX is a as safe as a plain old form + refresh page. In the end it's always an HTTP request. Why do you think that ?</p>
+
+<p>However, from a usability point, make sure that people that disable javascript can still log into your app.</p>
+
+<p>Be sure to use <code>POST</code> method to send your AJAX request, as <code>GET</code> requests, <strong>and their params</strong> (such as, let's say, <strong>plain-text password</strong>) might end in your web server logs, unles you are using HTTPS.</p>
+
+<h1>Usability</h1>
+
+<p>As <a href="https://stackoverflow.com/users/353612/greg0ire">Grégoire</a> pointed it out:</p>
+
+<p>Also from a usability point, autocomplete won't work for AJAX forms on chrome, and for AJAX-loaded forms in firefox. The browsers won't even propose to remember your password</p>
+
+
+[SO-14175587] Q: Rejecting Ajax JSON based post with html
+A: <p>I think you're talking about request validation? It's on in MVC, so your JSON string must not be deemed as a threat by asp.net - I can't remember if it would by default reject a json string that contains markup, I suspect not though.</p>
+
+<p>More info about it here: <a href="http://weblogs.asp.net/imranbaloch/archive/2011/02/19/understanding-request-validation-in-asp-net-mvc-3.aspx" rel="nofollow">http://weblogs.asp.net/imranbaloch/archive/2011/02/19/understanding-request-validation-in-asp-net-mvc-3.aspx</a></p>
+
+CLAIMS FOUND INCORRECT:
+- Implement rate limiting and protection against brute force attacks, such as logging failed login attempts and temporarily blocking IP addresses that exceed a certain number of failures.
+- Implement rate limiting and log failed login attempts to block IPs after excessive failures
+
+Answer two things.
+1. sufficiency: does the context contain enough information to answer the question correctly?
+   SUFFICIENT = all key information needed is present; PARTIAL = some but not all; INSUFFICIENT = little or none.
+2. contradicting_evidence: does the context contain text that contradicts, or shows as wrong, at least one of the incorrect claims? YES or NO.
+   If YES, quote the shortest span (max 200 chars) copied verbatim from the context, and give its label (e.g. SO-123).
+
+Return exactly:
+{"sufficiency":"SUFFICIENT|PARTIAL|INSUFFICIENT","contradicting_evidence":"YES|NO","quote":"<verbatim span or empty>","quote_label":"<SO-id or empty>","reason":"<one sentence>"}
+
+============================== EXAMPLE question_id 39312836
+[SYSTEM] You audit a retrieval context. You are given a programming question, the retrieved context a system was shown, and one or more claims that were found to be incorrect. Use ONLY the context text; do not use your own knowledge to decide what the context contains. Return JSON only.
+[USER] QUESTION:
+Please, explain how to fix the problem below. Hamburgers and sidebarEffects Collision. Below, you can find more details. <p>I've tried countless things on this one piece of code that doesn't seem to want to work. I combine the following CSS and JavaScript libraries in my project:</p>
+
+<p>Materialize; Normalize; Icons; Component; Hamburgers CSS; Modernizr (custom); jQuery; Classie.js; sidebarEffects.js; and SweetAlert.</p>
+
+<p>Here is my code snippet I am running into problems with:</p>
+
+<pre><code>&lt;div class="sideMenu"&gt;
+    &lt;button class="hamburger hamburger--collapse" type="button" onclick="this.toggleClass('is-active);"&gt;&lt;/button&gt;
+    &lt;div id="st-trigger-effects"&gt;
+        &lt;button data-effect="st-effect-11" class="hamburger"&gt;
+            &lt;span class="hamburger-box"&gt;
+                &lt;span class="hamburger-inner"&gt;&lt;/span&gt;
+            &lt;/span&gt;
+        &lt;/button&gt;
+    &lt;/div&gt;
+&lt;/div&gt;
+</code></pre>
+
+<p>The problem is that whenever you click the button (hamburger icon), the menu shows up, though the icon doesn't transition to the appropriate "is-active" icon and/or class! I actually tested it, and even with the "is-active" class put in place, the icon still doesn't change.</p>
+
+<p>The "sideMenu" class that is active, this is the CSS code to it:</p>
+
+<pre><code>div.sideMenu {
+    margin-top: 5%;
+    width: 15%;
+    height: 10%; 
+    position: fixed; 
+    margin-left: 5%;
+}
+</code></pre>
+
+<p>Please help, and thanks so much in advance!</p>
+.
+
+RETRIEVED CONTEXT (exactly as shown to the system):
+[SO-59955675] Q: jquery toggleclass issues not collapsing
+A: <p>You do not need to define <code>.collapse</code> as a class because <code>toggleClass</code> expects a class.</p>
+
+<p>Try </p>
+
+<pre><code>    $(document).ready(function(){
+       $(".hamburger").click(function(){
+       $(".wrapper").toggleClass("collapse");
+       });
+    });
+</code></pre>
+
+
+[SO-53423372] Q: hamburger button color not changing
+A: <p>Change the color using the following CSS</p>
+
+<pre><code>    .hamburger-box .hamburger-inner,
+    .hamburger-box .hamburger-inner::before,
+    .hamburger-box .hamburger-inner::after {
+        background-color: white;
+    }
+</code></pre>
+
+<p><div class="snippet" data-lang="js" data-hide="false" data-console="true" data-babel="false">
+<div class="snippet-code">
+<pre class="snippet-code-css lang-css prettyprint-override"><code>.hamburger-box .hamburger-inner,
+.hamburger-box .hamburger-inner::before,
+.hamburger-box .hamburger-inner::after {
+  background-color: white;
+}
+
+body {
+  background-color: red;
+}</code></pre>
+<pre class="snippet-code-html lang-html prettyprint-override"><code>&lt;link href="https://cdn.rawgit.com/jonsuh/hamburgers/0aedeec9/dist/hamburgers.css" rel="stylesheet"&gt;
+
+
+
+&lt;button class="hamburger hamburger--emphatic is-active" type="button" id="clickme"&gt;
+                                &lt;span class="hamburger-box"&gt;
+                                    &lt;span class="hamburger-inner"&gt;&lt;/span&gt;
+                                &lt;/span&gt;
+                            &lt;/button&gt;</code></pre>
+</div>
+</div>
+</p>
+
+
+[SO-66758345] Q: Why toggled classes does not animating the element and no error in console
+A: <p>Do it like this:</p>
+<p><div class="snippet" data-lang="js" data-hide="false" data-console="true" data-babel="false">
+<div class="snippet-code">
+<pre class="snippet-code-js lang-js prettyprint-override"><code>const burgerArray = document.querySelectorAll(".barra");
+
+function buttonChange() {
+  for (i = 0; i &lt; burgerArray.length; i++) {
+    burgerArray[i].classList.toggle("change");
+    console.log(burgerArray[i]);
+  }
+}</code></pre>
+<pre class="snippet-code-css lang-css prettyprint-override"><code>#bar1.change {
+  background-color: red;
+}
+
+#bar2.change {
+  background-color: blue;
+}
+
+#bar3.change {
+  background-color: green;
+}</code></pre>
+<pre class="snippet-code-html lang-html prettyprint-override"><code>&lt;div onclick="buttonChange()" id="burgers" class="burger-menuu"&gt;
+  &lt;div class="barra" id="bar1"&gt;Sample Text 1&lt;/div&gt;
+  &lt;div class="barra" id="bar2"&gt;Sample Text 2&lt;/div&gt;
+  &lt;div class="barra" id="bar3"&gt;Sample Text 3&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+</div>
+</div>
+</p>
+
+
+[SO-55135426] Q: Problem with toggling class list with vanilla JavaScript
+A: <p>The CSS <code>transforms</code> were missing <code>transitions</code> and the event handler should use either <code>event.target</code> or <code>event.currentTarget</code>.</p>
+<h2>Demo</h2>
+<p><div class="snippet" data-lang="js" data-hide="false" data-console="true" data-babel="false">
+<div class="snippet-code">
+<pre class="snippet-code-js lang-js prettyprint-override"><code>let hamburger = document.querySelector('.hamburger');
+
+hamburger.onclick = toggleChange;
+
+function toggleChange(event) {
+  event.currentTarget.classList.toggle('change');
+}</code></pre>
+<pre class="snippet-code-css lang-css prettyprint-override"><code>.hamburger {
+  width: 35px;
+  height: 35px;
+  cursor: pointer;
+}
+
+.bar1, .bar2, .bar3 {
+  width: 35px;
+  height: 5px;
+  background-color: #333;
+  margin: 6px 0;
+  transition: 0.4s;
+}
+
+/* Rotate first bar */
+.change .bar1 {
+  transform: rotate(-45deg) translate(-9px, 6px);
+  transition: transform 0.75s;
+}
+
+/* Fade out the second bar */
+.change .bar2 {
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+/* Rotate last bar */
+.change .bar3 {
+  transform: rotate(45deg) translate(-8px, -8px);
+  transition: transform 0.75s;
+}</code></pre>
+<pre class="snippet-code-html lang-html prettyprint-override"><code>&lt;div class="hamburger"&gt;
+  &lt;div class="bar1"&gt;&lt;/div&gt;
+  &lt;div class="
+
+[SO-70405011] Q: Why is transition property not working in this case?
+A: <p>Transition will never work on display property. It works on properties like width, height, opacity etc.
+In your particular case, what you can do is, use height or width to control this animation.
+If your sidebar will appear from the left then you will need to set the initial width to 0 and then set the width to the actual width on click. Like this:</p>
+<p><div class="snippet" data-lang="js" data-hide="false" data-console="true" data-babel="false">
+<div class="snippet-code">
+<pre class="snippet-code-css lang-css prettyprint-override"><code>.side_nav { 
+  width: 0;
+  transition: width 1s;
+ 
+  &amp;.open { 
+    width: 200px; 
+  }
+ }</code></pre>
+</div>
+</div>
+</p>
+<p>Now when the open class will attach to your hamburger, it will animate the width.</p>
+
+CLAIMS FOUND INCORRECT:
+- The hamburger icon structure should have child elements (like `.bar1`, `.bar2`, `.bar3`) to apply transformations.
+- The CSS class `.hamburger.is-active.bar1` exists and should have transform: rotate(-45deg).
+- The CSS class `.hamburger.is-active.bar2` exists and should have opacity: 0.
+- The CSS class `.hamburger.is-active.bar3` exists and should have transform: rotate(45deg).
+- Use jQuery's .toggleClass() method to toggle the 'is-active' class on the hamburger button
+
+Answer two things.
+1. sufficiency: does the context contain enough information to answer the question correctly?
+   SUFFICIENT = all key information needed is present; PARTIAL = some but not all; INSUFFICIENT = little or none.
+2. contradicting_evidence: does the context contain text that contradicts, or shows as wrong, at least one of the incorrect claims? YES or NO.
+   If YES, quote the shortest span (max 200 chars) copied verbatim from the context, and give its label (e.g. SO-123).
+
+Return exactly:
+{"sufficiency":"SUFFICIENT|PARTIAL|INSUFFICIENT","contradicting_evidence":"YES|NO","quote":"<verbatim span or empty>","quote_label":"<SO-id or empty>","reason":"<one sentence>"}

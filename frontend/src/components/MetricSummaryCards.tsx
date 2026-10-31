@@ -27,7 +27,10 @@ export function MetricSummaryCards({ summary }: { summary: RunSummary; condition
     cards.push({ label: 'NF2 — Citation Compliance', value: fmtPct(summary.pct_with_valid_citation), metricId: 'nf2-citation-validity' })
   }
   if (summary.avg_retrieval_latency_sec !== undefined) {
-    cards.push({ label: 'Avg Retrieval Latency', value: `${summary.avg_retrieval_latency_sec.toFixed(2)}s`, metricId: 'nf3-retrieval-latency' })
+    cards.push({ label: 'Avg Retrieval Latency (retrieval only)', value: `${summary.avg_retrieval_latency_sec.toFixed(2)}s`, metricId: 'nf3-retrieval-latency' })
+  }
+  if (summary.avg_end_to_end_latency_sec !== undefined) {
+    cards.push({ label: 'Avg End-to-End Latency (retrieval + LLM)', value: `${summary.avg_end_to_end_latency_sec.toFixed(2)}s`, metricId: 'nf3-retrieval-latency' })
   }
   if (summary.duration_sec !== undefined) {
     cards.push({ label: 'Total Run Time', value: fmtDuration(summary.duration_sec) })

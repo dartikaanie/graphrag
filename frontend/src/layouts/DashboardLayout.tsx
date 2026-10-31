@@ -44,6 +44,7 @@ const experimentNav: NavItem[] = [
   { to: '/experiment/d', label: 'D — Dual-Level Retrieval (LightRAG-adapted)', icon: <FlaskConical className="h-4 w-4" /> },
   { to: '/evaluation/judge', label: 'Faithfulness Judge (legacy)', icon: <FlaskConical className="h-4 w-4" /> },
   { to: '/evaluation/judge-v1', label: 'Hallucination Judge (judge-v1)', icon: <FlaskConical className="h-4 w-4" /> },
+  { to: '/evaluation/secondary-panel', label: 'Secondary Metrics Panel', icon: <FlaskConical className="h-4 w-4" /> },
 ]
 
 const footerNav: NavItem[] = [

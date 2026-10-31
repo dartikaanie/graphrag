@@ -216,3 +216,46 @@ def test_devlarge_slice_is_positions_435_to_584_in_both_samplers():
     for fn in (sample_questions_split, cg.sample_questions_split):
         got = fn(df, 150, 42, "devlarge")
         assert list(got["Id"]) == list(perm.iloc[434:584]["Id"])
+
+
+def test_retrieval_only_v5_writes_one_record_per_question(tmp_path, monkeypatch):
+    import pandas as pd
+
+    kg = _kg([(7, 0.9), (5, 0.8), (3, 0.7), (9, 0.6)])
+    cand = lambda aid, q, score: {**_cand(aid, q, 0.5, 0, score=score), "hop": 1}  # noqa: E731
+    monkeypatch.setattr(cg, "traverse_graph", lambda *a, **k: [cand(2001, 7, 3), cand(2002, 5, -4)])
+    monkeypatch.setattr(cg, "semantic_expansion", lambda *a, **k: [])
+    monkeypatch.setattr(cg, "fetch_answer_pool", lambda *a, **k: [cand(3001, 9, 1)])
+    monkeypatch.setattr(cg, "compute_candidate_similarities",
+                        lambda m, qe, texts, ids, cache=None: [0.1 * (i + 1) for i in range(len(ids))])
+    monkeypatch.setattr(cg, "log", lambda *a, **k: None)
+    qids = [101, 102]
+    df = pd.DataFrame({"Id": qids, "Title": ["a", "b"], "Body": ["x", "y"], "Tags": ["t", "t"],
+                       "AcceptedAnswerId": [1, 2], "AcceptedAnswerBody": ["g", "g"], "n_tokens": [5, 5]})
+    emb = np.ones((2, 4), dtype="float32")
+    out = tmp_path / "o.jsonl"
+    cfg = _config("v5")
+    results, stats = cg.process_sample(
+        df, None, None, FakeEmbed(), FakeDriver(), "db", None, None, emb, {101: 0, 102: 1}, {101: [], 102: []},
+        3, 3, 3, 400, "m", out, c_retrieval_version="v5", alpha=0.5, retrieval_only=True, kg_index=kg,
+        config=cfg, config_hash=compute_config_hash(cfg))
+    lines = [json.loads(line) for line in out.read_text().splitlines()]
+    assert len(lines) == len(results) == 2 and [r["question_id"] for r in lines] == qids
+    for r in lines:
+        assert r["retrieved_context"] and r["anchors_found"] == 3 and r["anchors_requested"] == 3
+        assert r["v5_n_filtered"] == 1 and r["v5_n_refilled"] == 1 and "retrieval_latency_sec" in r
+    assert stats["c_v2"]["n_filtered"] == 2
+
+
+def test_failed_empty_run_is_cleared_but_nothing_else(tmp_path):
+    out = tmp_path / "r.jsonl"
+    man = tmp_path / "r.jsonl.manifest.json"
+    out.write_text("")
+    man.write_text(json.dumps({"status": "failed"}))
+    assert cg.clear_failed_empty_run(out, lambda *a: None) and not out.exists() and not man.exists()
+    out.write_text('{"question_id": 1}\n')
+    man.write_text(json.dumps({"status": "failed"}))
+    assert not cg.clear_failed_empty_run(out, lambda *a: None) and out.exists() and man.exists()
+    out.write_text("")
+    man.write_text(json.dumps({"status": "completed"}))
+    assert not cg.clear_failed_empty_run(out, lambda *a: None) and out.exists()

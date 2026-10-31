@@ -7,12 +7,15 @@ import {
   useJudgeV1Agreement,
   useJudgeV1Disagreements,
   useJudgeV1Summary,
+  usePanelEvaluation,
   type ContextRelevanceLinkTables,
   type ContextRelevanceV1RunMetrics,
   type JudgeV1Disagreement,
+  type PanelEvaluation,
   type JudgeV1RunLabelSummary,
   type SampleConsistencyResult,
 } from '@/api/hooks'
+import { PanelEvaluationSection, panelEvaluationMarkdown } from '@/components/PanelEvaluationSection'
 import { JudgeV1ResultsSection } from '@/components/JudgeV1ResultsSection'
 import { downloadMarkdown, mdTable } from '@/lib/markdown'
 import { fmtDuration } from '@/lib/format'
@@ -48,7 +51,8 @@ const ROWS: MetricRow[] = [
     fmt: (v) => String(v),
     higherIsBetter: true,
   },
-  { label: 'Avg Retrieval Latency (s)', get: (r) => r.summary?.avg_retrieval_latency_sec, fmt: (v) => v.toFixed(2), higherIsBetter: false },
+  { label: 'Avg Retrieval Latency — retrieval only (s)', get: (r) => r.summary?.avg_retrieval_latency_sec, fmt: (v) => v.toFixed(2), higherIsBetter: false },
+  { label: 'Avg End-to-End Latency — retrieval + LLM (s)', get: (r) => r.summary?.avg_end_to_end_latency_sec, fmt: (v) => v.toFixed(2), higherIsBetter: false },
   { label: 'Total Run Time', get: (r) => r.summary?.duration_sec, fmt: (v) => fmtDuration(v), higherIsBetter: false },
 ]
 
@@ -167,6 +171,7 @@ interface JudgeV1ExportData {
 
 function buildComparisonMarkdown(
   runs: RunState[], consistency: SampleConsistencyResult | undefined, judgeV1: JudgeV1ExportData | undefined,
+  panelEvaluation: PanelEvaluation | undefined,
 ): string {
   const header = ['Parameter', ...runs.map(columnLabel)]
   const paramRows = PARAM_ROWS.map((row) => [row.label, ...runs.map((r) => row.get(r))])
@@ -194,6 +199,9 @@ function buildComparisonMarkdown(
     '',
     mdTable(metricHeader, metricRows),
     '',
+    ...panelEvaluationMarkdown(
+      panelEvaluation, runs.map((r) => r.run_id), (id) => { const r = runs.find((x) => x.run_id === id); return r?.run_label ?? id },
+    ),
   ]
 
   if (judgeV1 && judgeV1.runLabels.length > 0) {
@@ -287,6 +295,7 @@ export function HistoryComparePage() {
   const queries = useHistoryDetails(ids)
   const runs = queries.map((q) => q.data).filter((r): r is RunState => !!r)
   const { data: consistency } = useCompareConsistency(ids)
+  const { data: panelEvaluation } = usePanelEvaluation(ids)
   const banner = consistencyBanner(consistency)
 
   const runLabels = runs.map((r) => r.run_label).filter((l): l is string => !!l)
@@ -314,7 +323,7 @@ export function HistoryComparePage() {
     const md = buildComparisonMarkdown(runs, consistency, {
       runLabels, primarySummary: primarySummary?.summary, secondarySummary: secondarySummary?.summary,
       agreement, disagreements: disagreementsForCompare, contextRelevance, contextRelevanceLinkRows,
-    })
+    }, panelEvaluation)
     const stamp = new Date().toISOString().replace(/[:.]/g, '-')
     downloadMarkdown(`run-comparison_${runs.map((r) => r.condition).join('')}_${stamp}.md`, md)
   }
@@ -426,6 +435,11 @@ export function HistoryComparePage() {
               </tbody>
             </table>
           </div>
+
+          <PanelEvaluationSection
+            runIds={ids}
+            runNames={Object.fromEntries(runs.map((r) => [r.run_id, r.run_label ?? `Condition ${r.condition}`]))}
+          />
 
           <JudgeV1ResultsSection runLabels={runs.map((r) => r.run_label).filter((l): l is string => !!l)} />
 

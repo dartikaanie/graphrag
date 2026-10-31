@@ -3,6 +3,7 @@ import { useHistoryDetail } from '@/api/hooks'
 import { MetricSummaryCards } from '@/components/MetricSummaryCards'
 import { DataTable, type Column } from '@/components/DataTable'
 import { Badge } from '@/components/Badge'
+import { PanelEvaluationSection } from '@/components/PanelEvaluationSection'
 import { MetricInfoLink } from '@/components/MetricInfoLink'
 import type { RunResultItem } from '@/types/run'
 import type { JudgeEvaluationSummary } from '@/types/judge'
@@ -50,6 +51,8 @@ export function HistoryDetailPage() {
           <MetricSummaryCards summary={run.summary} condition={run.condition} />
         </div>
       )}
+
+      <PanelEvaluationSection runIds={[run.run_id]} />
 
       <div className="mb-6">
         <h2 className="text-sm font-medium text-text-secondary mb-2 inline-flex items-center gap-1">

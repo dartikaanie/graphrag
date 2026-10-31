@@ -1046,3 +1046,152 @@ export function useReportItem(runId: string | null, questionId: number | null, m
     enabled: !!runId && questionId !== null,
   })
 }
+
+export interface PanelHallucinationRun {
+  run_id: string
+  run_label: string | null
+  panel_id: string | null
+  prompt_version: string | null
+  source: string
+  n: number
+  label_distribution: Record<string, number>
+  abstention_rate: number | null
+  hall_rate_excl_abstain: number | null
+  hall_rate_incl_abstain: number | null
+  unanimous_rate: number | null
+  n_incomplete: number
+}
+
+export function usePanelHallucination() {
+  return useQuery({
+    queryKey: ['panel-hallucination'],
+    queryFn: () => apiGet<{ runs: Record<string, PanelHallucinationRun> }>('/api/panel/hallucination'),
+  })
+}
+
+export interface SecondaryPanelRow {
+  judge_id: string
+  judge_model: string | null
+  source_file: string
+  prompt_version: string | null
+  n: number
+  labels: Record<string, number>
+  mean_score: number | null
+  cost_usd: number
+  n_unparsed: number
+}
+
+export interface SecondaryPanelMetric {
+  metric: string
+  file: string
+  judges: string[]
+  total_cost_usd: number
+  rows: SecondaryPanelRow[]
+  failures_by_judge: Record<string, number>
+}
+
+export function useSecondaryPanel() {
+  return useQuery({
+    queryKey: ['panel-secondary'],
+    queryFn: () => apiGet<{ metrics: Record<string, SecondaryPanelMetric> }>('/api/panel/secondary'),
+  })
+}
+
+export interface PanelJudgeBreakdown {
+  judge_id: string
+  judge_model: string | null
+  provider: string | null
+  temperature: number | null
+  n: number
+  n_unparsed?: number
+  label_distribution: Record<string, number>
+  mean_score?: number | null
+  abstention_rate?: number | null
+  hall_rate_excl_abstain?: number | null
+  hall_rate_incl_abstain?: number | null
+  n_unjudged?: number
+  mean_score_rank1?: number | null
+  mean_score_rank2plus?: number | null
+  pct_questions_with_relevant?: number | null
+  // faithfulness (per-claim grounding) fields
+  n_abstain?: number
+  n_unusable?: number
+  n_attempted?: number
+  n_answers_rated?: number
+  n_answers_cited?: number
+  claims_supported?: number
+  claims_unsupported?: number
+  claims_rated?: number
+  faithfulness_micro?: number | null
+  faithfulness_macro?: number | null
+  cit_supported?: number
+  cit_unsupported?: number
+  cit_rated?: number
+  citation_micro?: number | null
+  citation_macro?: number | null
+}
+
+export interface PanelFaithfulnessSummary {
+  claims_supported: number
+  claims_unsupported: number
+  claims_rated: number
+  faithfulness_micro: number | null
+  faithfulness_macro: number | null
+  cit_supported: number
+  cit_rated: number
+  citation_micro: number | null
+  citation_macro: number | null
+  n_answers: number
+  n_abstain: number
+}
+
+export interface PanelMetricRun {
+  note?: string
+  panel: {
+    n?: number
+    n_decided?: number
+    n_incomplete: number
+    n_unresolved?: number
+    n_missing_votes?: number
+    label_distribution: Record<string, number>
+    mean_score?: number | null
+    abstention_rate?: number | null
+    hall_rate_excl_abstain?: number | null
+    hall_rate_incl_abstain?: number | null
+    unanimous_rate?: number | null
+    panel_id?: string | null
+    prompt_version?: string | null
+    n_unjudged?: number
+    mean_score_rank1?: number | null
+    mean_score_rank2plus?: number | null
+    pct_questions_with_relevant?: number | null
+  } & Partial<PanelFaithfulnessSummary> | null
+  per_judge: PanelJudgeBreakdown[]
+  complete?: boolean
+  judges_present?: string[]
+}
+
+export interface PanelMetricDefinition {
+  unit: string
+  labels: Array<{ label: string; meaning: string; score?: number }>
+  calculation: string
+}
+
+export interface PanelEvaluation {
+  run_ids: string[]
+  metrics: Array<{
+    metric: string
+    title: string
+    definition?: PanelMetricDefinition
+    runs: Record<string, PanelMetricRun | null>
+  }>
+}
+
+export function usePanelEvaluation(runIds: string[]) {
+  const ids = runIds.join(',')
+  return useQuery({
+    queryKey: ['panel-evaluation', ids],
+    queryFn: () => apiGet<PanelEvaluation>('/api/panel/evaluation', { ids }),
+    enabled: runIds.length > 0,
+  })
+}

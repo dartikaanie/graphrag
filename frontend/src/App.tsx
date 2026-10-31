@@ -21,6 +21,7 @@ import { HistoryPage } from '@/pages/HistoryPage'
 import { HistoryComparePage } from '@/pages/HistoryComparePage'
 import { HistoryDetailPage } from '@/pages/HistoryDetailPage'
 import { HistoryResultDetailPage } from '@/pages/HistoryResultDetailPage'
+import { SecondaryPanelPage } from '@/pages/SecondaryPanelPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { RunJudgePage } from '@/pages/RunJudgePage'
 import { RunJudgeV1Page } from '@/pages/RunJudgeV1Page'
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/evaluation/judge-v1" element={<RunJudgeV1Page />} />
         <Route path="/evaluation/judge-v1/results/:batchId" element={<JudgeV1ResultsPage />} />
 
+        <Route path="/evaluation/secondary-panel" element={<SecondaryPanelPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/history/compare" element={<HistoryComparePage />} />
         <Route path="/history/:history_id" element={<HistoryDetailPage />} />

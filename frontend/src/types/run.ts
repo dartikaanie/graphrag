@@ -86,6 +86,7 @@ export interface RunSummary {
   pct_with_citation?: number
   pct_with_valid_citation?: number
   avg_retrieval_latency_sec?: number
+  avg_end_to_end_latency_sec?: number
   duration_sec?: number
   require_grounding?: boolean
   enable_semantic_expansion?: boolean
@@ -205,6 +206,7 @@ export interface RunResultDetail {
   require_grounding?: boolean
   enable_semantic_expansion?: boolean
   retrieval_latency_sec?: number
+  end_to_end_latency_sec?: number
   llm_answer: string
   llm_model: string
   cosine_similarity: number

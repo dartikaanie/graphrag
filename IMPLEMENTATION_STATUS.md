@@ -460,3 +460,72 @@ Status: run juri resmi R9 (Kondisi D-grounded, retrieval v5) selesai dan pemerik
 5. Tidak ada entri `judge_panel_run_history.jsonl` untuk tahap ini (`secondary_panel.py` tidak menulis log itu).
 
 **Langkah berikutnya.** Sisa tahap 1 untuk Qwen: sekitar 1489 panggilan (1536 dikurangi 47 cache; termasuk 2 item yang gagal), perkiraan $0,20-0,23 dengan token nyata; lalu agregasi panel tahap 1; lalu tahap 2 (`ctxrel`), yang belum muat di sisa anggaran saat ini.
+
+## 2026-10-30: Trust influence on candidates (alpha 0.0 vs 0.5)
+
+**What was run.** Retrieval only, no LLM or judge calls, no pipeline code changed. `python3 reports/followup/trust_influence/run_retrieval.py <alpha>` for alpha 0.5 and 0.0 (wrapper calls `c_graphrag.main()` with `--retrieval-only --c-retrieval-version v4 --n-sample 384 --seed 42 --top-k 5 --max-hops 2`; defaults otherwise: expansion on, grounded, leakage `thread`, 3 anchors, 3 expansion neighbours, sample split `test`, frozen ID list). The wrapper only bypasses the CLI guard that refuses non-official alphas, skips the run_history append, and records hop-1/hop-2 counts per query. Commit `ba2791e` (working tree dirty). Seeds: sample seed 42; bootstrap seed 12345 (2000 draws, questions resampled). Analysis: `reports/followup/trust_influence/analyze.py`; raw outputs and `results.json` in `reports/followup/trust_influence/`.
+
+**Step 1 (reproduction).** alpha 0.5 retrieval-only reproduces the official run (config hash 95d2f39d2c): 0 of 384 questions differ in top-5 answer_id set, and 0 differ in order.
+
+**Results (384 questions; 70 hallucinated, 314 other).**
+
+| Measure | All 384 | Hallucinated (70) | Other (314) |
+|---|---|---|---|
+| Questions with different top-5 set | 354 (92.2%) | 60 (85.7%) | 294 (93.6%) |
+| Mean items replaced (0-5) | 1.77 | 1.67 | 1.79 |
+| Origin hop1/hop2/exp, alpha 0.0 | 43.7/30.8/25.5% | 43.7/30.6/25.7% | 43.7/30.8/25.5% |
+| Origin hop1/hop2/exp, alpha 0.5 | 52.3/27.8/19.9% | 54.6/26.0/19.4% | 51.8/28.2/20.0% |
+| trust_weight mean / median, alpha 0.0 | 0.440 / 0.40 | 0.443 / 0.40 | 0.439 / 0.40 |
+| trust_weight mean / median, alpha 0.5 | 0.615 / 0.50 | 0.622 / 0.50 | 0.614 / 0.50 |
+| Items with trust_weight < 0.5, alpha 0.0 | 60.3% | 60.0% | 60.4% |
+| Items with trust_weight < 0.5, alpha 0.5 | 40.7% | 39.1% | 41.1% |
+| Same, excluding expansion proxy items, alpha 0.0 | 46.7% (n=1430) | 46.2% (n=260) | 46.8% (n=1170) |
+| Same, excluding expansion proxy items, alpha 0.5 | 26.0% (n=1538) | 24.5% (n=282) | 26.4% (n=1256) |
+| Mean similarity, alpha 0.0 | 0.615 | 0.628 | 0.612 |
+| Mean similarity, alpha 0.5 | 0.591 | 0.602 | 0.589 |
+
+Bootstrap 95% CI: change rate 92.2% [89.6, 94.8]; mean items replaced 1.77 [1.67, 1.86]. Items replaced per question: 0 -> 30, 1 -> 135, 2 -> 140, 3 -> 56, 4 -> 20, 5 -> 3.
+
+Candidate pool (identical at both alphas; alpha acts only in the final fusion): mean 24.8, median 22, range 11-69 distinct answers. Hop-2 mean 13.7 candidates; the hop-2 LIMIT 50 binds in 10/384 questions (2.6%) at both alphas. Candidate sets before ranking are identical across alphas (checked).
+
+**Summary.**
+1. Raising alpha from 0.0 to 0.5 changes the top-5 context for 92% of questions, replacing on average 1.8 of 5 items, and is similar for hallucinated and other questions.
+2. It shifts the context toward hop-1 items (44% -> 52%) and higher trust_weight (mean 0.44 -> 0.62), at a cost of about 0.024 in mean similarity (0.615 -> 0.591).
+3. Caveats: alpha=0 is not "no trust at all", because the hop-2 LIMIT 50 still orders by edge weight (it binds in only 10 questions); and this measures change in the retrieved context, not change in hallucination.
+
+### 12k (lanjutan). Tahap 1 (answer relevance, panel): Qwen3-235B selesai, tahap 1 lengkap (2026-10-30)
+
+Status: tahap 1 (`ansrel`) sekarang punya ketiga juri dan panel dihitung. Angka ini final untuk tahap 1; tahap 2 (`ctxrel`) belum dijalankan. Bagian ini melanjutkan 12k di atas (Llama + DeepSeek); tidak ada perubahan kode, parser, permintaan, prompt, atau ambang. Hash kode `secondary_panel.py` tetap blob 7a5127c58441fdfdffea61127e4ef4e3f2882808; hash parameter beku tetap fcbee86cbb25.
+
+**Eksekusi Qwen.**
+
+1. Perintah: `python3 llm/evaluation/secondary_panel.py --metric ansrel --run --judges qwen3-235b --max-cost-usd 0.35`. Registrasi `secondary_panel_ansrel@2026-10-30T14:03:45`. Panggilan: 1489 (1536 dikurangi 47 cache), 1443 dapat dipakai, 46 gagal setelah 3 percobaan, biaya $0,2237 (proyeksi tertunda $0,2263, batas $0,35). Gagal per kondisi: A 4, B 12, C 17, D 13. `[identity]` = MISMATCH karena tidak dapat dipakai 46/1536 = 2,995% (> 2%); Qwen berstatus partial dan tidak ada panel yang dihitung.
+2. Penyebab semua kegagalan: token `游戏副本` merusak nama kunci JSON (48 dari 48 baris gagal memuatnya; 3 dari 3 percobaan). Tidak ada jenis kegagalan lain.
+3. Coba ulang satu kali, hanya 46 item itu, kode yang sama, `--max-cost-usd 0.05`. Registrasi `secondary_panel_ansrel@2026-10-30T15:07:47`. Hasil: 33 dari 46 kini dapat dipakai, 13 tetap gagal. Biaya $0,0120 (proyeksi $0,0070). Tidak ada percobaan ulang kedua.
+4. Hasil akhir Qwen: 1523 record dapat dipakai dari 1536; tidak dapat dipakai 13 = **0,85%** (aturan kelengkapan <= 2% **terpenuhi**). `[identity]` = OK. Baris di file kegagalan: 61 (2 dari kejadian sebelumnya + 46 + 13).
+5. Qwen3-235B tidak ada kunci dev, tidak ada ID di luar daftar uji, tidak ada ketidakcocokan model. Rata-rata token Qwen: 1035 masuk, 77,6 keluar per panggilan.
+
+**13 kunci Qwen yang hilang** (ID pertanyaan): A 32038020; B 32038020, 40634865, 55975155, 62832082; C 8516239, 12167581, 27341939, 65706387; D 8448866, 12170271, 35931435, 55056802. (Berdasarkan sel; ID yang sama dapat muncul pada lebih dari satu kondisi.)
+
+**Label panel.** 1536 kunci: 1532 diputuskan (1531 dengan suara mayoritas, 1 dengan median), **4 UNRESOLVED**: tepat dua juri dapat dipakai dan berbeda, dan Qwen hilang (B 62832082: Llama MENJAWAB_SEBAGIAN vs DeepSeek TIDAK_MENJAWAB; C 12167581: MENJAWAB vs MENJAWAB_SEBAGIAN; D 12170271: MENJAWAB vs MENJAWAB_SEBAGIAN; D 8448866: MENJAWAB vs MENJAWAB_SEBAGIAN). 0 INCOMPLETE. UNRESOLVED dikeluarkan dari rata-rata panel, tidak diimputasi. Sembilan kunci dengan Qwen hilang diputuskan oleh dua juri yang sama.
+
+**Kesepakatan (semua jawaban, n = 1523 dengan tiga juri dapat dipakai).** Ketiganya sama 64,54%. Berpasangan: Llama-DeepSeek 68,23% (n 1536), Llama-Qwen 80,37% (n 1523), DeepSeek-Qwen 80,43% (n 1523); rata-rata berpasangan 76,34%. Fleiss kappa 0,5857; Krippendorff alpha ordinal 0,6967. Rata-rata skor panel semua jawaban 0,7229; rata-rata skor tiga juri 0,7185. Rata-rata per juri (semua jawaban): Llama 0,8011, DeepSeek 0,6471, Qwen 0,7062 (n 1523).
+
+**Analisis sensitivitas** (rata-rata skor panel, semua jawaban; n yang diputuskan di kurung).
+
+| Himpunan | A | B | C | D |
+|---|---|---|---|---|
+| Seperti tersimpan (13 kunci tanpa Qwen memakai dua juri yang tersisa) | 0,9688 (384) | 0,6658 (383) | 0,6397 (383) | 0,6165 (382) |
+| Hanya item dengan tiga juri | 0,9687 (383) | 0,6658 (380) | 0,6408 (380) | 0,6158 (380) |
+| Llama + DeepSeek saja (diputuskan hanya jika keduanya sama; bukan panel) | 0,9968 (308) | 0,6639 (244) | 0,6216 (255) | 0,6224 (241) |
+
+Selisih dua baris pertama paling besar 0,0011. Baris ketiga adalah himpunan terpilih (hanya item yang disepakati), jadi tidak sebanding dengan n atau levelnya.
+
+**Biaya dan anggaran.** Biaya tahap 1 seluruhnya $0,8867 (0,0341 + 0,6169 + 0,2237 + 0,0120; sama dengan biaya record tersimpan). Saldo buku besar tercetak: **$1,6239** dari $9,00 (dikeluarkan $7,3761).
+
+**Catatan yang masih berlaku.**
+
+1. Baris 139-141 `docs/FROZEN_PARAMETERS.md` ("judge (one, not the panel)") masih usang dan diperbarui setelah kedua tahap; hash akan berubah.
+2. `official_report.py` diperbaiki (tanpa perubahan data atau definisi): entri registri juri tanpa `files.output` (yaitu entri `secondary_panel_*`, yang menyimpan `records`/`panel`) dilewati saat mencocokkan record halusinasi (sebelumnya `KeyError: 'output'` di `judge_records`); answer relevance dibaca dari `results/official_secondary_panel/ansrel_panel_official_panel.jsonl` (rata-rata skor panel, UNRESOLVED dihitung tetapi tidak masuk rata-rata; tanpa file panel tidak ada angka); biaya sekunder ditampilkan terpisah dari biaya juri halusinasi (halusinasi $4,052543; sekunder terdaftar $0,852605; selisih $0,0341 ke biaya buku besar $0,8867 adalah proses yang berhenti sebelum registrasi). Ditambahkan, **post-hoc dan berlabel demikian**, uji McNemar eksak dua sisi untuk tiga perbandingan terdaftar pada himpunan berpasangan, versi (a) dan (b), di samping tabel 2x2; tanpa klaim multiplisitas. Tes baru: `llm/evaluation/tests/test_official_report_secondary.py`. Hash parameter beku tidak berubah (fcbee86cbb25; baris sumber `official_report.py:58` dan `:61` tidak bergeser). Context relevance tetap "not judged" (tahap 2 belum dijalankan).
+3. Tidak ada entri `judge_panel_run_history.jsonl` untuk tahap ini.
+4. Langkah berikutnya: tahap 2 (`ctxrel`), proyeksi $3,0473 ($3,3520 dengan penyangga), tidak muat dalam saldo $1,6239.

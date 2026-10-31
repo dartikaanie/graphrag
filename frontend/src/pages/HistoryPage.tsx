@@ -1,8 +1,9 @@
 import { useState, type MouseEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useDeleteHistory, useHistory } from '@/api/hooks'
+import { useDeleteHistory, useHistory, usePanelEvaluation, usePanelHallucination } from '@/api/hooks'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/Badge'
+import { fmtPanelRate } from '@/components/PanelEvaluationSection'
 import { fmtDuration } from '@/lib/format'
 import type { HistoryItem } from '@/types/history'
 
@@ -33,6 +34,11 @@ export function HistoryPage() {
   const navigate = useNavigate()
   const { data, isLoading, isError } = useHistory(condition, page, PAGE_SIZE, showSuperseded, showArchive)
   const deleteHistory = useDeleteHistory()
+  const { data: panelHall } = usePanelHallucination()
+  const { data: panelEval } = usePanelEvaluation((data?.items ?? []).map((i) => i.history_id))
+  const faithRuns = panelEval?.metrics.find((m) => m.metric === 'faithfulness')?.runs
+  const faithOf = (id: string) => faithRuns?.[id]?.panel?.faithfulness_micro ?? null
+  const bestFaith = Math.max(-1, ...(data?.items ?? []).map((i) => faithOf(i.history_id) ?? -1))
 
   const handleDelete = (e: MouseEvent, id: string) => {
     e.stopPropagation()
@@ -115,6 +121,8 @@ export function HistoryPage() {
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Model</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Avg Similarity</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">NF2%</th>
+              <th className="text-left font-medium text-text-secondary px-3 py-2.5" title="3-judge panel, excl. ABSTAIN">Halluc.%</th>
+              <th className="text-left font-medium text-text-secondary px-3 py-2.5" title="3-judge panel, claim-level (micro). Highest on this page is highlighted.">Faithful.%</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Duration</th>
               <th className="text-left font-medium text-text-secondary px-3 py-2.5">Status</th>
               <th className="w-8 px-3 py-2.5" />
@@ -123,7 +131,7 @@ export function HistoryPage() {
           <tbody>
             {!isLoading && data?.items.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-text-muted">
+                <td colSpan={12} className="px-3 py-8 text-center text-text-muted">
                   {showArchive ? 'No runs yet.' : 'No official runs yet. Pre-official runs are in the archive (toggle above).'}
                 </td>
               </tr>
@@ -156,6 +164,16 @@ export function HistoryPage() {
                 </td>
                 <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
                   {item.pct_with_valid_citation != null ? `${item.pct_with_valid_citation.toFixed(1)}%` : '—'}
+                </td>
+                <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
+                  {fmtPanelRate(panelHall?.runs?.[item.history_id]?.hall_rate_excl_abstain)}
+                </td>
+                <td
+                  className={`px-3 py-2.5 cursor-pointer ${faithOf(item.history_id) != null && faithOf(item.history_id) === bestFaith ? 'bg-success/10 font-semibold text-success' : ''}`}
+                  onClick={() => navigate(`/history/${item.history_id}`)}
+                >
+                  {fmtPanelRate(faithOf(item.history_id))}
+                  {faithOf(item.history_id) != null && faithOf(item.history_id) === bestFaith && ' ★'}
                 </td>
                 <td className="px-3 py-2.5 cursor-pointer" onClick={() => navigate(`/history/${item.history_id}`)}>
                   {fmtDuration(item.duration_sec)}

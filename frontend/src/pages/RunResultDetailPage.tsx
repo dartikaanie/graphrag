@@ -58,8 +58,14 @@ export function RunResultDetailPage() {
           <>
             {data.retrieval_latency_sec != null && (
               <div>
-                <span className="text-text-secondary">Retrieval latency: <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
+                <span className="text-text-secondary">Retrieval latency (retrieval only): <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
                 <span className="font-medium">{data.retrieval_latency_sec.toFixed(2)}s</span>
+              </div>
+            )}
+            {data.end_to_end_latency_sec != null && (
+              <div>
+                <span className="text-text-secondary">End-to-end latency (retrieval + LLM): <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
+                <span className="font-medium">{data.end_to_end_latency_sec.toFixed(2)}s</span>
               </div>
             )}
             {data.n_anchors != null && (
@@ -76,8 +82,14 @@ export function RunResultDetailPage() {
           <>
             {data.retrieval_latency_sec != null && (
               <div>
-                <span className="text-text-secondary">Retrieval latency: <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
+                <span className="text-text-secondary">Retrieval latency (retrieval only): <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
                 <span className="font-medium">{data.retrieval_latency_sec.toFixed(2)}s</span>
+              </div>
+            )}
+            {data.end_to_end_latency_sec != null && (
+              <div>
+                <span className="text-text-secondary">End-to-end latency (retrieval + LLM): <MetricInfoLink metricId="nf3-retrieval-latency" /> </span>
+                <span className="font-medium">{data.end_to_end_latency_sec.toFixed(2)}s</span>
               </div>
             )}
             {data.n_low_level_candidates != null && (

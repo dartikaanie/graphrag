@@ -1672,6 +1672,26 @@ def build_output_path(output_dir: str, provider: str, model: str, n_sample: int,
     return Path(output_dir) / f"{base}_{suffix}_{PROMPT_VERSION}_{config_hash}.jsonl"
 
 
+def clear_failed_empty_run(output_path, log=print) -> bool:
+    """Delete a 0-byte output and its manifest when that manifest says "failed" (the leftovers of a run that saved
+    nothing), so the rerun of the same config starts clean. Anything with records, or without a failed manifest, is
+    left alone. Only these two files of this one run are touched."""
+    output_path = Path(output_path)
+    manifest = output_path.with_name(output_path.name + ".manifest.json")
+    if not (output_path.exists() and output_path.stat().st_size == 0 and manifest.exists()):
+        return False
+    try:
+        status = json.loads(manifest.read_text()).get("status")
+    except Exception:
+        return False
+    if status != "failed":
+        return False
+    output_path.unlink()
+    manifest.unlink()
+    log(f"[resume] removed the failed empty run {output_path.name} (+ manifest); starting clean.")
+    return True
+
+
 def official_role_for_args(args, official: dict | None = None) -> str | None:
     """None for a dev run; else the official role ("c_primary" /
     "c_ablation") of this test-sample run, or OfficialParamsError. Reads
@@ -1960,6 +1980,7 @@ def main():
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     from llm.common.resume import ResumeRefused, prepare_resume
+    clear_failed_empty_run(output_path, log)  # a failed 0-byte run of this very config must not block the rerun
     try:  # official cells: refuse a resume under another commit / frozen hash; cut a torn last line; gate on config_hash only
         already_done = prepare_resume(output_path, config_hash, args.sample_split, log)
     except ResumeRefused as e:
@@ -2003,6 +2024,16 @@ def main():
         log("[8/9] Diinterupsi sebelum semua sample selesai -- lihat catatan di atas.")
     else:
         log("[8/9] Selesai memproses seluruh sample.")
+
+    if results and (not output_path.exists() or output_path.stat().st_size == 0):
+        # records were produced but the file holds none (it was removed or replaced while the run was writing):
+        # write them back from memory instead of losing the retrieval work
+        log(f"[WARN] {output_path} is empty after {len(results)} records -- rewriting them from memory.")
+        with open(output_path, "w") as f_fix:
+            for rec in results:
+                f_fix.write(json.dumps(rec, default=str) + "\n")
+            f_fix.flush()
+            os.fsync(f_fix.fileno())
 
     file_exists = output_path.exists()
     file_size = output_path.stat().st_size if file_exists else -1
@@ -2053,35 +2084,45 @@ def main():
     log("[9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)")
     log("=" * 70)
     log(f"Total pertanyaan diproses      : {len(results_df)}")
-    log(f"Cosine similarity rata-rata    : {results_df['cosine_similarity'].mean():.4f}")
-    log(f"Cosine similarity median       : {results_df['cosine_similarity'].median():.4f}")
-    log(f"% similarity > 0.5             : {(results_df['cosine_similarity'] > 0.5).mean()*100:.1f}%")
-    pct_citation = results_df["has_citation"].mean() * 100
-    pct_valid_citation = results_df["has_valid_citation"].mean() * 100
-    log(f"% jawaban dgn >=1 kutipan format cocok  : {pct_citation:.1f}% (longgar, toleransi variasi format)")
-    log(f"% jawaban dgn >=1 kutipan VALID (NF2)   : {pct_valid_citation:.1f}% "
-        f"[target: 100%] {'PASS' if pct_valid_citation >= 100 else 'BELUM TERCAPAI'} "
-        f"(ID kutipan divalidasi ada di retrieved_context yg sebenarnya)")
+    if args.retrieval_only:
+        # no answers in this mode: only the retrieval figures exist (no cosine / citation lines)
+        rl = results_df["retrieval_latency_sec"]
+        avg_latency, p95_latency = rl.mean(), rl.quantile(0.95)
+        log(f"Retrieval-only: {len(results_df)} questions | retrieval_sec mean {avg_latency:.2f} p95 {p95_latency:.2f}")
+        for col in ("anchors_found", "v5_n_filtered", "v5_n_refilled"):
+            if col in results_df:
+                log(f"mean {col}: {results_df[col].mean():.3f}")
+        pct_no_context = (results_df["n_anchors"] == 0).mean() * 100
+    else:
+        log(f"Cosine similarity rata-rata    : {results_df['cosine_similarity'].mean():.4f}")
+        log(f"Cosine similarity median       : {results_df['cosine_similarity'].median():.4f}")
+        log(f"% similarity > 0.5             : {(results_df['cosine_similarity'] > 0.5).mean()*100:.1f}%")
+        pct_citation = results_df["has_citation"].mean() * 100
+        pct_valid_citation = results_df["has_valid_citation"].mean() * 100
+        log(f"% jawaban dgn >=1 kutipan format cocok  : {pct_citation:.1f}% (longgar, toleransi variasi format)")
+        log(f"% jawaban dgn >=1 kutipan VALID (NF2)   : {pct_valid_citation:.1f}% "
+            f"[target: 100%] {'PASS' if pct_valid_citation >= 100 else 'BELUM TERCAPAI'} "
+            f"(ID kutipan divalidasi ada di retrieved_context yg sebenarnya)")
 
-    # Reporting TAMBAHAN di luar definisi NF2 (pct_valid_citation di atas
-    # TIDAK berubah) -- lihat docs/NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md:
-    # 3-way split per jawaban, fabricated-citation-rate (jawaban dgn >=1
-    # token TIDAK valid, meski ada yg valid juga), dan citation precision
-    # (token valid / semua token kutipan, termasuk placeholder, se-run).
-    citation_report = compute_citation_report(results_df.to_dict("records"))
-    log(f"  -- 3-way split: valid={citation_report['pct_valid']}% / "
-        f"no_citation={citation_report['pct_no_citation']}% / "
-        f"invalid_only={citation_report['pct_invalid_only']}%")
-    log(f"  -- fabricated citation rate (>=1 invalid token, even if also has a valid one): "
-        f"{citation_report['fabricated_citation_rate']}%")
-    log(f"  -- citation precision (valid tokens / all citation tokens incl. placeholders): "
-        f"{citation_report['citation_precision']}")
-    pct_no_context = (results_df["n_anchors"] == 0).mean() * 100
-    log(f"% pertanyaan tanpa hasil retrieval sama sekali: {pct_no_context:.1f}%")
-    avg_latency = results_df["retrieval_latency_sec"].mean()
-    p95_latency = results_df["retrieval_latency_sec"].quantile(0.95)
-    log(f"Retrieval latency -- avg: {avg_latency:.2f}s, p95: {p95_latency:.2f}s "
-        f"[NF3 target: <=15s] {'PASS' if avg_latency <= 15.0 else 'FAIL'}")
+        # Reporting TAMBAHAN di luar definisi NF2 (pct_valid_citation di atas
+        # TIDAK berubah) -- lihat docs/NF2_ROOT_CAUSE_PLACEHOLDER_CITATIONS.md:
+        # 3-way split per jawaban, fabricated-citation-rate (jawaban dgn >=1
+        # token TIDAK valid, meski ada yg valid juga), dan citation precision
+        # (token valid / semua token kutipan, termasuk placeholder, se-run).
+        citation_report = compute_citation_report(results_df.to_dict("records"))
+        log(f"  -- 3-way split: valid={citation_report['pct_valid']}% / "
+            f"no_citation={citation_report['pct_no_citation']}% / "
+            f"invalid_only={citation_report['pct_invalid_only']}%")
+        log(f"  -- fabricated citation rate (>=1 invalid token, even if also has a valid one): "
+            f"{citation_report['fabricated_citation_rate']}%")
+        log(f"  -- citation precision (valid tokens / all citation tokens incl. placeholders): "
+            f"{citation_report['citation_precision']}")
+        pct_no_context = (results_df["n_anchors"] == 0).mean() * 100
+        log(f"% pertanyaan tanpa hasil retrieval sama sekali: {pct_no_context:.1f}%")
+        avg_latency = results_df["retrieval_latency_sec"].mean()
+        p95_latency = results_df["retrieval_latency_sec"].quantile(0.95)
+        log(f"Retrieval latency -- avg: {avg_latency:.2f}s, p95: {p95_latency:.2f}s "
+            f"[NF3 target: <=15s] {'PASS' if avg_latency <= 15.0 else 'FAIL'}")
     log(f"\nHasil lengkap tersimpan -> {output_path}")
 
     history_path = append_run_history({
@@ -2109,16 +2150,18 @@ def main():
         "grounding": "on" if args.require_grounding else "off",
         "enable_semantic_expansion": args.enable_semantic_expansion,
         "config_hash": config_hash,
-        "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
-        "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
-        "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
-        "pct_with_citation": round(float(pct_citation), 1),
-        "pct_with_valid_citation": round(float(pct_valid_citation), 1),
-        "pct_citation_valid": citation_report["pct_valid"],
-        "pct_citation_no_citation": citation_report["pct_no_citation"],
-        "pct_citation_invalid_only": citation_report["pct_invalid_only"],
-        "fabricated_citation_rate": citation_report["fabricated_citation_rate"],
-        "citation_precision": citation_report["citation_precision"],
+        **({} if args.retrieval_only else {
+            "cosine_similarity_mean": round(float(results_df["cosine_similarity"].mean()), 4),
+            "cosine_similarity_median": round(float(results_df["cosine_similarity"].median()), 4),
+            "pct_similarity_above_0_5": round(float((results_df["cosine_similarity"] > 0.5).mean() * 100), 1),
+            "pct_with_citation": round(float(pct_citation), 1),
+            "pct_with_valid_citation": round(float(pct_valid_citation), 1),
+            "pct_citation_valid": citation_report["pct_valid"],
+            "pct_citation_no_citation": citation_report["pct_no_citation"],
+            "pct_citation_invalid_only": citation_report["pct_invalid_only"],
+            "fabricated_citation_rate": citation_report["fabricated_citation_rate"],
+            "citation_precision": citation_report["citation_precision"],
+        }),
         "pct_no_retrieval": round(float(pct_no_context), 1),
         "avg_retrieval_latency_sec": round(float(avg_latency), 3),
         "p95_retrieval_latency_sec": round(float(p95_latency), 3),

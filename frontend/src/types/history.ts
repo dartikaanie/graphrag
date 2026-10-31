@@ -51,6 +51,7 @@ export interface HistoryItem {
   pct_with_citation?: number
   pct_with_valid_citation?: number
   avg_retrieval_latency_sec?: number
+  avg_end_to_end_latency_sec?: number
   history_id: string
 }
 

@@ -894,6 +894,9 @@ def run_condition_b(run_id: str, params: dict[str, Any]) -> None:
             latencies = [r["retrieval_latency_sec"] for r in results if r.get("retrieval_latency_sec") is not None]
             if latencies:
                 summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
+            e2e = [r["end_to_end_latency_sec"] for r in results if r.get("end_to_end_latency_sec") is not None]
+            if e2e:
+                summary["avg_end_to_end_latency_sec"] = round(sum(e2e) / len(e2e), 3)
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
         cond.append_run_history({
@@ -1095,6 +1098,9 @@ def run_condition_c(run_id: str, params: dict[str, Any]) -> None:
             summary["citation_precision"] = citation_report["citation_precision"]
             if latencies:
                 summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
+            e2e = [r["end_to_end_latency_sec"] for r in results if r.get("end_to_end_latency_sec") is not None]
+            if e2e:
+                summary["avg_end_to_end_latency_sec"] = round(sum(e2e) / len(e2e), 3)
 
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration
@@ -1279,6 +1285,9 @@ def run_condition_d(run_id: str, params: dict[str, Any]) -> None:
             summary["citation_precision"] = citation_report["citation_precision"]
             if latencies:
                 summary["avg_retrieval_latency_sec"] = round(sum(latencies) / len(latencies), 3)
+            e2e = [r["end_to_end_latency_sec"] for r in results if r.get("end_to_end_latency_sec") is not None]
+            if e2e:
+                summary["avg_end_to_end_latency_sec"] = round(sum(e2e) / len(e2e), 3)
 
         duration = round((datetime.now(timezone.utc) - run_started_at).total_seconds(), 1)
         summary["duration_sec"] = duration

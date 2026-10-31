@@ -1,0 +1,57 @@
+12:11:46 | [logging] Log detail run ini -> /Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/logs/20261031T051146Z_openai_gpt-4o-mini.log
+12:11:46 | [config] output auto-generated -> 'results/c_v5_devlarge_smoke/condition_c_openai_gpt-4o-mini_n3_seed42_fw1-0-0-0_v5-alpha0-1_devlarge_v3_fafd629071.jsonl'
+12:11:46 | [config] n_sample=3 seed=42 provider=openai model=gpt-4o-mini
+12:11:46 | [config] top_k=5 n_anchor=3 n_semantic_expansion=3 token_chunk_limit=400
+12:11:46 | [config] fusion_mode=trust_weighted fusion_w_path_trust=1.0 fusion_w_intrinsic=0.0 semantic_expansion_trust_cap=0.4
+12:11:46 | [config] require_grounding=True enable_semantic_expansion=True
+12:11:47 | [1/9] Mengambil oversample pool (1536 kandidat)...
+12:11:53 |       Oversample pool diambil: 1,536 kandidat
+12:11:53 | [2/9] Menghitung token & filter <= 2048 token...
+12:11:54 |       1,536 -> 1,471 lolos filter token
+12:11:54 | [sample] 3 devlarge questions == frozen list llm/sample_ids/devlarge_ids_v1.json
+12:11:54 | [4/9] Mengambil teks accepted answer (ground truth)...
+12:11:57 |       Ditemukan 3 accepted answer
+12:11:57 | [4/9] Memetakan SEMUA answer_id per pertanyaan evaluasi (utk exclusion)...
+12:11:57 | [5/9] Terhubung ke Neo4j (bolt://localhost:7687, database=graphrag)
+12:12:09 | [5/9] Graph trustScoreVersion: v3-logscore
+12:12:21 | [5/9] FAISS index & embedding cache dimuat: 2,685,814 vektor dari /Volumes/T7 Shield/S2/THESIS GRAPHRAG/project/graphrag_old/01_data_cleaning/_kg_workspace
+12:12:26 | [6/9] Load model embedding (all-MiniLM-L6-v2)...
+12:12:48 | [6/8] KG answer index dimuat: 725,795 vektor (kg_answers_v1_tok400_all-MiniLM-L6-v2_358aaed6804d) dari /Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/b_rag/index_cache/kg_answers_v1_tok400
+12:12:49 | [config] v3 embedding cache -> /Users/dartikaanie/Library/Caches/graphrag/embedding_cache.sqlite3
+12:12:49 | [config] leakage mode = thread (llm/common/leakage.py)
+12:12:49 | [7/9] Hybrid retrieval (anchor+traversal+expansion) + prompting gpt-4o-mini untuk 3 pertanyaan...
+12:12:49 |       [debug-init] cwd='/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag' output_path=PosixPath('results/c_v5_devlarge_smoke/condition_c_openai_gpt-4o-mini_n3_seed42_fw1-0-0-0_v5-alpha0-1_devlarge_v3_fafd629071.jsonl') resolved=PosixPath('/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/results/c_v5_devlarge_smoke/condition_c_openai_gpt-4o-mini_n3_seed42_fw1-0-0-0_v5-alpha0-1_devlarge_v3_fafd629071.jsonl') fileno=13
+12:12:58 |       [leakage] Id=31400425 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+12:13:12 |       [latency] cond=C Id=31400425 retrieval_sec=9.401 total_sec=21.604
+12:13:12 |       [debug-write] Id=31400425 bytes_written_this_line=24828 file_size_now=0 f_out.tell()=24828
+12:13:12 |       [1/3] Id=31400425 anchors=3 context=5 citation=True valid_citation=True similarity=0.556 retrieval=9.40s
+12:13:16 |       [leakage] Id=70563825 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=4 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+12:13:20 |       [latency] cond=C Id=70563825 retrieval_sec=4.003 total_sec=7.329
+12:13:20 |       [debug-write] Id=70563825 bytes_written_this_line=29150 file_size_now=0 f_out.tell()=53978
+12:13:20 |       [2/3] Id=70563825 anchors=3 context=5 citation=True valid_citation=True similarity=0.728 retrieval=4.00s
+12:13:23 |       [leakage] Id=708584 mode=thread n_excluded_q=1 n_excluded_a=1 n_hits_filtered=10 final_k=5 n_expansion_q=9 n_expansion_q_empty=0
+12:13:26 |       [latency] cond=C Id=708584 retrieval_sec=2.547 total_sec=5.806
+12:13:26 |       [debug-write] Id=708584 bytes_written_this_line=22124 file_size_now=0 f_out.tell()=76102
+12:13:26 |       [3/3] Id=708584 anchors=3 context=5 citation=True valid_citation=True similarity=0.743 retrieval=2.55s
+12:13:26 | [8/9] Selesai memproses seluruh sample.
+12:13:26 | [WARN] results/c_v5_devlarge_smoke/condition_c_openai_gpt-4o-mini_n3_seed42_fw1-0-0-0_v5-alpha0-1_devlarge_v3_fafd629071.jsonl is empty after 3 records -- rewriting them from memory.
+12:13:26 | [debug] exists=True path=/Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/results/c_v5_devlarge_smoke/condition_c_openai_gpt-4o-mini_n3_seed42_fw1-0-0-0_v5-alpha0-1_devlarge_v3_fafd629071.jsonl size_bytes=76102
+12:13:26 | 
+======================================================================
+12:13:26 | [9/9] RINGKASAN HASIL KONDISI C (GraphRAG Framework)
+12:13:26 | ======================================================================
+12:13:26 | Total pertanyaan diproses      : 3
+12:13:26 | Cosine similarity rata-rata    : 0.6757
+12:13:26 | Cosine similarity median       : 0.7285
+12:13:26 | % similarity > 0.5             : 100.0%
+12:13:26 | % jawaban dgn >=1 kutipan format cocok  : 100.0% (longgar, toleransi variasi format)
+12:13:26 | % jawaban dgn >=1 kutipan VALID (NF2)   : 100.0% [target: 100%] PASS (ID kutipan divalidasi ada di retrieved_context yg sebenarnya)
+12:13:26 |   -- 3-way split: valid=100.0% / no_citation=0.0% / invalid_only=0.0%
+12:13:26 |   -- fabricated citation rate (>=1 invalid token, even if also has a valid one): 33.3%
+12:13:26 |   -- citation precision (valid tokens / all citation tokens incl. placeholders): 0.857
+12:13:26 | % pertanyaan tanpa hasil retrieval sama sekali: 0.0%
+12:13:27 | Retrieval latency -- avg: 5.32s, p95: 8.86s [NF3 target: <=15s] PASS
+12:13:27 | 
+Hasil lengkap tersimpan -> results/c_v5_devlarge_smoke/condition_c_openai_gpt-4o-mini_n3_seed42_fw1-0-0-0_v5-alpha0-1_devlarge_v3_fafd629071.jsonl
+12:13:27 | [logging] Ringkasan run dicatat -> /Users/dartikaanie/SMART SYSTEM/THESIS_2/project/graphrag/llm/c_graphrag/logs/run_history.jsonl
+12:13:27 | [logging] Manifest ditulis -> results/c_v5_devlarge_smoke/condition_c_openai_gpt-4o-mini_n3_seed42_fw1-0-0-0_v5-alpha0-1_devlarge_v3_fafd629071.jsonl.manifest.json
