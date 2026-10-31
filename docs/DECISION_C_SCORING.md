@@ -1163,3 +1163,106 @@ by the fixed-size token estimate ($3.3520 with a 10% buffer), which **exceeds th
 
 ### Record
 Confirmation by the author: confirmed  Commit: [ ]
+
+## Amendment 19 (2026-10-31): C-v2, a relevance-first variant of Condition C (post-hoc exploratory follow-up)
+
+Written AFTER the official results of A, B, C, D and their secondary
+metrics were seen, and BEFORE any C-v2 code, development run or judging exists. Earlier amendments are not edited.
+hash lama fcbee86cbb25 → hash baru
+
+### Why (observations from the official results; they do not change those results)
+- Context relevance (panel): B 0.342, C 0.285, D 0.284. Faithfulness: B 0.613, C 0.551, D 0.536. Citation validity
+  (NF2): B 0.724, C 0.682, D 0.672. Condition C did not retrieve more relevant context than conventional vector
+  retrieval.
+- 74% of the HAS_ANSWER edge weights equal the 0.5 fallback of the per-thread min-max, so that weight carries little
+  signal.
+- In v4 the quality of an answer is counted twice in the fusion: inside w_path (edge weight) and as 0.3 * trust_A.
+- Neither B nor C applies a similarity threshold at query time; both always return k items, however low the similarity.
+
+### Status of the official evaluation
+Unchanged. The four official runs (A, B, C = retrieval v4 with alpha* = 0.5, D), the three pre-registered comparisons
+(C vs A, C vs B, C vs D), the judge panel and the secondary metrics stay as recorded. C-v2 is a follow-up and never
+replaces Condition C in any primary result.
+
+### Design of C-v2 (`c_retrieval_version = "v5"`; v4 stays reproducible)
+1. **Answer-level anchoring.** Retrieve the top N_B = 10 answers as Condition B does (answer index, MiniLM-L6-v2,
+   400-token item text; leakage mode `thread` applied before ranking). Map each answer to its parent question. The score
+   of a question is the cosine of its best answer (max). The anchors are the n_anchor = 3 questions with the highest
+   score; ties by question id. If fewer than 3 distinct questions result, scan deeper (at most 50 answers) and record
+   `anchors_found / anchors_requested`.
+2. **Candidate pool.** The top N_B answers of the answer-level search, plus the 1-2 hop traversal from the anchors and
+   the semantic expansion (3 neighbours per seed, answerable only, first three distinct seeds, as in v4). Duplicates
+   are removed, keeping the highest w_path.
+3. **Answer weight (question-to-answer).** Accepted answer: 1.0. Any other answer: its stored `trustScore`
+   (`v3-logscore`: 0.5 * norm_log(score; P99_A = 46) + 0.3 * accepted + 0.2 * w_auth; at most 0.7 for a non-accepted
+   answer). This replaces the per-thread min-max HAS_ANSWER weight for C-v2 only.
+4. **Path weight.** w_path = w_qq' * w_qa. w_qq' = 1 for an answer of an anchor or of the answer-level search; the
+   relation weight (IS_RELATED_TO: Duplicate 1.0 or Linked cosine; TAG_COOCCUR 0.6; EMBED_SIM 0.4) for a neighbour
+   question; and 0.4 for the semantic expansion. The highest w_path over all routes is kept.
+5. **Filter.** Remove non-accepted answers with a net score below 0. If fewer than k answers remain, refill from the
+   removed answers by similarity. The filter has no parameter.
+6. **Ranking.** score = (1 - alpha) * sim_norm + alpha * w_path, with sim_norm is computed over the full pool before the quality filter, as in v4. The separate intrinsic term of v4 (0.3 * trust_A) is dropped: the fusion parameters of v5 are
+   w_path_trust = 1.0 and w_intrinsic = 0.0; the expansion cap stays 0.4.
+7. **Similarity threshold.** None. Condition B takes the top-k by rank only (`kg_corpus.py:188-199`) and C has no score
+   threshold at query time in anchoring, traversal, expansion or fusion (`c_graphrag.py:495-505, 581-583, 625-684,
+   1043`). C-v2 keeps this so that it stays comparable with B; a relative cut-off is listed as future work.
+8. **Unchanged.** k = 5, 400-token items, leakage `thread` (applied to the answer-level search, the traversal and the
+   expansion, and asserted per query), generator gpt-4o-mini with default decoding, grounded prompts identical to B, C
+   and D, ties by answer id, the judge panel and its prompts.
+
+### Implementation notes (checked against the code on 2026-10-31)
+- Edge weights are used in the 2-hop traversal ordering and its LIMIT 50 (`c_graphrag.py:581-583`; the 1-hop query
+  orders by answer id and has no limit), in the fusion trust term (`934-936`), in the expansion proxy (`945-948`) and
+  in the choice between duplicates (`1010-1013`).
+- For C-v2 the answer weight is read at query time as: `HAS_ACCEPTED_ANSWER` = 1.0, otherwise `a.trustScore`. The stored
+  edge weights and `a.trustScore` (`v3-logscore`) are NOT changed, no apply script is needed, and the graph version
+  recorded in each manifest stays `v3-logscore`.
+- The start-up pin check of the official path (fusion 0.7 / 0.3 / 0.4) belongs to v4; the C-v2 cell has its own pins
+  (1.0 / 0.0 / 0.4) and lies outside the four official cells.
+- With answer-level anchoring, the first three distinct traversal questions (the seeds of the semantic expansion) are
+  the anchors.
+
+### Choosing alpha on an enlarged development set
+- **dev-large:** positions 435-584 of the frozen permutation of the 1,471 filtered pool questions (seed 42), i.e. the
+  150 questions after the original dev list (positions 385-434); no overlap with the test list (1-384) or the original dev list.
+- **Grid:** alpha in {0, 0.1, 0.25, 0.5}. alpha = 0 is run as a reference and is not eligible (as in Amendment 17), so the
+  trust term keeps a role.
+- **Stage 1:** retrieval for the four alphas; context relevance by the panel (Amendment 18). Primary: share of questions
+  with at least one RELEVANT item (tie margin 2 percentage points). Secondary: mean score (tie margin 0.02). The two
+  best eligible alphas advance. **Ties go to the smaller alpha**: the conservative choice, opposite to Amendment 10,
+  because the purpose is not to lose relevance.
+- **Stage 2:** grounded generation (grounding on only, as in the official runs), panel hallucination label, 150 answers
+  per alpha. Primary: hallucinated answers excluding ABSTAIN (margin 3 answers). Secondary: with ABSTAIN counted as
+  failed (margin 3). Then the smaller alpha. A selection by tie-break is not evidence of an effect of trust (as in
+  Amendment 10).
+- No test-sample question is used in the selection.
+
+### Evaluation on the test sample (post-hoc, exploratory)
+- One extra cell, "C-v2" (n = 384, the frozen test ids, grounded, `thread`, alpha*), generated once, then judged by the
+  panel (hallucination, context relevance, answer relevance) exactly as the official runs.
+- Reported next to the official runs, labelled post-hoc. Comparisons: C-v2 vs B, vs C (v4), vs D and vs A, as paired
+  2 x 2 tables with exact McNemar p-values (no multiplicity claim), plus the descriptive differences of the other
+  metrics.
+- **Interpretation rule (fixed now).** The test sample has been seen and the design was motivated by its results, so
+  C-v2 is exploratory. No superiority claim is made on this evaluation. The only claim the data may support is that C-v2
+  is not worse than B on context relevance and faithfulness. A confirmatory evaluation on a fresh sample from the unused
+  pool is future work.
+- Latency is measured as NF3. A p95 above 15 s is reported as not meeting the target, not tuned away.
+
+### Stop rules
+A step is not started if its projected cost, from a dry run, exceeds the remaining credit balance. Stop on any leakage
+assertion failure, on more than 2% unusable judge records, or on a configuration mismatch.
+
+### Reproducibility
+`c_retrieval_version = "v5"` is part of `config_hash`. The new cell is a run-matrix cell outside the four official cells
+and is refused unless an explicit flag is passed. The frozen-parameter table gets rows for v5, dev-large, the alpha grid
+and the tie-break rule. v4, D v5 and every earlier cell stay reproducible. Condition names in the thesis stay A-D; C-v2 is
+named as a follow-up variant.
+
+### Unchanged
+The four official runs and their reports, Amendments 1-18, the judge panel, the prompts, the leakage rule, the test
+sample, and the `trustScore` values stored in the graph.
+
+### Record
+- Confirmation by the author: [ ]
+- Commit: [ ]
